@@ -8,6 +8,7 @@ import {
   onSnapshot,
   orderBy,
   limit,
+  where,
 } from "firebase/firestore";
 import { ProductionLog, StockSummary } from "@/types";
 import {
@@ -21,6 +22,9 @@ import {
   AlertCircle,
   Download,
   ChevronDown,
+  Calendar,
+  Search,
+  Filter,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { revertProductionLog } from "@/services/productionService";
@@ -31,8 +35,12 @@ export default function ProductionPage() {
   const [logs, setLogs] = useState<ProductionLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // PAGINACIÓN: Estado para controlar el límite de lectura
+  // --- PAGINACIÓN Y FILTROS ---
   const [limitCount, setLimitCount] = useState(30);
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  const [filterSku, setFilterSku] = useState<string>("ALL");
+  const [filterCoil, setFilterCoil] = useState<string>("");
 
   useEffect(() => {
     // 1. Escuchar el Stock de Producto Terminado
@@ -45,12 +53,30 @@ export default function ProductionPage() {
       setStock(stockData);
     });
 
-    // 2. Escuchar el Historial de Producción (Con paginación optimizada)
-    const qLogs = query(
-      collection(db, "production_logs"),
-      orderBy("timestamp", "desc"),
-      limit(limitCount),
-    );
+    return () => unsubStock();
+  }, []);
+
+  useEffect(() => {
+    // 2. Escuchar el Historial de Producción (Con filtro de FECHAS en Firebase)
+    let baseQuery = collection(db, "production_logs");
+    let queryConstraints: any[] = [];
+
+    // Aplicar filtros de fecha si existen
+    if (startDate) {
+      const start = new Date(startDate + "T00:00:00");
+      queryConstraints.push(where("timestamp", ">=", start));
+    }
+    if (endDate) {
+      const end = new Date(endDate + "T23:59:59");
+      queryConstraints.push(where("timestamp", "<=", end));
+    }
+
+    // Siempre ordenamos por fecha descendente
+    queryConstraints.push(orderBy("timestamp", "desc"));
+    queryConstraints.push(limit(limitCount));
+
+    const qLogs = query(baseQuery, ...queryConstraints);
+
     const unsubLogs = onSnapshot(qLogs, (snapshot) => {
       const logsData = snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -60,11 +86,17 @@ export default function ProductionPage() {
       setIsLoading(false);
     });
 
-    return () => {
-      unsubStock();
-      unsubLogs();
-    };
-  }, [limitCount]); // Se actualiza si el usuario pide más registros
+    return () => unsubLogs();
+  }, [limitCount, startDate, endDate]);
+
+  // --- FILTRO LOCAL (Búsqueda instantánea de SKU y Bobina) ---
+  const displayLogs = logs.filter((log) => {
+    const matchSku = filterSku === "ALL" || log.sku === filterSku;
+    const matchCoil =
+      filterCoil === "" ||
+      log.parentCoilId.toLowerCase().includes(filterCoil.toLowerCase());
+    return matchSku && matchCoil;
+  });
 
   // --- FUNCIÓN DE ANULACIÓN ---
   const handleVoidLog = async (logId: string, pieces: number) => {
@@ -133,7 +165,6 @@ export default function ProductionPage() {
           </p>
         </div>
 
-        {/* BOTÓN EXPORTAR EXCEL DE STOCK */}
         <button
           onClick={exportStockToExcel}
           className="bg-green-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-green-700 transition shadow-sm font-black uppercase tracking-widest text-xs"
@@ -215,6 +246,91 @@ export default function ProductionPage() {
           <History size={20} /> Historial de Operaciones (Conformadora)
         </h2>
 
+        {/* --- BARRA DE FILTROS --- */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-4 flex flex-col md:flex-row gap-4 items-end">
+          {/* Rango de Fechas */}
+          <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+            <div className="flex-1 md:w-40">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                <Calendar size={12} /> Desde
+              </label>
+              <input
+                type="date"
+                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-500 text-sm font-medium"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setLimitCount(30); // Resetear paginación al filtrar
+                }}
+              />
+            </div>
+            <div className="flex-1 md:w-40">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                <Calendar size={12} /> Hasta
+              </label>
+              <input
+                type="date"
+                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-500 text-sm font-medium"
+                value={endDate}
+                min={startDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setLimitCount(30);
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Filtro por Producto */}
+          <div className="w-full md:w-48">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+              <Filter size={12} /> Producto (SKU)
+            </label>
+            <select
+              className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-500 text-sm font-medium"
+              value={filterSku}
+              onChange={(e) => setFilterSku(e.target.value)}
+            >
+              <option value="ALL">Todos los Productos</option>
+              {stock.map((item) => (
+                <option key={item.sku} value={item.sku}>
+                  {item.sku}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Buscador de Bobina Origen */}
+          <div className="w-full flex-1 relative">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+              <Search size={12} /> Bobina de Origen
+            </label>
+            <input
+              type="text"
+              placeholder="Ej: PD03-11..."
+              className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-500 text-sm font-medium uppercase"
+              value={filterCoil}
+              onChange={(e) => setFilterCoil(e.target.value)}
+            />
+          </div>
+
+          {/* Botón Limpiar */}
+          {(startDate || endDate || filterSku !== "ALL" || filterCoil) && (
+            <button
+              onClick={() => {
+                setStartDate("");
+                setEndDate("");
+                setFilterSku("ALL");
+                setFilterCoil("");
+              }}
+              className="p-2.5 text-red-500 bg-red-50 hover:bg-red-100 rounded-lg text-sm font-bold transition flex-shrink-0"
+              title="Limpiar Filtros"
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
+
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden overflow-x-auto">
           <table className="w-full text-left min-w-225">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -243,14 +359,17 @@ export default function ProductionPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {logs.length === 0 && !isLoading ? (
+              {displayLogs.length === 0 && !isLoading ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-gray-500">
-                    No hay registros de producción recientes.
+                  <td
+                    colSpan={7}
+                    className="p-8 text-center text-gray-500 font-medium"
+                  >
+                    No se encontraron registros con los filtros actuales.
                   </td>
                 </tr>
               ) : (
-                logs.map((log) => {
+                displayLogs.map((log) => {
                   const isVoided = log.status === "VOIDED";
 
                   return (
@@ -342,7 +461,7 @@ export default function ProductionPage() {
           <div className="flex justify-center mt-6 p-4">
             <button
               onClick={() => setLimitCount((prev) => prev + 30)}
-              className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-gray-200 text-gray-600 rounded-xl font-bold hover:border-blue-500 hover:text-blue-600 transition"
+              className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-gray-200 text-gray-600 rounded-xl font-bold hover:border-blue-500 hover:text-blue-600 transition shadow-sm active:scale-95"
             >
               Cargar más registros <ChevronDown size={20} />
             </button>

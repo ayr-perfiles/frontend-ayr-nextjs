@@ -3,7 +3,9 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useReactToPrint } from "react-to-print";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { db } from "@/lib/firebase/clientApp";
+import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
 import {
   collection,
   query,
@@ -11,6 +13,7 @@ import {
   orderBy,
   limit,
   where,
+  doc,
 } from "firebase/firestore";
 import { Sale } from "@/types";
 import { approveQuotation } from "@/services/salesService";
@@ -28,17 +31,37 @@ import {
   Filter,
   ChevronDown,
   DollarSign,
+  Copy,
+  Loader2,
+  X,
 } from "lucide-react";
 
 export default function SalesPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const initialSaleId = searchParams.get("saleId");
+
+  // --- ESTADOS BASE (FIREBASE) ---
   const [sales, setSales] = useState<Sale[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
-
-  // --- FILTROS Y PAGINACIÓN ---
   const [limitCount, setLimitCount] = useState(30);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL"); // ALL, COMPLETED, QUOTATION
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+
+  // --- ESTADOS DE BÚSQUEDA (SELECTOR ALGOLIA -> FIREBASE) ---
+  const [searchTerm, setSearchTerm] = useState(initialSaleId || "");
+  const [suggestions, setSuggestions] = useState<Sale[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Guardamos el ID seleccionado y el documento en tiempo real de Firebase
+  const [selectedSaleId, setSelectedSaleId] = useState<string | null>(
+    initialSaleId,
+  );
+  const [searchedSaleData, setSearchedSaleData] = useState<Sale | null>(null);
+
+  const searchInputRef = useRef<HTMLDivElement>(null);
 
   // --- LÓGICA DE IMPRESIÓN ---
   const [saleToPrint, setSaleToPrint] = useState<Sale | null>(null);
@@ -57,7 +80,18 @@ export default function SalesPage() {
     }
   }, [saleToPrint, handlePrint]);
 
-  // --- OBTENCIÓN DE DATOS (FIREBASE) ---
+  // --- ACTUALIZADOR DE URL ---
+  const updateUrlParams = (newSaleId: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (newSaleId) {
+      params.set("saleId", newSaleId);
+    } else {
+      params.delete("saleId");
+    }
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  // 1. CARGA INICIAL DESDE FIREBASE (Paginada - Lista General)
   useEffect(() => {
     let q = query(
       collection(db, "sales"),
@@ -65,7 +99,6 @@ export default function SalesPage() {
       limit(limitCount),
     );
 
-    // Filtro de servidor para ahorrar lecturas
     if (statusFilter !== "ALL") {
       q = query(
         collection(db, "sales"),
@@ -76,9 +109,9 @@ export default function SalesPage() {
     }
 
     const unsub = onSnapshot(q, (snapshot) => {
-      const salesData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
+      const salesData = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
       })) as Sale[];
       setSales(salesData);
       setIsLoading(false);
@@ -86,18 +119,98 @@ export default function SalesPage() {
     return () => unsub();
   }, [limitCount, statusFilter]);
 
-  // --- FILTRO LOCAL POR CLIENTE O ID ---
-  const filteredSales = sales.filter((s) => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      s.customerName.toLowerCase().includes(searchLower) ||
-      (s.id && s.id.toLowerCase().includes(searchLower)) ||
-      (s.documentNumber && s.documentNumber.includes(searchLower))
-    );
-  });
+  // 2. ESCUCHADOR ESPECÍFICO (Cuando se selecciona una venta del buscador o de la URL)
+  useEffect(() => {
+    if (!selectedSaleId) {
+      setSearchedSaleData(null);
+      return;
+    }
 
-  // --- KPIs FINANCIEROS (Solo cuenta Ventas Completadas, ignora Cotizaciones) ---
-  const validSales = filteredSales.filter((s) => s.status === "COMPLETED");
+    const unsub = onSnapshot(doc(db, "sales", selectedSaleId), (docSnap) => {
+      if (docSnap.exists()) {
+        setSearchedSaleData({ id: docSnap.id, ...docSnap.data() } as Sale);
+      } else {
+        setSearchedSaleData(null);
+      }
+    });
+
+    return () => unsub();
+  }, [selectedSaleId]);
+
+  // 3. BUSCADOR PREDICTIVO (Algolia solo para Sugerencias)
+  useEffect(() => {
+    if (searchTerm.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    if (selectedSaleId && searchTerm === selectedSaleId) {
+      return;
+    }
+
+    const getSuggestions = async () => {
+      setIsSearching(true);
+      try {
+        const filters = statusFilter !== "ALL" ? `status:${statusFilter}` : "";
+
+        const { hits } = await algoliaClient.searchSingleIndex({
+          indexName: ALGOLIA_INDICES.SALES,
+          searchParams: {
+            query: searchTerm,
+            filters: filters,
+            hitsPerPage: 5,
+          },
+        });
+
+        const mappedHits = hits.map((hit: any) => ({
+          ...hit,
+          id: hit.objectID,
+        })) as Sale[];
+
+        setSuggestions(mappedHits);
+        setShowSuggestions(mappedHits.length > 0);
+      } catch (error) {
+        console.error("Error buscando sugerencias:", error);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    const timeoutId = setTimeout(getSuggestions, 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, statusFilter, selectedSaleId]);
+
+  // Manejar clics fuera del buscador para cerrar las sugerencias
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        searchInputRef.current &&
+        !searchInputRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // 4. DECISOR DE VISTA: Si hay un ID seleccionado mostramos solo esa venta
+  const displaySales = selectedSaleId
+    ? searchedSaleData
+      ? [searchedSaleData]
+      : []
+    : sales.filter((s) => {
+        const searchLower = searchTerm.toLowerCase();
+        return (
+          s.customerName?.toLowerCase().includes(searchLower) ||
+          (s.id && s.id.toLowerCase().includes(searchLower)) ||
+          (s.documentNumber && s.documentNumber.includes(searchLower))
+        );
+      });
+
+  // --- KPIs FINANCIEROS ---
+  const validSales = displaySales.filter((s) => s.status === "COMPLETED");
   const totalRevenue = validSales.reduce(
     (sum, s) => sum + (s.totalAmount || 0),
     0,
@@ -173,20 +286,90 @@ export default function SalesPage() {
         </div>
       </div>
 
-      {/* BARRA DE FILTROS Y BÚSQUEDA */}
-      <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-        <div className="relative flex-1">
-          <Search
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-            size={18}
-          />
-          <input
-            type="text"
-            placeholder="Buscar por cliente, DNI, RUC o código..."
-            className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 transition"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      {/* BARRA DE FILTROS Y BÚSQUEDA TIPO INVENTARIO */}
+      <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border">
+        {/* COMPONENTE DE BÚSQUEDA TIPO SELECTOR */}
+        <div className="relative flex-1 flex gap-2" ref={searchInputRef}>
+          <div className="relative w-full">
+            {isSearching ? (
+              <Loader2
+                className="absolute left-3 top-2.5 text-blue-500 animate-spin"
+                size={18}
+              />
+            ) : (
+              <Search
+                className="absolute left-3 top-2.5 text-gray-400"
+                size={18}
+              />
+            )}
+            <input
+              type="text"
+              placeholder="Buscar cliente, documento o folio..."
+              className={`pl-10 w-full p-2 border rounded-lg outline-blue-500 font-medium transition ${selectedSaleId ? "bg-blue-50 border-blue-200 text-blue-800" : "bg-white border-gray-200"}`}
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                if (e.target.value === "") {
+                  setSelectedSaleId(null);
+                  setSearchedSaleData(null);
+                  updateUrlParams(null); // Actualizamos la URL
+                }
+              }}
+              onFocus={() => {
+                if (suggestions.length > 0) setShowSuggestions(true);
+              }}
+            />
+
+            {/* DROPDOWN DE SUGERENCIAS */}
+            {showSuggestions && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl z-50 overflow-hidden">
+                {suggestions.map((suggestion) => (
+                  <div
+                    key={suggestion.id}
+                    onClick={() => {
+                      setSelectedSaleId(suggestion.id!);
+                      setSearchTerm(suggestion.id!);
+                      setShowSuggestions(false);
+                      updateUrlParams(suggestion.id!); // Guardamos en la URL
+                    }}
+                    className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0"
+                  >
+                    <p className="font-bold text-gray-800 text-sm truncate">
+                      {suggestion.customerName}
+                    </p>
+                    <div className="flex justify-between items-center mt-1">
+                      <p className="text-xs text-gray-500 font-medium">
+                        {suggestion.id?.slice(-8)} •{" "}
+                        {suggestion.documentNumber || "S/D"}
+                      </p>
+                      <span className="text-xs font-black text-blue-600">
+                        S/{" "}
+                        {suggestion.totalAmount?.toLocaleString("es-PE", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Botón para limpiar búsqueda (Aparece solo si hay un ID seleccionado) */}
+          {selectedSaleId && (
+            <button
+              onClick={() => {
+                setSelectedSaleId(null);
+                setSearchTerm("");
+                setSearchedSaleData(null);
+                updateUrlParams(null); // Limpiamos la URL
+              }}
+              className="p-2 bg-red-50 text-red-500 hover:bg-red-100 rounded-lg transition"
+              title="Limpiar búsqueda"
+            >
+              <X size={20} />
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -195,12 +378,12 @@ export default function SalesPage() {
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value);
-              setLimitCount(30); // Resetear paginación al cambiar filtro
+              setLimitCount(30);
             }}
-            className="py-3 px-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            className="p-2 border border-gray-200 rounded-lg outline-none focus:border-blue-500 font-medium text-gray-700 bg-gray-50"
           >
             <option value="ALL">Todos los Documentos</option>
-            <option value="COMPLETED">Solo Ventas (Completadas)</option>
+            <option value="COMPLETED">Solo Ventas</option>
             <option value="QUOTATION">Solo Cotizaciones</option>
           </select>
         </div>
@@ -233,7 +416,7 @@ export default function SalesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filteredSales.length === 0 && !isLoading ? (
+              {displaySales.length === 0 && !isLoading ? (
                 <tr>
                   <td colSpan={6} className="p-12 text-center text-gray-400">
                     <AlertCircle
@@ -246,7 +429,7 @@ export default function SalesPage() {
                   </td>
                 </tr>
               ) : (
-                filteredSales.map((sale) => (
+                displaySales.map((sale) => (
                   <tr
                     key={sale.id}
                     className="hover:bg-blue-50/30 transition group"
@@ -296,7 +479,7 @@ export default function SalesPage() {
                     <td className="p-4 text-right">
                       <p className="font-black text-gray-900 text-lg">
                         S/{" "}
-                        {sale.totalAmount.toLocaleString("es-PE", {
+                        {sale.totalAmount?.toLocaleString("es-PE", {
                           minimumFractionDigits: 2,
                         })}
                       </p>
@@ -306,10 +489,10 @@ export default function SalesPage() {
                     <td className="p-4 text-right">
                       {sale.status === "COMPLETED" ? (
                         <span
-                          className={`inline-flex items-center gap-1 font-mono font-bold px-3 py-1 rounded-lg border text-sm ${sale.totalProfit < 0 ? "bg-red-50 text-red-600 border-red-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"}`}
+                          className={`inline-flex items-center gap-1 font-mono font-bold px-3 py-1 rounded-lg border text-sm ${(sale.totalProfit || 0) < 0 ? "bg-red-50 text-red-600 border-red-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"}`}
                         >
                           <TrendingUp size={14} /> S/{" "}
-                          {sale.totalProfit.toLocaleString("es-PE", {
+                          {(sale.totalProfit || 0).toLocaleString("es-PE", {
                             minimumFractionDigits: 2,
                           })}
                         </span>
@@ -323,7 +506,6 @@ export default function SalesPage() {
                     {/* COL 6: ACCIONES */}
                     <td className="p-4 pr-6">
                       <div className="flex items-center justify-center gap-2">
-                        {/* PDF */}
                         <button
                           onClick={() => setSaleToPrint(sale)}
                           className="p-2 bg-gray-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl transition active:scale-95 shadow-sm"
@@ -332,7 +514,18 @@ export default function SalesPage() {
                           <FileDown size={20} />
                         </button>
 
-                        {/* APROBAR (Cotizaciones) */}
+                        <button
+                          onClick={() =>
+                            router.push(
+                              `/admin/sales/new?duplicateId=${sale.id}`,
+                            )
+                          }
+                          className="p-2 bg-gray-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-xl transition shadow-sm active:scale-95"
+                          title="Duplicar Operación"
+                        >
+                          <Copy size={20} />
+                        </button>
+
                         {sale.status === "QUOTATION" ? (
                           <button
                             onClick={() => handleApprove(sale)}
@@ -356,8 +549,8 @@ export default function SalesPage() {
         </div>
       </div>
 
-      {/* BOTÓN CARGAR MÁS (PAGINACIÓN) */}
-      {sales.length >= limitCount && (
+      {/* BOTÓN CARGAR MÁS (Aparece solo si no hay búsqueda activa) */}
+      {!selectedSaleId && sales.length >= limitCount && (
         <div className="flex justify-center mt-6">
           <button
             onClick={() => setLimitCount((prev) => prev + 30)}
@@ -368,7 +561,7 @@ export default function SalesPage() {
         </div>
       )}
 
-      {/* CONTENEDOR OCULTO PARA IMPRESIÓN (ReactToPrint) */}
+      {/* CONTENEDOR OCULTO PARA IMPRESIÓN */}
       <div className="hidden">
         <div ref={printRef}>
           {saleToPrint && <PrintableTicket sale={saleToPrint} />}
