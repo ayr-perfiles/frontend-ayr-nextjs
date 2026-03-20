@@ -1,20 +1,25 @@
-import { PRODUCT_CATALOG } from "@/config/products";
+import { getCatalog } from "@/services/catalogService";
 
 export interface CuttingItem {
-  sku: keyof typeof PRODUCT_CATALOG;
+  sku: string; // <-- Cambiado: Ahora acepta cualquier string dinámico
   quantity: number;
 }
 
 /**
- * Valida si el plan de corte es físicamente posible
+ * Valida si el plan de corte es físicamente posible consultando los pesos en Firebase
  */
-export const validateCuttingPlan = (
+export const validateCuttingPlan = async (
   items: CuttingItem[],
   availableWeight: number,
 ) => {
+  // 1. Obtenemos el catálogo actualizado desde Firebase
+  const catalog = await getCatalog();
+
+  // 2. Calculamos el peso total buscando cada SKU en el catálogo dinámico
   const totalPlannedWeight = items.reduce((sum, item) => {
-    const product = PRODUCT_CATALOG[item.sku];
-    return sum + item.quantity * product.standardWeight;
+    const product = catalog.find((p) => p.sku === item.sku);
+    const standardWeight = product?.standardWeight || 0;
+    return sum + item.quantity * standardWeight;
   }, 0);
 
   const isValid = totalPlannedWeight <= availableWeight;

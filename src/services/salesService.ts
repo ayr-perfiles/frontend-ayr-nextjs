@@ -4,36 +4,51 @@ import {
   doc,
   runTransaction,
   serverTimestamp,
-  setDoc,
 } from "firebase/firestore";
 
-// Definimos la estructura exacta que envía nuestro carrito
 interface CartItem {
   sku: string;
   quantity: number;
   unitPrice: number;
-  baseCost: number; // <-- EL DATO CLAVE NUEVO
+  baseCost: number;
+  unitWeight: number;
 }
 
+const SETTINGS_DOC_ID = "general_settings";
+
 /**
- * PROCESAR VENTA DIRECTA (Descuenta Stock)
+ * PROCESAR VENTA DIRECTA
  */
 export const processSale = async (
   customerName: string,
   documentNumber: string,
   cart: CartItem[],
   sellerId: string,
+  customerAddress: string = "",
+  contactName: string = "",
+  contactPhone: string = "",
 ) => {
-  const saleRef = doc(collection(db, "sales"));
+  let generatedSaleId = "";
 
   try {
     await runTransaction(db, async (transaction) => {
+      const settingsRef = doc(db, "settings", SETTINGS_DOC_ID);
+      const settingsDoc = await transaction.get(settingsRef);
+
+      let nextSaleNumber = 1;
+      if (settingsDoc.exists() && settingsDoc.data().nextSaleNumber) {
+        nextSaleNumber = settingsDoc.data().nextSaleNumber;
+      }
+
+      const saleId = `V-${String(nextSaleNumber).padStart(6, "0")}`;
+      const saleRef = doc(db, "sales", saleId);
+      generatedSaleId = saleId;
+
       let totalAmount = 0;
       let totalCost = 0;
-
+      let totalWeight = 0;
       const stockUpdates = [];
 
-      // 1. LECTURA Y VALIDACIÓN DE STOCK
       for (const item of cart) {
         const stockRef = doc(db, "inventory_stock", item.sku);
         const stockDoc = await transaction.get(stockRef);
@@ -51,20 +66,24 @@ export const processSale = async (
           );
         }
 
-        // Preparamos la actualización de stock
         stockUpdates.push({
           ref: stockRef,
           newQuantity: currentStock - item.quantity,
         });
 
-        // Sumamos los montos financieros
         totalAmount += item.quantity * item.unitPrice;
         totalCost += item.quantity * item.baseCost;
+        totalWeight += item.quantity * (item.unitWeight || 0);
       }
 
       const totalProfit = totalAmount - totalCost;
 
-      // 2. ESCRITURA: Descontamos el stock
+      transaction.set(
+        settingsRef,
+        { nextSaleNumber: nextSaleNumber + 1 },
+        { merge: true },
+      );
+
       for (const update of stockUpdates) {
         transaction.update(update.ref, {
           totalQuantity: update.newQuantity,
@@ -72,21 +91,24 @@ export const processSale = async (
         });
       }
 
-      // 3. ESCRITURA: Guardamos el registro de la venta
       transaction.set(saleRef, {
         customerName,
-        documentNumber, // <-- Guardamos el RUC/DNI
+        documentNumber,
+        customerAddress,
+        contactName,
+        contactPhone,
         items: cart,
         totalAmount,
         totalCost,
-        totalProfit, // <-- Ganancia neta calculada
+        totalProfit,
+        totalWeight,
         sellerId,
         status: "COMPLETED",
         timestamp: serverTimestamp(),
       });
     });
 
-    return { success: true, id: saleRef.id };
+    return { success: true, id: generatedSaleId };
   } catch (error: any) {
     console.error("Error en processSale:", error);
     throw new Error(error.message || "Error al procesar la venta.");
@@ -94,41 +116,69 @@ export const processSale = async (
 };
 
 /**
- * CREAR COTIZACIÓN (No descuenta Stock)
+ * CREAR COTIZACIÓN
  */
 export const createQuotation = async (
   customerName: string,
   documentNumber: string,
   cart: CartItem[],
   sellerId: string,
+  customerAddress: string = "",
+  contactName: string = "",
+  contactPhone: string = "",
 ) => {
-  const saleRef = doc(collection(db, "sales"));
+  let generatedQuoteId = "";
 
   try {
-    let totalAmount = 0;
-    let totalCost = 0;
+    await runTransaction(db, async (transaction) => {
+      const settingsRef = doc(db, "settings", SETTINGS_DOC_ID);
+      const settingsDoc = await transaction.get(settingsRef);
 
-    cart.forEach((item) => {
-      totalAmount += item.quantity * item.unitPrice;
-      totalCost += item.quantity * item.baseCost;
+      let nextQuoteNumber = 1;
+      if (settingsDoc.exists() && settingsDoc.data().nextQuotationNumber) {
+        nextQuoteNumber = settingsDoc.data().nextQuotationNumber;
+      }
+
+      const quoteId = `C-${String(nextQuoteNumber).padStart(6, "0")}`;
+      const quoteRef = doc(db, "sales", quoteId);
+      generatedQuoteId = quoteId;
+
+      let totalAmount = 0;
+      let totalCost = 0;
+      let totalWeight = 0;
+
+      cart.forEach((item) => {
+        totalAmount += item.quantity * item.unitPrice;
+        totalCost += item.quantity * item.baseCost;
+        totalWeight += item.quantity * (item.unitWeight || 0);
+      });
+
+      const totalProfit = totalAmount - totalCost;
+
+      transaction.set(
+        settingsRef,
+        { nextQuotationNumber: nextQuoteNumber + 1 },
+        { merge: true },
+      );
+
+      transaction.set(quoteRef, {
+        customerName,
+        documentNumber,
+        customerAddress,
+        contactName,
+        contactPhone,
+        items: cart,
+        totalAmount,
+        totalCost,
+        totalProfit,
+        totalWeight,
+        sellerId,
+        status: "QUOTATION",
+        timestamp: serverTimestamp(),
+      });
     });
 
-    const totalProfit = totalAmount - totalCost;
-
-    // Usamos setDoc directo porque no tocamos el stock (no requiere transacción)
-    await setDoc(saleRef, {
-      customerName,
-      documentNumber,
-      items: cart,
-      totalAmount,
-      totalCost,
-      totalProfit,
-      sellerId,
-      status: "QUOTATION",
-      timestamp: serverTimestamp(),
-    });
-
-    return { success: true, id: saleRef.id };
+    return { success: true, id: generatedQuoteId };
   } catch (error: any) {
     console.error("Error en createQuotation:", error);
     throw new Error("Error al generar la cotización.");
@@ -136,24 +186,36 @@ export const createQuotation = async (
 };
 
 /**
- * APROBAR COTIZACIÓN (Convierte a Venta y descuenta Stock)
+ * APROBAR COTIZACIÓN (Genera Venta, descuenta Stock y archiva Cotización)
  */
 export const approveQuotation = async (quotationId: string) => {
-  const saleRef = doc(db, "sales", quotationId);
+  const quoteRef = doc(db, "sales", quotationId);
 
   try {
     await runTransaction(db, async (transaction) => {
-      const saleDoc = await transaction.get(saleRef);
-      if (!saleDoc.exists()) throw new Error("La cotización no existe.");
+      const quoteDoc = await transaction.get(quoteRef);
+      if (!quoteDoc.exists()) throw new Error("La cotización no existe.");
 
-      const saleData = saleDoc.data();
-      if (saleData.status === "COMPLETED")
+      const quoteData = quoteDoc.data();
+      if (quoteData.status === "COMPLETED" || quoteData.status === "CONVERTED")
         throw new Error("Esta cotización ya fue aprobada previamente.");
+
+      // 1. OBTENER CORRELATIVO DE VENTA
+      const settingsRef = doc(db, "settings", SETTINGS_DOC_ID);
+      const settingsDoc = await transaction.get(settingsRef);
+
+      let nextSaleNumber = 1;
+      if (settingsDoc.exists() && settingsDoc.data().nextSaleNumber) {
+        nextSaleNumber = settingsDoc.data().nextSaleNumber;
+      }
+
+      const newSaleId = `V-${String(nextSaleNumber).padStart(6, "0")}`;
+      const newSaleRef = doc(db, "sales", newSaleId);
 
       const stockUpdates = [];
 
-      // 1. Verificar stock disponible antes de aprobar
-      for (const item of saleData.items) {
+      // 2. VERIFICAR STOCK
+      for (const item of quoteData.items) {
         const stockRef = doc(db, "inventory_stock", item.sku);
         const stockDoc = await transaction.get(stockRef);
 
@@ -163,7 +225,7 @@ export const approveQuotation = async (quotationId: string) => {
         const currentStock = stockDoc.data().totalQuantity;
         if (currentStock < item.quantity) {
           throw new Error(
-            `No puedes aprobar la cotización. Stock insuficiente para ${item.sku}. Quedan ${currentStock} unidades.`,
+            `No puedes aprobar. Stock insuficiente para ${item.sku}.`,
           );
         }
 
@@ -173,7 +235,13 @@ export const approveQuotation = async (quotationId: string) => {
         });
       }
 
-      // 2. Descontar el stock
+      // 3. DESCONTAR STOCK Y ACTUALIZAR CORRELATIVO
+      transaction.set(
+        settingsRef,
+        { nextSaleNumber: nextSaleNumber + 1 },
+        { merge: true },
+      );
+
       for (const update of stockUpdates) {
         transaction.update(update.ref, {
           totalQuantity: update.newQuantity,
@@ -181,10 +249,19 @@ export const approveQuotation = async (quotationId: string) => {
         });
       }
 
-      // 3. Cambiar el estado a Venta Completada
-      transaction.update(saleRef, {
+      // 4. CREAR LA NUEVA VENTA BASADA EN LA COTIZACIÓN
+      transaction.set(newSaleRef, {
+        ...quoteData,
         status: "COMPLETED",
         approvedAt: serverTimestamp(),
+        originQuoteId: quotationId, // Rastro de auditoría para saber de dónde vino
+      });
+
+      // 5. ARCHIVAR LA COTIZACIÓN ORIGINAL (Para que no sume doble)
+      transaction.update(quoteRef, {
+        status: "CONVERTED",
+        convertedToId: newSaleId,
+        updatedAt: serverTimestamp(),
       });
     });
 

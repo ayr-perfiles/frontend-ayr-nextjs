@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSystemSettings } from "@/services/settingsService";
 
 export async function GET(request: Request) {
   // 1. Obtenemos el número de la URL (ej: /api/consulta-doc?numero=20123456789)
@@ -19,10 +20,26 @@ export async function GET(request: Request) {
     : `https://api.decolecta.com/v1/reniec/dni?numero=${numero}`;
 
   try {
-    // 3. Hacemos la consulta a la API externa de forma segura (el token nunca va al navegador)
+    // 3. Obtenemos la configuración guardada en Firebase
+    const settings = await getSystemSettings();
+
+    // 4. Prioridad Dinámica: Primero Firebase, luego .env local
+    const token = settings?.sunatApiToken || process.env.APIS_PERU_TOKEN || "";
+
+    if (!token) {
+      return NextResponse.json(
+        {
+          error:
+            "Token de API no configurado. Ve al panel de Configuración > Integraciones API.",
+        },
+        { status: 500 },
+      );
+    }
+
+    // 5. Hacemos la consulta a la API externa de forma segura
     const res = await fetch(endpoint, {
       headers: {
-        Authorization: `Bearer ${process.env.APIS_PERU_TOKEN}`,
+        Authorization: `Bearer ${token}`,
       },
       // Evitamos que Next.js cachee esta respuesta
       cache: "no-store",

@@ -1,111 +1,147 @@
 "use client";
 
-import { useState } from "react";
-import { resetDatabase } from "@/services/adminService";
+import { useEffect, useState } from "react";
+import { Settings, BookOpen, Users, Plug } from "lucide-react";
 import {
-  Settings,
-  Trash2,
-  AlertTriangle,
-  RefreshCcw,
-  CheckCircle,
-} from "lucide-react";
+  getSystemSettings,
+  updateSystemSettings,
+  SystemSettings,
+} from "@/services/settingsService";
+import { GeneralSettings } from "@/components/settings/GeneralSettings";
+import { CatalogSettings } from "@/components/settings/CatalogSettings";
+import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings"; // <-- NUEVO
+import { UsersSettings } from "@/components/settings/UsersSettings"; // <-- NUEVO
 
 export default function SettingsPage() {
-  const [isResetting, setIsResetting] = useState(false);
-  const [step, setStep] = useState(0); // 0: Normal, 1: Confirmación, 2: Éxito
+  const [activeTab, setActiveTab] = useState<
+    "general" | "catalog" | "integrations" | "users"
+  >("general");
 
-  const handleReset = async () => {
-    setIsResetting(true);
+  const [settingsData, setSettingsData] = useState<SystemSettings | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Cargar datos iniciales
+  useEffect(() => {
+    const loadSettings = async () => {
+      const data = await getSystemSettings();
+      if (data) setSettingsData(data);
+      setIsLoading(false);
+    };
+    loadSettings();
+  }, []);
+
+  const handleSaveSettings = async (newSettings: SystemSettings) => {
+    setIsSaving(true);
     try {
-      await resetDatabase();
-      setStep(2);
-      // Regresar al estado inicial después de 3 segundos
-      setTimeout(() => setStep(0), 3000);
+      await updateSystemSettings(newSettings);
+      setSettingsData(newSettings);
+      alert("✅ Configuración guardada correctamente.");
     } catch (error) {
-      alert("Error al limpiar la base de datos.");
+      alert("❌ Ocurrió un error al guardar.");
     } finally {
-      setIsResetting(false);
+      setIsSaving(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2 text-gray-800">
-          <Settings className="text-gray-400" /> Configuración del Sistema
+    <div className="max-w-7xl mx-auto space-y-6 pb-20">
+      {/* HEADER */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <h1 className="text-2xl font-black flex items-center gap-2 text-gray-800 tracking-tight">
+          <Settings className="text-blue-600" /> Configuración del Sistema
         </h1>
-        <p className="text-gray-500">
-          Administración general y herramientas de mantenimiento.
+        <p className="text-gray-500 text-sm font-medium mt-1">
+          Administra la identidad corporativa, impuestos, integraciones y
+          catálogos.
         </p>
       </div>
 
-      {/* ZONA DE PELIGRO */}
-      <section className="bg-white rounded-2xl border-2 border-red-100 overflow-hidden shadow-sm">
-        <div className="p-6 bg-red-50 border-b border-red-100 flex items-center gap-3 text-red-700">
-          <AlertTriangle size={24} />
-          <h2 className="font-black uppercase tracking-tight">
-            Zona de Peligro
-          </h2>
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* PANEL LATERAL DE PESTAÑAS */}
+        <div className="md:col-span-3 space-y-2">
+          <button
+            onClick={() => setActiveTab("general")}
+            className={`w-full text-left p-4 rounded-xl font-bold flex items-center gap-3 transition ${
+              activeTab === "general"
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-200"
+                : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <Settings size={18} /> General y Operaciones
+          </button>
+
+          <button
+            onClick={() => setActiveTab("catalog")}
+            className={`w-full text-left p-4 rounded-xl font-bold flex items-center gap-3 transition ${
+              activeTab === "catalog"
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-200"
+                : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <BookOpen size={18} /> Catálogo de Perfiles
+          </button>
+
+          {/* NUEVA PESTAÑA DE INTEGRACIONES */}
+          <button
+            onClick={() => setActiveTab("integrations")}
+            className={`w-full text-left p-4 rounded-xl font-bold flex items-center gap-3 transition ${
+              activeTab === "integrations"
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-200"
+                : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <Plug size={18} /> Integraciones API
+          </button>
+
+          <button
+            onClick={() => setActiveTab("users")}
+            className={`w-full text-left p-4 rounded-xl font-bold flex items-center gap-3 transition ${
+              activeTab === "users"
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-200"
+                : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            <Users size={18} /> Usuarios y Roles
+          </button>
         </div>
 
-        <div className="p-8 space-y-6">
-          <div>
-            <h3 className="text-lg font-bold text-gray-800">
-              Reiniciar Base de Datos
-            </h3>
-            <p className="text-gray-500 text-sm mt-1">
-              Esta acción eliminará permanentemente todas las bobinas, el stock
-              de ventas, los registros de producción y el historial comercial.
-              **No se puede deshacer.**
-            </p>
-          </div>
+        {/* CONTENIDO PRINCIPAL DINÁMICO */}
+        <div className="md:col-span-9">
+          {isLoading ? (
+            <div className="bg-white p-12 rounded-2xl border border-gray-100 flex flex-col items-center justify-center text-gray-400">
+              <span className="animate-spin text-blue-500 mb-4">
+                <Settings size={32} />
+              </span>
+              <p className="font-bold">Cargando configuración...</p>
+            </div>
+          ) : (
+            <>
+              {activeTab === "general" && (
+                <GeneralSettings
+                  initialSettings={settingsData}
+                  onSave={handleSaveSettings}
+                  isSaving={isSaving}
+                />
+              )}
 
-          <div className="flex items-center gap-4">
-            {step === 0 && (
-              <button
-                onClick={() => setStep(1)}
-                className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-red-700 transition shadow-lg shadow-red-200"
-              >
-                <Trash2 size={20} /> Borrar Toda la Data
-              </button>
-            )}
+              {activeTab === "catalog" && <CatalogSettings />}
 
-            {step === 1 && (
-              <div className="flex items-center gap-3 animate-in fade-in zoom-in duration-300">
-                <button
-                  disabled={isResetting}
-                  onClick={handleReset}
-                  className="bg-red-800 text-white px-6 py-3 rounded-xl font-black flex items-center gap-2 hover:bg-black transition"
-                >
-                  {isResetting ? (
-                    <RefreshCcw className="animate-spin" size={20} />
-                  ) : (
-                    <AlertTriangle size={20} />
-                  )}
-                  ¡SÍ, ESTOY SEGURO, BORRAR TODO!
-                </button>
-                <button
-                  onClick={() => setStep(0)}
-                  className="text-gray-500 font-bold hover:text-gray-800 px-4"
-                >
-                  Cancelar
-                </button>
-              </div>
-            )}
+              {/* RENDERIZADO DEL NUEVO COMPONENTE */}
+              {activeTab === "integrations" && (
+                <IntegrationsSettings
+                  initialSettings={settingsData}
+                  onSave={handleSaveSettings}
+                  isSaving={isSaving}
+                />
+              )}
 
-            {step === 2 && (
-              <div className="flex items-center gap-2 text-emerald-600 font-bold animate-bounce">
-                <CheckCircle size={20} /> ¡Base de datos limpia con éxito!
-              </div>
-            )}
-          </div>
+              {activeTab === "users" && (
+                <UsersSettings /> // <-- AHORA LLAMA AL MÓDULO REAL
+              )}
+            </>
+          )}
         </div>
-      </section>
-
-      <div className="p-6 bg-gray-50 rounded-2xl border border-dashed border-gray-200 text-center">
-        <p className="text-xs text-gray-400 font-medium">
-          AYR STEEL ERP v2.0 - Entorno de Desarrollo Activo
-        </p>
       </div>
     </div>
   );
