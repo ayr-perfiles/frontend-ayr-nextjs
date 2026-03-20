@@ -1,15 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { db } from "@/lib/firebase/clientApp";
+import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient"; // <-- Importamos nuestra config centralizada
 import {
   collection,
   onSnapshot,
   query,
   doc,
   getDoc,
+  getDocs,
   setDoc,
+  where,
+  arrayUnion,
+  serverTimestamp,
 } from "firebase/firestore";
 import { PRODUCT_CATALOG } from "@/config/products";
 import { StockSummary } from "@/types";
@@ -20,7 +25,6 @@ import {
   Trash2,
   FileText,
   CheckCircle2,
-  User,
   Building2,
   Search,
   MapPin,
@@ -34,11 +38,11 @@ interface CartItem {
   sku: string;
   quantity: number;
   unitPrice: number;
-  baseCost: number; // Guardamos el costo para calcular la ganancia
+  baseCost: number;
 }
 
-// Nueva estructura para Contactos
 interface Contact {
+  id?: string;
   name: string;
   phone: string;
   email: string;
@@ -46,26 +50,33 @@ interface Contact {
 
 export default function NewSalePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const duplicateId = searchParams.get("duplicateId");
 
-  // --- ESTADOS DEL CLIENTE (CRM BÁSICO) ---
+  // --- ESTADOS DEL CLIENTE (CRM RELACIONAL) ---
   const [documentNumber, setDocumentNumber] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [selectedContactId, setSelectedContactId] = useState<string>("");
+
+  // Estados para la Búsqueda Predictiva (Algolia)
+  const [searchTerm, setSearchTerm] = useState("");
+  const [suggestedCustomers, setSuggestedCustomers] = useState<any[]>([]);
   const [isSearchingClient, setIsSearchingClient] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchInputRef = useRef<HTMLDivElement>(null);
 
   // Estados del Carrito y Stock
   const [cart, setCart] = useState<CartItem[]>([]);
   const [availableStock, setAvailableStock] = useState<StockSummary[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Estados del selector temporal
   const [selectedSku, setSelectedSku] = useState("P64");
   const [addQuantity, setAddQuantity] = useState<number | "">("");
   const [addPrice, setAddPrice] = useState<number | "">("");
   const [baseCost, setBaseCost] = useState<number>(0);
 
-  // 1. Cargar el stock disponible
+  // 1. Cargar stock disponible
   useEffect(() => {
     const q = query(collection(db, "inventory_stock"));
     const unsub = onSnapshot(q, (snapshot) => {
@@ -78,61 +89,151 @@ export default function NewSalePage() {
     return () => unsub();
   }, []);
 
-  // 2. AUTO-RELLENAR COSTO UNITARIO CUANDO CAMBIA EL PRODUCTO
+  // 2. Auto-rellenar costo
   useEffect(() => {
     const stockItem = availableStock.find((s) => s.sku === selectedSku);
     if (stockItem && stockItem.lastCostPerPiece) {
       const cost = Number(stockItem.lastCostPerPiece.toFixed(2));
       setBaseCost(cost);
-      setAddPrice(cost); // Sugerimos el costo como precio base
+      setAddPrice(cost);
     } else {
       setBaseCost(0);
       setAddPrice("");
     }
   }, [selectedSku, availableStock]);
 
-  // --- 3. BÚSQUEDA INTELIGENTE DE CLIENTES (SUNAT / FIREBASE) ---
-  const handleSearchClient = async () => {
-    if (documentNumber.length < 8)
-      return alert("Ingresa un DNI (8) o RUC (11) válido.");
+  // Cerrar sugerencias si se hace clic afuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        searchInputRef.current &&
+        !searchInputRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // --- 3. BÚSQUEDA PREDICTIVA (ALGOLIA) ---
+  useEffect(() => {
+    if (searchTerm.trim().length < 2) {
+      setSuggestedCustomers([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    const performPredictiveSearch = async () => {
+      setIsSearchingClient(true);
+      try {
+        // Método optimizado para búsqueda simple en un solo índice (v5)
+        const { hits } = await algoliaClient.searchSingleIndex({
+          indexName: ALGOLIA_INDICES.CUSTOMERS,
+          searchParams: {
+            query: searchTerm,
+            hitsPerPage: 5,
+          },
+        });
+
+        setSuggestedCustomers(hits);
+        setShowSuggestions(hits.length > 0);
+      } catch (error) {
+        console.error("Error en Algolia:", error);
+      } finally {
+        setIsSearchingClient(false);
+      }
+    };
+    const timeoutId = setTimeout(() => performPredictiveSearch(), 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
+
+  // Función al seleccionar un cliente sugerido por Algolia
+  const handleSelectSuggestedCustomer = async (hit: any) => {
+    setSearchTerm(hit.documentNumber || hit.objectID);
+    setShowSuggestions(false);
+
+    // Al seleccionar, cargamos toda su info desde Firebase (incluyendo contactos)
+    await fetchClientData(hit.documentNumber || hit.objectID);
+  };
+
+  // --- BÚSQUEDA PROFUNDA (FIREBASE / SUNAT) ---
+  const fetchClientData = async (docNum: string) => {
+    const clientRef = doc(db, "customers", docNum);
+    const clientSnap = await getDoc(clientRef);
+
+    if (clientSnap.exists()) {
+      const data = clientSnap.data();
+      setDocumentNumber(docNum);
+      setCustomerName(data.name || "");
+      setCustomerAddress(data.address || "");
+
+      const contactsQuery = query(
+        collection(db, "contacts"),
+        where("associatedCompanyIds", "array-contains", docNum),
+      );
+      const contactsSnap = await getDocs(contactsQuery);
+
+      const fetchedContacts = contactsSnap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      })) as Contact[];
+
+      setContacts(fetchedContacts);
+      if (fetchedContacts.length > 0 && fetchedContacts[0].id) {
+        setSelectedContactId(fetchedContacts[0].id);
+      }
+      return true;
+    }
+    return false;
+  };
+
+  const handleDeepSearchClient = async () => {
+    const targetDoc = searchTerm || documentNumber;
+    if (targetDoc.length !== 8 && targetDoc.length !== 11) {
+      return alert(
+        "Ingresa un DNI (8) o RUC (11) válido para buscar en SUNAT.",
+      );
+    }
 
     setIsSearchingClient(true);
+    setShowSuggestions(false);
     try {
-      // 1ro: Buscar en nuestra propia base de datos (Firebase)
-      const clientRef = doc(db, "customers", documentNumber);
-      const clientSnap = await getDoc(clientRef);
+      const existsLocally = await fetchClientData(targetDoc);
 
-      if (clientSnap.exists()) {
-        const data = clientSnap.data();
-        setCustomerName(data.name || "");
-        setCustomerAddress(data.address || "");
-        setContacts(data.contacts || []);
-        alert("✅ Cliente encontrado en la base de datos.");
-      } else {
-        // 2do: Si no existe, simulamos buscar en API de SUNAT/RENIEC
-        // AQUÍ REEMPLAZARÁS CON EL FETCH REAL A TU PROVEEDOR (ej. APIsPeru)
-        /* const res = await fetch(`https://api.apis.net.pe/v2/sunat/ruc?numero=${documentNumber}`, { headers: { 'Authorization': 'Bearer TU_TOKEN' }});
-          const sunatData = await res.json();
-          setCustomerName(sunatData.razonSocial);
-          setCustomerAddress(sunatData.direccion);
-        */
+      if (!existsLocally) {
+        // Fallback a la API de SUNAT si Algolia/Firebase no lo tienen
+        const res = await fetch(`/api/consulta-doc?numero=${targetDoc}`);
+        const data = await res.json();
 
-        // Simulación para el ejemplo:
-        setTimeout(() => {
-          setCustomerName("NUEVO CLIENTE SAC");
-          setCustomerAddress("Av. Industrial 123, Lima");
-          setContacts([{ name: "Comprador Principal", phone: "", email: "" }]);
-        }, 1000);
+        if (!res.ok)
+          throw new Error(data.error || "No se pudo obtener la información.");
+
+        const isRUC = targetDoc.length === 11;
+        const nombreCompleto = isRUC
+          ? data.razon_social || data.razonSocial
+          : `${data.nombres || data.first_name} ${data.apellidoPaterno || data.first_last_name} ${data.apellidoMaterno || data.second_last_name}`;
+
+        setDocumentNumber(targetDoc);
+        setCustomerName(nombreCompleto);
+        setCustomerAddress(data.direccion || "Dirección no registrada");
+        setContacts([]);
+        setSelectedContactId("");
+
+        alert("🌐 Datos importados exitosamente desde SUNAT/RENIEC.");
       }
-    } catch (error) {
-      alert("Error al buscar cliente.");
+    } catch (error: any) {
+      alert(`❌ ${error.message}`);
     } finally {
       setIsSearchingClient(false);
     }
   };
 
+  // ... (addContact, updateContact, handleAddToCart, removeFromCart, y handleAction se mantienen iguales a tu versión original)
   const addContact = () => {
-    setContacts([...contacts, { name: "", phone: "", email: "" }]);
+    const tempId = `temp_${Date.now()}`;
+    setContacts([...contacts, { id: tempId, name: "", phone: "", email: "" }]);
+    if (!selectedContactId) setSelectedContactId(tempId);
   };
 
   const updateContact = (
@@ -145,20 +246,16 @@ export default function NewSalePage() {
     setContacts(newContacts);
   };
 
-  // 4. Manejadores del Carrito
   const handleAddToCart = () => {
     if (!selectedSku || !addQuantity || !addPrice) return;
-
     if (Number(addPrice) < baseCost) {
       if (
         !confirm(
           `⚠️ ALERTA: Estás vendiendo por debajo del costo de producción (S/ ${baseCost}). ¿Deseas continuar y generar pérdida?`,
         )
-      ) {
-        return; // Cancelar adición
-      }
+      )
+        return;
     }
-
     const stockItem = availableStock.find((s) => s.sku === selectedSku);
     const currentQtyInCart =
       cart.find((c) => c.sku === selectedSku)?.quantity || 0;
@@ -206,7 +303,6 @@ export default function NewSalePage() {
   );
   const projectedProfit = totalAmount - totalCost;
 
-  // 5. Acciones Finales
   const handleAction = async (actionType: "QUOTE" | "SALE") => {
     if (!customerName || !documentNumber)
       return alert("Faltan datos del cliente.");
@@ -214,20 +310,51 @@ export default function NewSalePage() {
 
     setIsSubmitting(true);
     try {
-      // Guardar o actualizar la info del cliente automáticamente en el CRM (Firestore)
+      const finalContactIds: string[] = [];
+      for (const contact of contacts) {
+        if (!contact.name) continue;
+
+        let contactId = contact.id;
+        const isNew = !contactId || contactId.startsWith("temp_");
+
+        if (isNew) {
+          const newContactRef = doc(collection(db, "contacts"));
+          contactId = newContactRef.id;
+          await setDoc(newContactRef, {
+            name: contact.name,
+            phone: contact.phone,
+            email: contact.email,
+            associatedCompanyIds: [documentNumber],
+            createdAt: serverTimestamp(),
+          });
+        } else {
+          await setDoc(
+            doc(db, "contacts", contactId!),
+            {
+              name: contact.name,
+              phone: contact.phone,
+              email: contact.email,
+              associatedCompanyIds: arrayUnion(documentNumber),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
+        finalContactIds.push(contactId as string);
+      }
+
       await setDoc(
         doc(db, "customers", documentNumber),
         {
           name: customerName,
           documentNumber: documentNumber,
           address: customerAddress,
-          contacts: contacts,
-          lastUpdate: new Date(),
+          contactIds: finalContactIds,
+          lastUpdate: serverTimestamp(),
         },
         { merge: true },
       );
 
-      // OJO: Tendrás que actualizar tu salesService para que reciba la dirección y baseCost si lo deseas guardar.
       if (actionType === "QUOTE") {
         await createQuotation(
           customerName,
@@ -261,7 +388,7 @@ export default function NewSalePage() {
             <ShoppingCart className="text-blue-600" /> Nuevo Documento
           </h1>
           <p className="text-gray-500 text-sm font-medium">
-            Cotización o Venta Directa con control de margen.
+            Cotización o Venta Directa con control de margen y CRM Relacional.
           </p>
         </div>
         <button
@@ -273,33 +400,58 @@ export default function NewSalePage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* COLUMNA IZQUIERDA: Formularios (Ocupa 8 columnas) */}
         <div className="lg:col-span-8 space-y-6">
-          {/* MÓDULO CRM: Datos del Cliente */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <h2 className="text-lg font-black text-gray-800 mb-6 flex items-center gap-2 border-b border-gray-50 pb-4">
               <Building2 size={20} className="text-blue-500" /> Información de
-              Facturación (Cliente)
+              Facturación (Empresa)
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-              <div className="md:col-span-1 relative">
+              {/* CAMPO DE BÚSQUEDA PREDICTIVA */}
+              <div className="md:col-span-1 relative" ref={searchInputRef}>
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                  RUC / DNI *
+                  Buscar RUC, DNI o Nombre *
                 </label>
                 <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Ej: 20123456789"
-                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                    value={documentNumber}
-                    onChange={(e) => setDocumentNumber(e.target.value)}
-                  />
+                  <div className="relative w-full">
+                    <input
+                      type="text"
+                      placeholder="Ej: 20123... o 'Construc...'"
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onFocus={() =>
+                        setShowSuggestions(suggestedCustomers.length > 0)
+                      }
+                    />
+
+                    {/* DROPDOWN DE SUGERENCIAS ALGOLIA */}
+                    {showSuggestions && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl z-50 overflow-hidden">
+                        {suggestedCustomers.map((hit) => (
+                          <div
+                            key={hit.objectID}
+                            onClick={() => handleSelectSuggestedCustomer(hit)}
+                            className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0"
+                          >
+                            <p className="font-bold text-gray-800 text-sm truncate">
+                              {hit.name}
+                            </p>
+                            <p className="text-xs text-gray-500 font-medium">
+                              {hit.documentNumber || hit.objectID}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <button
-                    onClick={handleSearchClient}
+                    onClick={handleDeepSearchClient}
                     disabled={isSearchingClient}
-                    className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition disabled:opacity-50"
-                    title="Buscar en Base de Datos / SUNAT"
+                    className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition disabled:opacity-50 flex-shrink-0"
+                    title="Buscar profundo en SUNAT/RENIEC"
                   >
                     {isSearchingClient ? (
                       <Loader2 size={20} className="animate-spin" />
@@ -312,11 +464,11 @@ export default function NewSalePage() {
 
               <div className="md:col-span-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                  Razón Social / Nombre *
+                  Razón Social / Nombre Confirmado *
                 </label>
                 <input
                   type="text"
-                  placeholder="Constructora T Y T S.A.C."
+                  placeholder="Se autocompletará al seleccionar"
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
@@ -326,7 +478,7 @@ export default function NewSalePage() {
 
             <div className="mb-6">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-                <MapPin size={12} /> Dirección Fiscal (Obligatorio para Factura)
+                <MapPin size={12} /> Dirección Fiscal
               </label>
               <input
                 type="text"
@@ -360,13 +512,26 @@ export default function NewSalePage() {
               <div className="space-y-3">
                 {contacts.map((contact, idx) => (
                   <div
-                    key={idx}
-                    className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-white p-3 rounded-xl shadow-sm border border-blue-50"
+                    key={contact.id || idx}
+                    className={`grid grid-cols-1 md:grid-cols-12 gap-3 bg-white p-3 rounded-xl shadow-sm border transition ${selectedContactId === contact.id && contact.id ? "border-blue-400 ring-1 ring-blue-400" : "border-gray-200"}`}
                   >
+                    <div className="md:col-span-1 flex items-center justify-center border-r border-gray-100">
+                      <input
+                        type="radio"
+                        name="attentionContact"
+                        checked={selectedContactId === contact.id}
+                        onChange={() => {
+                          if (contact.id) setSelectedContactId(contact.id);
+                        }}
+                        className="w-4 h-4 text-blue-600 cursor-pointer"
+                        title="Atención a este contacto"
+                      />
+                    </div>
+
                     <input
                       type="text"
                       placeholder="Nombre (Ej: Ing. Juan)"
-                      className="p-2 border rounded-lg text-sm outline-none"
+                      className="md:col-span-4 p-2 border rounded-lg text-sm outline-none bg-gray-50"
                       value={contact.name}
                       onChange={(e) =>
                         updateContact(idx, "name", e.target.value)
@@ -375,7 +540,7 @@ export default function NewSalePage() {
                     <input
                       type="tel"
                       placeholder="Celular"
-                      className="p-2 border rounded-lg text-sm outline-none"
+                      className="md:col-span-3 p-2 border rounded-lg text-sm outline-none bg-gray-50"
                       value={contact.phone}
                       onChange={(e) =>
                         updateContact(idx, "phone", e.target.value)
@@ -384,7 +549,7 @@ export default function NewSalePage() {
                     <input
                       type="email"
                       placeholder="Correo electrónico"
-                      className="p-2 border rounded-lg text-sm outline-none"
+                      className="md:col-span-4 p-2 border rounded-lg text-sm outline-none bg-gray-50"
                       value={contact.email}
                       onChange={(e) =>
                         updateContact(idx, "email", e.target.value)
@@ -447,9 +612,7 @@ export default function NewSalePage() {
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
                   Precio Venta (S/)
                 </label>
-
-                {/* TOOLTIP DE COSTO BASE */}
-                <div className="absolute -top-10 left-0 bg-gray-900 text-white text-[10px] font-bold p-2 rounded-lg opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none">
+                <div className="absolute -top-10 left-0 bg-gray-900 text-white text-[10px] font-bold p-2 rounded-lg opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none z-10">
                   Costo de Planta: S/ {baseCost.toFixed(2)}
                 </div>
 
@@ -520,7 +683,6 @@ export default function NewSalePage() {
                         <p className="text-xs text-gray-500 font-medium mt-1">
                           {item.quantity} pzas x S/ {item.unitPrice.toFixed(2)}
                         </p>
-                        {/* Indicador de Margen Oculto para el cliente, visible para el vendedor */}
                         <p
                           className={`text-[9px] font-black uppercase tracking-widest mt-2 ${isLoss ? "text-red-500" : "text-emerald-500"}`}
                         >
@@ -556,7 +718,6 @@ export default function NewSalePage() {
                 </span>
               </div>
 
-              {/* Proyección de Ganancia Neta */}
               {cart.length > 0 && (
                 <div className="flex justify-between items-center pt-3 border-t border-gray-700">
                   <span className="font-bold text-emerald-400 flex items-center gap-1 text-xs">

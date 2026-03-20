@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
 import { db } from "@/lib/firebase/clientApp";
 import {
   collection,
@@ -9,6 +11,8 @@ import {
   orderBy,
   limit,
   where,
+  doc,
+  getDoc,
 } from "firebase/firestore";
 import { Coil } from "@/types";
 import {
@@ -24,22 +28,42 @@ import {
   Download,
   ChevronDown,
   MoreHorizontal,
+  Loader2,
 } from "lucide-react";
 import { AddCoilForm } from "@/components/forms/AddCoilForm";
 import { ProductionForm } from "@/components/forms/ProductionForm";
 import { ConsumeStripForm } from "@/components/forms/ConsumeStripForm";
-import { seedCoils } from "@/services/seedService";
+import { seedFiftyAvailableCoils } from "@/services/seedService";
 import { voidCoil, updateCoil } from "@/services/productionService";
 import { useAuth } from "@/context/AuthContext";
 
 export default function InventoryPage() {
   const { user, role } = useAuth();
-  const [coils, setCoils] = useState<Coil[]>([]);
 
-  // --- ESTADOS DE FILTRO Y PAGINACIÓN ---
-  const [searchTerm, setSearchTerm] = useState("");
+  // --- NAVEGACIÓN Y URL PARAMS ---
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const initialCoilId = searchParams.get("coilId");
+
+  // --- ESTADOS BASE (FIREBASE) ---
+  const [coils, setCoils] = useState<Coil[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [limitCount, setLimitCount] = useState(20);
+
+  // --- ESTADOS DE BÚSQUEDA (SELECTOR ALGOLIA -> FIREBASE) ---
+  const [searchTerm, setSearchTerm] = useState(initialCoilId || "");
+  const [suggestions, setSuggestions] = useState<Coil[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Guardamos el ID seleccionado y el documento en tiempo real de Firebase
+  const [selectedCoilId, setSelectedCoilId] = useState<string | null>(
+    initialCoilId,
+  );
+  const [searchedCoilData, setSearchedCoilData] = useState<Coil | null>(null);
+
+  const searchInputRef = useRef<HTMLDivElement>(null);
 
   // Modales
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -51,6 +75,19 @@ export default function InventoryPage() {
     masterWidth: 0,
   });
 
+  // --- ACTUALIZADOR DE URL ---
+  const updateUrlParams = (newCoilId: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (newCoilId) {
+      params.set("coilId", newCoilId);
+    } else {
+      params.delete("coilId");
+    }
+    // Reemplazamos la URL sin recargar la página
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  // 1. CARGA INICIAL DESDE FIREBASE (Paginada - Lista General)
   useEffect(() => {
     let q = query(
       collection(db, "coils"),
@@ -77,18 +114,120 @@ export default function InventoryPage() {
     return () => unsubscribe();
   }, [limitCount, statusFilter]);
 
-  const filteredCoils = coils.filter((c) =>
-    c.id.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  // 2. ESCUCHADOR ESPECÍFICO (Cuando se selecciona una bobina del buscador o de la URL)
+  useEffect(() => {
+    if (!selectedCoilId) {
+      setSearchedCoilData(null);
+      return;
+    }
 
-  const handleOpenProduction = (coil: Coil) => setSelectedCoil(coil);
-  const handleOpenEdit = (coil: Coil) => {
-    setEditingCoil(coil);
-    setEditData({
-      initialWeight: coil.initialWeight,
-      currentWeight: coil.currentWeight,
-      masterWidth: coil.masterWidth || 1200,
+    // Escuchamos el documento exacto en tiempo real.
+    const unsub = onSnapshot(doc(db, "coils", selectedCoilId), (docSnap) => {
+      if (docSnap.exists()) {
+        setSearchedCoilData({ id: docSnap.id, ...docSnap.data() } as Coil);
+      } else {
+        setSearchedCoilData(null); // Si fue eliminada físicamente
+      }
     });
+
+    return () => unsub();
+  }, [selectedCoilId]);
+
+  // 3. BUSCADOR PREDICTIVO (Algolia solo para Sugerencias)
+  useEffect(() => {
+    if (searchTerm.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    // Evitar buscar en Algolia si el usuario ya seleccionó algo y el input muestra el ID
+    if (selectedCoilId && searchTerm === selectedCoilId) {
+      return;
+    }
+
+    const getSuggestions = async () => {
+      setIsSearching(true);
+      try {
+        const filters = statusFilter !== "ALL" ? `status:${statusFilter}` : "";
+
+        const { hits } = await algoliaClient.searchSingleIndex({
+          indexName: ALGOLIA_INDICES.COILS,
+          searchParams: {
+            query: searchTerm,
+            filters: filters,
+            hitsPerPage: 5, // Solo necesitamos 5 sugerencias
+          },
+        });
+
+        const mappedHits = hits.map((hit: any) => ({
+          ...hit,
+          id: hit.objectID,
+        })) as Coil[];
+
+        setSuggestions(mappedHits);
+        setShowSuggestions(mappedHits.length > 0);
+      } catch (error) {
+        console.error("Error buscando sugerencias:", error);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    const timeoutId = setTimeout(getSuggestions, 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, statusFilter, selectedCoilId]);
+
+  // Manejar clics fuera del buscador para cerrar las sugerencias
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        searchInputRef.current &&
+        !searchInputRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // 4. DECISOR DE VISTA: Si hay un ID seleccionado mostramos solo esa bobina, si no, mostramos la lista normal
+  const displayCoils = selectedCoilId
+    ? searchedCoilData
+      ? [searchedCoilData]
+      : []
+    : coils;
+
+  // --- ACCIONES DE MODALES ---
+  const handleOpenProduction = async (coil: Coil) => {
+    try {
+      const docRef = doc(db, "coils", coil.id);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        setSelectedCoil({ id: docSnap.id, ...docSnap.data() } as Coil);
+      }
+    } catch (error) {
+      console.error("Error al cargar la bobina:", error);
+    }
+  };
+
+  const handleOpenEdit = async (coil: Coil) => {
+    try {
+      const docRef = doc(db, "coils", coil.id);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const fullCoil = { id: docSnap.id, ...docSnap.data() } as Coil;
+        setEditingCoil(fullCoil);
+        setEditData({
+          initialWeight: fullCoil.initialWeight,
+          currentWeight: fullCoil.currentWeight,
+          masterWidth: fullCoil.masterWidth || 1200,
+        });
+      }
+    } catch (error) {
+      console.error("Error al cargar la bobina para editar:", error);
+    }
   };
 
   const handleVoidCoil = async (coilId: string) => {
@@ -120,7 +259,7 @@ export default function InventoryPage() {
       "Peso Actual (kg)",
       "Estado",
     ];
-    const rows = filteredCoils.map((c) => [
+    const rows = displayCoils.map((c) => [
       c.id,
       c.masterWidth || 1200,
       c.thickness || 0,
@@ -128,12 +267,10 @@ export default function InventoryPage() {
       c.currentWeight,
       c.status,
     ]);
-
     const csvContent = [
       headers.join(","),
       ...rows.map((r) => r.join(",")),
     ].join("\n");
-
     const blob = new Blob(["\uFEFF" + csvContent], {
       type: "text/csv;charset=utf-8;",
     });
@@ -171,15 +308,12 @@ export default function InventoryPage() {
 
           {role === "ADMIN" && (
             <button
-              onClick={async () => {
-                await seedCoils();
-              }}
+              onClick={async () => await seedFiftyAvailableCoils()}
               className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition shadow-sm"
             >
-              Generar Test
+              Generar 50 Bobinas
             </button>
           )}
-
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition shadow-sm"
@@ -190,15 +324,81 @@ export default function InventoryPage() {
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-          <input
-            type="text"
-            placeholder="Buscar serie localmente..."
-            className="pl-10 w-full p-2 border border-gray-200 rounded-lg outline-blue-500 font-medium"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        {/* COMPONENTE DE BÚSQUEDA TIPO SELECTOR */}
+        <div className="relative flex-1 flex gap-2" ref={searchInputRef}>
+          <div className="relative w-full">
+            {isSearching ? (
+              <Loader2
+                className="absolute left-3 top-2.5 text-blue-500 animate-spin"
+                size={18}
+              />
+            ) : (
+              <Search
+                className="absolute left-3 top-2.5 text-gray-400"
+                size={18}
+              />
+            )}
+            <input
+              type="text"
+              placeholder="Buscar serie o proveedor..."
+              className={`pl-10 w-full p-2 border rounded-lg outline-blue-500 font-medium transition ${selectedCoilId ? "bg-blue-50 border-blue-200 text-blue-800" : "bg-white border-gray-200"}`}
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                if (e.target.value === "") {
+                  setSelectedCoilId(null);
+                  setSearchedCoilData(null);
+                  updateUrlParams(null); // Actualizamos la URL
+                }
+              }}
+              onFocus={() => {
+                if (suggestions.length > 0) setShowSuggestions(true);
+              }}
+            />
+
+            {/* DROPDOWN DE SUGERENCIAS */}
+            {showSuggestions && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl z-50 overflow-hidden">
+                {suggestions.map((suggestion) => (
+                  <div
+                    key={suggestion.id}
+                    onClick={() => {
+                      setSelectedCoilId(suggestion.id);
+                      setSearchTerm(suggestion.id);
+                      setShowSuggestions(false);
+                      updateUrlParams(suggestion.id); // Guardamos en la URL
+                    }}
+                    className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0"
+                  >
+                    <p className="font-bold text-gray-800 text-sm">
+                      {suggestion.id}
+                    </p>
+                    <p className="text-xs text-gray-500 font-medium">
+                      {suggestion.metadata?.provider ||
+                        "Proveedor no especificado"}{" "}
+                      • {suggestion.masterWidth}mm
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Botón para limpiar búsqueda */}
+          {selectedCoilId && (
+            <button
+              onClick={() => {
+                setSelectedCoilId(null);
+                setSearchTerm("");
+                setSearchedCoilData(null);
+                updateUrlParams(null); // Limpiamos la URL
+              }}
+              className="p-2 bg-red-50 text-red-500 hover:bg-red-100 rounded-lg transition"
+              title="Limpiar búsqueda"
+            >
+              <X size={20} />
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -218,9 +418,7 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* TABLA PRINCIPAL MEJORADA */}
       <div className="bg-white rounded-xl shadow-sm border">
-        {/* Nota: Se quitó overflow-hidden y overflow-x-auto para que el menú desplegable no se corte */}
         <div className="w-full">
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-50/80 border-b">
@@ -246,7 +444,7 @@ export default function InventoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredCoils.map((coil) => {
+              {displayCoils.map((coil) => {
                 const isVoided = coil.status === "VOIDED";
 
                 return (
@@ -285,8 +483,8 @@ export default function InventoryPage() {
                       className={`p-4 ${isVoided ? "opacity-50 grayscale" : ""}`}
                     >
                       <WeightIndicator
-                        current={coil.currentWeight}
-                        initial={coil.initialWeight}
+                        current={coil.currentWeight || 0}
+                        initial={coil.initialWeight || 0}
                       />
                     </td>
 
@@ -308,7 +506,7 @@ export default function InventoryPage() {
                 );
               })}
 
-              {filteredCoils.length === 0 && (
+              {displayCoils.length === 0 && (
                 <tr>
                   <td colSpan={5} className="p-12 text-center">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
@@ -318,7 +516,8 @@ export default function InventoryPage() {
                       No hay resultados
                     </h3>
                     <p className="text-gray-500 mt-1">
-                      No se encontraron bobinas con los filtros actuales.
+                      No se encontraron bobinas con los filtros actuales en la
+                      base de datos principal.
                     </p>
                   </td>
                 </tr>
@@ -328,7 +527,8 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {coils.length >= limitCount && (
+      {/* Solo mostramos la paginación si NO estamos viendo un resultado específico buscado */}
+      {!selectedCoilId && coils.length >= limitCount && (
         <div className="flex justify-center mt-6">
           <button
             onClick={() => setLimitCount((prev) => prev + 20)}
@@ -464,7 +664,6 @@ export default function InventoryPage() {
 }
 
 // --- SUB-COMPONENTES AUXILIARES ---
-
 function WeightIndicator({
   current,
   initial,
@@ -473,7 +672,6 @@ function WeightIndicator({
   initial: number;
 }) {
   const percentage = Math.max(0, Math.min(100, (current / initial) * 100)) || 0;
-
   let colorClass = "bg-green-500";
   if (percentage === 0) colorClass = "bg-gray-300";
   else if (percentage <= 25) colorClass = "bg-red-500";
@@ -504,21 +702,19 @@ function ActionMenu({
   onVoid,
 }: {
   coil: Coil;
-  role: string | null | undefined; // <--- ¡AQUÍ ESTÁ LA SOLUCIÓN! Agregamos 'null'
+  role: string | null | undefined;
   isVoided: boolean;
   onProcess: () => void;
   onEdit: () => void;
   onVoid: () => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-
-  if (isVoided) {
+  if (isVoided)
     return (
       <span className="flex items-center justify-center gap-1 text-xs font-bold text-red-400 uppercase">
         <AlertCircle size={14} /> Sin Efecto
       </span>
     );
-  }
 
   return (
     <div className="relative flex justify-center">
@@ -529,7 +725,6 @@ function ActionMenu({
       >
         <MoreHorizontal size={20} />
       </button>
-
       {isOpen && (
         <div className="absolute right-0 top-full mt-1 w-40 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1 animate-in fade-in slide-in-from-top-2">
           <button
@@ -539,8 +734,6 @@ function ActionMenu({
           >
             <Scissors size={16} /> Procesar
           </button>
-
-          {/* El chequeo de rol seguirá funcionando perfectamente */}
           {role === "ADMIN" && coil.status === "AVAILABLE" && (
             <>
               <button
