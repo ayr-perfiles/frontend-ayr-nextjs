@@ -23,6 +23,7 @@ import { useAuth } from "@/context/AuthContext";
 import { SalesMetrics } from "@/components/sales/SalesMetrics";
 import { SalesFilters } from "@/components/sales/SalesFilters";
 import { SalesTable } from "@/components/sales/SalesTable";
+import toast from "react-hot-toast";
 
 export default function SalesPage() {
   const router = useRouter();
@@ -183,11 +184,11 @@ export default function SalesPage() {
     setIsProcessing(true);
     try {
       await approveQuotation(sale.id!);
-      alert(
+      toast.success(
         "✅ ¡Cotización aprobada! Ahora es una Venta y el stock ha sido actualizado.",
       );
     } catch (error: any) {
-      alert(`❌ Error: ${error.message}`);
+      toast.error(`❌ Error: ${error.message}`);
     } finally {
       setIsProcessing(false);
     }

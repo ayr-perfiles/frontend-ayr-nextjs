@@ -1,6 +1,7 @@
 import { db } from "@/lib/firebase/clientApp";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore"; // Usamos doc y setDoc
 import { Coil } from "@/types";
+import { toast } from "react-hot-toast/headless";
 
 export const seedFiftyAvailableCoils = async () => {
   const providers = [
@@ -43,9 +44,11 @@ export const seedFiftyAvailableCoils = async () => {
       console.log(`Sincronizada: ${serieId}`);
     }
 
-    alert("✅ 50 bobinas generadas. Ahora sí puedes procesarlas sin errores.");
+    toast.success(
+      "✅ 50 bobinas generadas. Ahora sí puedes procesarlas sin errores.",
+    );
   } catch (error) {
     console.error("Error en el seed:", error);
-    alert("Error al generar los datos.");
+    toast.error("Error al generar los datos.");
   }
 };

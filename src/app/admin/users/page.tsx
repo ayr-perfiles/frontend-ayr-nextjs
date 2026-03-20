@@ -30,6 +30,7 @@ import {
   KeyRound,
   Loader2,
 } from "lucide-react";
+import toast from "react-hot-toast";
 
 interface UserProfile {
   id: string;
@@ -72,7 +73,7 @@ export default function UsersPage() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword.length < 6)
-      return alert("La contraseña debe tener al menos 6 caracteres.");
+      return toast.error("La contraseña debe tener al menos 6 caracteres.");
 
     setIsCreating(true);
     try {
@@ -101,7 +102,7 @@ export default function UsersPage() {
         createdAt: serverTimestamp(),
       });
 
-      alert(`✅ Usuario ${newEmail} creado exitosamente.`);
+      toast.success(`✅ Usuario ${newEmail} creado exitosamente.`);
       setIsModalOpen(false);
       setNewEmail("");
       setNewPassword("");
@@ -109,9 +110,9 @@ export default function UsersPage() {
     } catch (error: any) {
       console.error(error);
       if (error.code === "auth/email-already-in-use") {
-        alert("❌ Ese correo ya está registrado en el sistema.");
+        toast.error("❌ Ese correo ya está registrado en el sistema.");
       } else {
-        alert(`❌ Error al crear usuario: ${error.message}`);
+        toast.error(`❌ Error al crear usuario: ${error.message}`);
       }
     } finally {
       setIsCreating(false);
@@ -126,11 +127,11 @@ export default function UsersPage() {
       try {
         const auth = getAuth(); // App principal
         await sendPasswordResetEmail(auth, email);
-        alert(
+        toast.success(
           "✅ Enlace enviado. El usuario recibirá un correo para establecer su nueva contraseña.",
         );
       } catch (error: any) {
-        alert(`❌ Error al enviar correo: ${error.message}`);
+        toast.error(`❌ Error al enviar correo: ${error.message}`);
       }
     }
   };
@@ -139,7 +140,7 @@ export default function UsersPage() {
     try {
       await updateDoc(doc(db, "users", userId), { role: newRole });
     } catch (error: any) {
-      alert("Error al cambiar el rol: " + error.message);
+      toast.error("Error al cambiar el rol: " + error.message);
     }
   };
 
@@ -149,13 +150,13 @@ export default function UsersPage() {
     userEmail: string,
   ) => {
     if (userEmail === user?.email)
-      return alert("⚠️ No puedes desactivar tu propia cuenta.");
+      return toast.error("⚠️ No puedes desactivar tu propia cuenta.");
     const action = currentStatus ? "desactivar" : "reactivar";
     if (confirm(`¿Estás seguro de ${action} a ${userEmail}?`)) {
       try {
         await updateDoc(doc(db, "users", userId), { isActive: !currentStatus });
       } catch (error: any) {
-        alert("Error al cambiar estado: " + error.message);
+        toast.error("Error al cambiar estado: " + error.message);
       }
     }
   };

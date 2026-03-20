@@ -9,6 +9,7 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
+import { toast } from "react-hot-toast/headless";
 
 export function UsersSettings() {
   const { user: currentUser } = useAuth();
@@ -39,9 +40,9 @@ export function UsersSettings() {
       setUsers(
         users.map((u) => (u.id === userId ? { ...u, role: newRole } : u)),
       );
-      alert("✅ Rol actualizado correctamente.");
+      toast.success("✅ Rol actualizado correctamente.");
     } catch (error) {
-      alert("❌ Ocurrió un error al cambiar el rol.");
+      toast.error("❌ Ocurrió un error al cambiar el rol.");
     } finally {
       setProcessingId(null);
     }

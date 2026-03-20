@@ -3,14 +3,16 @@
 import { useState, useMemo, useEffect } from "react";
 import { Coil } from "@/types";
 import { saveCuttingPlan } from "@/services/productionService";
-import { getCatalog, ProductConfig } from "@/services/catalogService"; // <-- Usamos el servicio dinámico
+import { getCatalog, ProductConfig } from "@/services/catalogService";
 import {
   Trash2,
   Plus,
   AlertTriangle,
   CheckCircle2,
   Loader2,
+  X, // <-- Icono añadido
 } from "lucide-react";
+import toast from "react-hot-toast/headless";
 
 interface ProductionFormProps {
   coil: Coil;
@@ -30,11 +32,9 @@ export function ProductionForm({ coil, onClose }: ProductionFormProps) {
   useEffect(() => {
     const fetchCatalog = async () => {
       const data = await getCatalog();
-      // Solo mostramos productos activos para la producción
       const activeProducts = data.filter((p) => p.isActive);
       setCatalog(activeProducts);
 
-      // Auto-seleccionamos el primer producto si existe
       if (activeProducts.length > 0) {
         setItems([{ sku: activeProducts[0].sku, stripCount: 8 }]);
       }
@@ -47,7 +47,6 @@ export function ProductionForm({ coil, onClose }: ProductionFormProps) {
   const calculations = useMemo(() => {
     let totalUsedWidth = 0;
     items.forEach((item) => {
-      // Buscamos el producto en el catálogo dinámico
       const product = catalog.find((p) => p.sku === item.sku);
       if (product) {
         totalUsedWidth += product.stripWidth * item.stripCount;
@@ -71,7 +70,7 @@ export function ProductionForm({ coil, onClose }: ProductionFormProps) {
         (item, i) => item.sku === value && i !== index,
       );
       if (alreadyExists) {
-        alert(
+        toast.error(
           "Este producto ya está en el plan de corte. Por favor, modifica la cantidad en la fila existente.",
         );
         return;
@@ -85,13 +84,12 @@ export function ProductionForm({ coil, onClose }: ProductionFormProps) {
   };
 
   const handleAddItem = () => {
-    // Buscamos SKUs del catálogo que no estén aún en el array 'items'
     const availableSkus = catalog
       .map((p) => p.sku)
       .filter((sku) => !items.some((item) => item.sku === sku));
 
     if (availableSkus.length === 0) {
-      alert(
+      toast.error(
         "Ya has agregado todos los productos del catálogo al plan de corte.",
       );
       return;
@@ -112,16 +110,17 @@ export function ProductionForm({ coil, onClose }: ProductionFormProps) {
 
       await saveCuttingPlan(coil.id, formattedItems);
 
-      alert("✅ Plan de corte registrado. La bobina ahora está EN PROCESO.");
+      toast.success(
+        "✅ Plan de corte registrado. La bobina ahora está EN PROCESO.",
+      );
       onClose();
     } catch (error: any) {
-      alert(error.message || "Error al guardar el plan.");
+      toast.error(error.message || "Error al guardar el plan.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // PANTALLA DE CARGA MIENTRAS BUSCA EL CATÁLOGO
   if (isLoadingCatalog) {
     return (
       <div className="flex flex-col items-center justify-center h-64 bg-white">
@@ -135,8 +134,9 @@ export function ProductionForm({ coil, onClose }: ProductionFormProps) {
 
   return (
     <div className="flex flex-col h-full bg-white">
-      <div className="p-6 space-y-6">
-        <div className="bg-gray-50 p-4 rounded-xl border">
+      {/* --- CABECERA ACTUALIZADA CON BOTÓN DE CIERRE --- */}
+      <div className="flex justify-between items-center bg-gray-50 p-6 border-b">
+        <div>
           <h3 className="text-lg font-black text-blue-900">
             Paso 1: Slitter - {coil.id}
           </h3>
@@ -145,7 +145,15 @@ export function ProductionForm({ coil, onClose }: ProductionFormProps) {
             disponibles).
           </p>
         </div>
+        <button
+          onClick={onClose}
+          className="p-2 hover:bg-gray-200 rounded-full transition text-gray-500"
+        >
+          <X size={24} />
+        </button>
+      </div>
 
+      <div className="p-6 space-y-6">
         <div className="space-y-4">
           {items.map((item, index) => (
             <div

@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, User, signOut } from "firebase/auth"; // <-- Añade signOut aquí
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/clientApp";
+import { toast } from "react-hot-toast/headless";
 
 export type UserRole = "ADMIN" | "SUPERVISOR" | "OPERATOR";
 
@@ -40,7 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               await signOut(auth); // Lo deslogueamos a la fuerza
               setUser(null);
               setRole(null);
-              alert(
+              toast.error(
                 "❌ Acceso Denegado: Tu cuenta ha sido suspendida. Contacta a gerencia.",
               );
             } else {

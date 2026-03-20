@@ -17,22 +17,20 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { PRODUCT_CATALOG } from "@/config/products";
+import toast from "react-hot-toast";
 
 export function CatalogSettings() {
   const [products, setProducts] = useState<ProductConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-
-  // Estado para el formulario de Agregar/Editar
   const [editingProduct, setEditingProduct] = useState<ProductConfig | null>(
     null,
   );
 
-  // Cargar productos al iniciar
   const loadProducts = async () => {
     setIsLoading(true);
     const data = await getCatalog();
-    setProducts(data.sort((a, b) => a.sku.localeCompare(b.sku))); // Ordenados alfabéticamente
+    setProducts(data.sort((a, b) => a.sku.localeCompare(b.sku)));
     setIsLoading(false);
   };
 
@@ -40,7 +38,6 @@ export function CatalogSettings() {
     loadProducts();
   }, []);
 
-  // --- BOTÓN MÁGICO DE MIGRACIÓN ---
   const handleMigrateOldCatalog = async () => {
     if (
       !confirm(
@@ -61,24 +58,32 @@ export function CatalogSettings() {
         });
       }
       await loadProducts();
-      alert("✅ Catálogo migrado exitosamente.");
+      toast.success("Catálogo migrado exitosamente.");
     } catch (error) {
-      alert("❌ Error en la migración.");
+      toast.error("Error en la migración.");
     }
   };
 
-  // --- ACCIONES DEL FORMULARIO ---
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
+
+    // --- VALIDACIÓN DE SEGURIDAD FÍSICA ---
+    if (editingProduct.standardWeight <= 0) {
+      toast.error(
+        "¡ALERTA! El Peso Estándar debe ser mayor a 0. Es obligatorio para calcular mermas y límites físicos en la máquina.",
+      );
+      return;
+    }
 
     setIsSaving(true);
     try {
       await saveProduct(editingProduct);
       await loadProducts();
-      setEditingProduct(null); // Cerrar formulario
+      setEditingProduct(null);
+      toast.success(`Perfil ${editingProduct.sku} guardado correctamente.`);
     } catch (error) {
-      alert("Error al guardar.");
+      toast.error("Error al guardar el perfil.");
     } finally {
       setIsSaving(false);
     }
@@ -90,8 +95,9 @@ export function CatalogSettings() {
     try {
       await deleteProduct(sku);
       await loadProducts();
+      toast.success("Producto eliminado del catálogo.");
     } catch (error) {
-      alert("Error al eliminar.");
+      toast.error("Error al eliminar.");
     }
   };
 
@@ -133,7 +139,6 @@ export function CatalogSettings() {
         </div>
       </div>
 
-      {/* FORMULARIO DE EDICIÓN / CREACIÓN */}
       {editingProduct && (
         <form
           onSubmit={handleSave}
@@ -211,13 +216,14 @@ export function CatalogSettings() {
               />
             </div>
             <div>
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-1">
-                Peso Estándar (kg)
+              <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest block mb-1">
+                Peso Estándar (kg) *
               </label>
               <input
                 type="number"
                 step="0.01"
                 required
+                min="0.01"
                 value={editingProduct.standardWeight}
                 onChange={(e) =>
                   setEditingProduct({
@@ -225,7 +231,7 @@ export function CatalogSettings() {
                     standardWeight: Number(e.target.value),
                   })
                 }
-                className="w-full p-2.5 rounded-lg border border-blue-200 outline-none focus:border-blue-500 font-bold font-mono"
+                className="w-full p-2.5 rounded-lg border border-orange-200 bg-orange-50 outline-none focus:border-orange-500 font-bold font-mono text-orange-700"
               />
             </div>
           </div>
@@ -263,7 +269,7 @@ export function CatalogSettings() {
         </form>
       )}
 
-      {/* TABLA DE PRODUCTOS */}
+      {/* TABLA DE PRODUCTOS (se mantiene igual) */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         {isLoading ? (
           <div className="p-12 flex justify-center">

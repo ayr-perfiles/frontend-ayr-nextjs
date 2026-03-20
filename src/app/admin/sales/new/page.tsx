@@ -17,7 +17,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { getCatalog, ProductConfig } from "@/services/catalogService";
-import { getSystemSettings, SystemSettings } from "@/services/settingsService"; // <-- NUEVO IMPORT
+import { getSystemSettings, SystemSettings } from "@/services/settingsService";
 import { StockSummary } from "@/types";
 import { processSale, createQuotation } from "@/services/salesService";
 import { useAuth } from "@/context/AuthContext";
@@ -37,6 +37,7 @@ import {
   Scale,
   Percent,
 } from "lucide-react";
+import toast from "react-hot-toast";
 
 interface CartItem {
   sku: string;
@@ -60,7 +61,7 @@ export default function NewSalePage() {
 
   const { user } = useAuth();
 
-  // --- ESTADOS GLOBALES (Configuración Dinámica) ---
+  // --- ESTADOS GLOBALES ---
   const [catalog, setCatalog] = useState<ProductConfig[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
 
@@ -86,7 +87,7 @@ export default function NewSalePage() {
   const [addPrice, setAddPrice] = useState<number | "">("");
   const [baseCost, setBaseCost] = useState<number>(0);
 
-  // Carga inicial de Configuración y Catálogo
+  // Carga inicial
   useEffect(() => {
     const fetchGlobals = async () => {
       const dataSettings = await getSystemSettings();
@@ -136,19 +137,15 @@ export default function NewSalePage() {
   useEffect(() => {
     const loadDuplicateSale = async () => {
       if (!duplicateId || catalog.length === 0) return;
-
       try {
         const saleRef = doc(db, "sales", duplicateId);
         const saleSnap = await getDoc(saleRef);
-
         if (saleSnap.exists()) {
           const data = saleSnap.data();
           const docNum = data.documentNumber || "";
-
           setDocumentNumber(docNum);
           setCustomerName(data.customerName || "");
           setSearchTerm(docNum);
-
           if (docNum) await fetchClientData(docNum);
 
           const oldItems = data.items || [];
@@ -186,12 +183,15 @@ export default function NewSalePage() {
     if (stockItem && stockItem.lastCostPerPiece) {
       const cost = Number(stockItem.lastCostPerPiece.toFixed(2));
       setBaseCost(cost);
-      setAddPrice(cost);
+
+      const targetMargin = (settings?.minMarginPercent || 20) / 100;
+      const suggestedPrice = cost / (1 - targetMargin);
+      setAddPrice(Number(suggestedPrice.toFixed(2)));
     } else {
       setBaseCost(0);
       setAddPrice("");
     }
-  }, [selectedSku, availableStock]);
+  }, [selectedSku, availableStock, settings]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -212,7 +212,6 @@ export default function NewSalePage() {
       setShowSuggestions(false);
       return;
     }
-
     const performPredictiveSearch = async () => {
       setIsSearchingClient(true);
       try {
@@ -228,7 +227,6 @@ export default function NewSalePage() {
         setIsSearchingClient(false);
       }
     };
-
     const timeoutId = setTimeout(() => performPredictiveSearch(), 300);
     return () => clearTimeout(timeoutId);
   }, [searchTerm]);
@@ -242,16 +240,14 @@ export default function NewSalePage() {
   const handleDeepSearchClient = async () => {
     const targetDoc = searchTerm || documentNumber;
     if (targetDoc.length !== 8 && targetDoc.length !== 11) {
-      return alert(
+      return toast.success(
         "Ingresa un DNI (8) o RUC (11) válido para buscar en SUNAT.",
       );
     }
-
     setIsSearchingClient(true);
     setShowSuggestions(false);
     try {
       const existsLocally = await fetchClientData(targetDoc);
-
       if (!existsLocally) {
         const res = await fetch(`/api/consulta-doc?numero=${targetDoc}`);
         const data = await res.json();
@@ -268,11 +264,10 @@ export default function NewSalePage() {
         setCustomerAddress(data.direccion || "Dirección no registrada");
         setContacts([]);
         setSelectedContactId("");
-
-        alert("🌐 Datos importados exitosamente desde SUNAT/RENIEC.");
+        toast.success("🌐 Datos importados exitosamente desde SUNAT/RENIEC.");
       }
     } catch (error: any) {
-      alert(`❌ ${error.message}`);
+      toast.error(`❌ ${error.message}`);
     } finally {
       setIsSearchingClient(false);
     }
@@ -296,7 +291,6 @@ export default function NewSalePage() {
 
   const handleAddToCart = () => {
     if (!selectedSku || !addQuantity || !addPrice) return;
-
     if (Number(addPrice) < baseCost) {
       if (
         !confirm(
@@ -312,7 +306,7 @@ export default function NewSalePage() {
     const requestedTotal = currentQtyInCart + Number(addQuantity);
 
     if (!stockItem || stockItem.totalQuantity < requestedTotal) {
-      alert(
+      toast.error(
         `⚠️ Stock insuficiente. Solo tienes ${stockItem?.totalQuantity || 0} unidades de ${selectedSku}.`,
       );
       return;
@@ -320,7 +314,6 @@ export default function NewSalePage() {
 
     const productInfo = catalog.find((p) => p.sku === selectedSku);
     const unitWeight = productInfo?.standardWeight || 0;
-
     const existingItemIndex = cart.findIndex(
       (item) => item.sku === selectedSku,
     );
@@ -365,22 +358,19 @@ export default function NewSalePage() {
   const marginPercent =
     totalAmount > 0 ? (projectedProfit / totalAmount) * 100 : 0;
 
-  // LÍMITES DE ALERTA DESDE CONFIGURACIÓN
-  const MIN_MARGIN_ALERT = settings?.minMarginPercent ?? 10;
+  const MIN_MARGIN_ALERT = settings?.minMarginPercent ?? 20;
   const LOW_STOCK_ALERT = settings?.lowStockProduct ?? 100;
 
   const handleAction = async (actionType: "QUOTE" | "SALE") => {
     if (!customerName || !documentNumber)
-      return alert("Faltan datos del cliente.");
-    if (cart.length === 0) return alert("El carrito está vacío.");
+      return toast.error("Faltan datos del cliente.");
+    if (cart.length === 0) return toast.error("El carrito está vacío.");
 
     setIsSubmitting(true);
     try {
       const finalContactIds: string[] = [];
-
       for (const contact of contacts) {
         if (!contact.name) continue;
-
         let contactId = contact.id;
         const isNew = !contactId || contactId.startsWith("temp_");
 
@@ -438,7 +428,7 @@ export default function NewSalePage() {
           contactNameFinal,
           contactPhoneFinal,
         );
-        alert("📄 Cotización generada con éxito.");
+        toast.success("📄 Cotización generada con éxito.");
       } else {
         await processSale(
           customerName,
@@ -449,12 +439,11 @@ export default function NewSalePage() {
           contactNameFinal,
           contactPhoneFinal,
         );
-        alert("✅ Venta procesada. El stock ha sido descontado.");
+        toast.success("✅ Venta procesada. El stock ha sido descontado.");
       }
-
       router.push("/admin/sales");
     } catch (error: any) {
-      alert(error.message || "Error al procesar la operación.");
+      toast.error(error.message || "Error al procesar la operación.");
     } finally {
       setIsSubmitting(false);
     }
@@ -484,9 +473,8 @@ export default function NewSalePage() {
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <h2 className="text-lg font-black text-gray-800 mb-6 flex items-center gap-2 border-b border-gray-50 pb-4">
               <Building2 size={20} className="text-blue-500" /> Información de
-              Facturación (Empresa)
+              Facturación
             </h2>
-
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div className="md:col-span-1 relative" ref={searchInputRef}>
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
@@ -504,7 +492,6 @@ export default function NewSalePage() {
                         setShowSuggestions(suggestedCustomers.length > 0)
                       }
                     />
-
                     {showSuggestions && (
                       <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl z-50 overflow-hidden">
                         {suggestedCustomers.map((hit) => (
@@ -524,12 +511,10 @@ export default function NewSalePage() {
                       </div>
                     )}
                   </div>
-
                   <button
                     onClick={handleDeepSearchClient}
                     disabled={isSearchingClient}
                     className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition disabled:opacity-50 flex-shrink-0"
-                    title="Buscar profundo"
                   >
                     {isSearchingClient ? (
                       <Loader2 size={20} className="animate-spin" />
@@ -539,7 +524,6 @@ export default function NewSalePage() {
                   </button>
                 </div>
               </div>
-
               <div className="md:col-span-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
                   Razón Social / Nombre Confirmado *
@@ -552,7 +536,6 @@ export default function NewSalePage() {
                 />
               </div>
             </div>
-
             <div className="mb-6">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
                 <MapPin size={12} /> Dirección Fiscal
@@ -564,26 +547,23 @@ export default function NewSalePage() {
                 onChange={(e) => setCustomerAddress(e.target.value)}
               />
             </div>
-
             <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
               <div className="flex justify-between items-center mb-4">
                 <label className="text-[10px] font-black text-blue-800 uppercase tracking-widest flex items-center gap-1">
-                  <Users size={14} /> Contactos de Empresa
+                  <Users size={14} /> Contactos
                 </label>
                 <button
                   onClick={addContact}
                   className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
                 >
-                  <Plus size={14} /> Añadir Contacto
+                  <Plus size={14} /> Añadir
                 </button>
               </div>
-
               {contacts.length === 0 && (
                 <p className="text-xs text-blue-400 font-medium italic">
                   Sin contactos registrados.
                 </p>
               )}
-
               <div className="space-y-3">
                 {contacts.map((contact, idx) => (
                   <div
@@ -638,7 +618,6 @@ export default function NewSalePage() {
             <h2 className="text-lg font-black text-gray-800 mb-6 flex items-center gap-2 border-b border-gray-50 pb-4">
               <Plus size={20} className="text-blue-500" /> Agregar Productos
             </h2>
-
             <div className="flex flex-col md:flex-row items-end gap-4">
               <div className="flex-1 w-full">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
@@ -656,9 +635,7 @@ export default function NewSalePage() {
                         (s) => s.sku === prod.sku,
                       );
                       const stock = stockItem?.totalQuantity || 0;
-                      // ALERTA DE STOCK BAJO VISUAL EN EL SELECTOR
                       const isLowStock = stock > 0 && stock <= LOW_STOCK_ALERT;
-
                       return (
                         <option
                           key={prod.sku}
@@ -671,8 +648,6 @@ export default function NewSalePage() {
                       );
                     })}
                 </select>
-
-                {/* ALERTA DE STOCK BAJO DEBAJO DEL SELECTOR */}
                 {(() => {
                   const s =
                     availableStock.find((s) => s.sku === selectedSku)
@@ -680,8 +655,7 @@ export default function NewSalePage() {
                   if (s > 0 && s <= LOW_STOCK_ALERT) {
                     return (
                       <p className="text-[10px] text-orange-500 font-bold mt-1 flex items-center gap-1">
-                        <AlertTriangle size={12} /> Quedan pocas unidades en
-                        almacén ({s}).
+                        <AlertTriangle size={12} /> Quedan pocas unidades ({s}).
                       </p>
                     );
                   }
@@ -709,7 +683,7 @@ export default function NewSalePage() {
                   Precio Venta (S/)
                 </label>
                 <div className="absolute -top-10 left-0 bg-gray-900 text-white text-[10px] font-bold p-2 rounded-lg opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none z-10">
-                  Costo de Planta: S/ {baseCost.toFixed(2)}
+                  Costo Base: S/ {baseCost.toFixed(2)}
                 </div>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">
@@ -751,7 +725,7 @@ export default function NewSalePage() {
               )}
             </h2>
 
-            <div className="flex-1 overflow-y-auto space-y-3 min-h-62.5 mb-4">
+            <div className="flex-1 overflow-y-auto space-y-3 min-h-[300px] mb-4">
               {cart.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-50">
                   <ShoppingCart size={48} className="mb-2" />
@@ -763,10 +737,11 @@ export default function NewSalePage() {
                     (item.unitPrice - item.baseCost) * item.quantity;
                   const itemMargin =
                     ((item.unitPrice - item.baseCost) / item.unitPrice) * 100;
-
-                  // ALERTA DE MARGEN ROJO POR ITEM
                   const isLoss = item.unitPrice < item.baseCost;
-                  const isLowMargin = !isLoss && itemMargin < MIN_MARGIN_ALERT;
+
+                  // TOLERANCIA DEL 0.5% POR REDONDEO DECIMAL AL GENERAR PRECIO AUTO
+                  const isLowMargin =
+                    !isLoss && itemMargin < MIN_MARGIN_ALERT - 0.5;
 
                   return (
                     <div
@@ -819,16 +794,14 @@ export default function NewSalePage() {
                   S/ {totalAmount.toFixed(2)}
                 </span>
               </div>
-
               {cart.length > 0 && (
                 <div className="flex justify-between items-center pt-3 border-t border-gray-700">
                   <div className="flex flex-col">
                     <span className="font-bold text-emerald-400 flex items-center gap-1 text-xs">
                       <Info size={14} /> Ganancia Neta:
                     </span>
-                    {/* ALERTA DE MARGEN ROJO GLOBAL */}
                     <span
-                      className={`text-[10px] font-black mt-1 flex items-center gap-0.5 uppercase tracking-widest ${marginPercent < MIN_MARGIN_ALERT ? "text-red-400" : "text-gray-400"}`}
+                      className={`text-[10px] font-black mt-1 flex items-center gap-0.5 uppercase tracking-widest ${marginPercent < MIN_MARGIN_ALERT - 0.5 ? "text-red-400" : "text-gray-400"}`}
                     >
                       <Percent size={10} /> Rentabilidad:{" "}
                       {marginPercent.toFixed(1)}%
@@ -841,7 +814,6 @@ export default function NewSalePage() {
                   </span>
                 </div>
               )}
-
               <div className="grid grid-cols-2 gap-3 pt-4">
                 <button
                   onClick={() => handleAction("QUOTE")}
