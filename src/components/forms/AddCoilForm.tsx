@@ -3,14 +3,16 @@
 import { useState } from "react";
 import { db } from "@/lib/firebase/clientApp";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { X } from "lucide-react"; // <-- Importamos el ícono X
+import { X } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAuth } from "@/context/AuthContext"; // <-- Importamos el AuthContext
 
 export function AddCoilForm({
   onOpenChange,
 }: {
   onOpenChange: (open: boolean) => void;
 }) {
+  const { user } = useAuth(); // <-- Extraemos el usuario actual
   const [coilId, setCoilId] = useState("");
   const [initialWeight, setInitialWeight] = useState<number>(5000);
   const [masterWidth, setMasterWidth] = useState<number>(1192); // Ancho en mm
@@ -33,6 +35,7 @@ export function AddCoilForm({
       status: "AVAILABLE",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      registeredBy: user?.email || "Sistema", // <-- GUARDAMOS EL EMAIL DEL USUARIO
     };
 
     const savePromise = setDoc(doc(db, "coils", newCoil.id), newCoil);
@@ -67,7 +70,7 @@ export function AddCoilForm({
         </button>
       </div>
 
-      {/* --- FORMULARIO INTACTO --- */}
+      {/* --- FORMULARIO --- */}
       <form onSubmit={handleSubmit} className="space-y-4 p-6">
         <div>
           <label className="block text-xs font-bold text-gray-500 uppercase">

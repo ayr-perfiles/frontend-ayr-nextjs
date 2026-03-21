@@ -15,17 +15,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { Coil } from "@/types";
-import {
-  Plus,
-  Download,
-  ChevronDown,
-  Search,
-  MoreHorizontal,
-  Scissors,
-  Edit2,
-  Trash2,
-  AlertCircle,
-} from "lucide-react";
+import { Plus, Download, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 
 // Módulos Internos
@@ -38,8 +28,8 @@ import { AddCoilForm } from "@/components/forms/AddCoilForm";
 import { ProductionForm } from "@/components/forms/ProductionForm";
 import { ConsumeStripForm } from "@/components/forms/ConsumeStripForm";
 import { InventoryFilters } from "@/components/inventory/InventoryFilters";
-import { WeightIndicator } from "@/components/inventory/WeightIndicator";
 import { EditCoilModal } from "@/components/inventory/EditCoilModal";
+import InventoryTable from "@/components/inventory/InventoryTable";
 
 export default function InventoryPage() {
   const { user, role } = useAuth();
@@ -81,7 +71,6 @@ export default function InventoryPage() {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
-  // 1. Cargar Bobinas Generales
   useEffect(() => {
     let q = query(
       collection(db, "coils"),
@@ -106,7 +95,6 @@ export default function InventoryPage() {
     return () => unsubscribe();
   }, [limitCount, statusFilter]);
 
-  // 2. Cargar Bobina Buscada Individual
   useEffect(() => {
     if (!selectedCoilId) {
       setSearchedCoilData(null);
@@ -120,7 +108,6 @@ export default function InventoryPage() {
     return () => unsub();
   }, [selectedCoilId]);
 
-  // 3. Autocompletado Algolia
   useEffect(() => {
     if (searchTerm.trim().length < 2) {
       setSuggestions([]);
@@ -153,7 +140,6 @@ export default function InventoryPage() {
     return () => clearTimeout(timeoutId);
   }, [searchTerm, statusFilter, selectedCoilId]);
 
-  // Ocultar sugerencias al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -166,7 +152,6 @@ export default function InventoryPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // --- FUNCIONES DE ACCIÓN ---
   const handleOpenProduction = async (coil: Coil) => {
     try {
       const docSnap = await getDoc(doc(db, "coils", coil.id));
@@ -274,7 +259,6 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-6 relative pb-10">
-      {/* CABECERA */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">
@@ -292,7 +276,6 @@ export default function InventoryPage() {
           >
             <Download size={18} /> Exportar
           </button>
-
           {role === "ADMIN" && (
             <button
               onClick={async () => await seedFiftyAvailableCoils()}
@@ -310,7 +293,6 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* COMPONENTE DE FILTROS */}
       <InventoryFilters
         searchTerm={searchTerm}
         setSearchTerm={(val) => {
@@ -330,108 +312,14 @@ export default function InventoryPage() {
         searchInputRef={searchInputRef}
       />
 
-      {/* TABLA DE INVENTARIO */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        <div className="w-full overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-gray-50/80 border-b border-gray-100">
-              <tr>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                  Serie
-                </th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                  Material{" "}
-                  <span className="text-gray-400 normal-case font-normal">
-                    (Ancho x Esp)
-                  </span>
-                </th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap w-64">
-                  Stock Disponible
-                </th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                  Estado
-                </th>
-                <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-center whitespace-nowrap w-32">
-                  Acciones
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {displayCoils.map((coil) => {
-                const isVoided = coil.status === "VOIDED";
-                return (
-                  <tr
-                    key={coil.id}
-                    className={`group transition-colors ${isVoided ? "bg-red-50/10" : "hover:bg-blue-50/20"}`}
-                  >
-                    <td className="p-4">
-                      <div className="flex flex-col">
-                        <span
-                          className={`font-black ${isVoided ? "text-red-400 line-through" : "text-blue-900"}`}
-                        >
-                          {coil.id}
-                        </span>
-                        {coil.metadata?.provider && (
-                          <span className="text-xs text-gray-400 font-medium mt-0.5">
-                            {coil.metadata.provider}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td
-                      className={`p-4 text-sm font-medium ${isVoided ? "text-gray-400 line-through" : "text-gray-600"}`}
-                    >
-                      {coil.masterWidth}{" "}
-                      <span className="text-gray-400 mx-0.5 text-xs">mm</span>
-                      <span className="text-gray-300 mx-1">x</span>
-                      {coil.thickness}{" "}
-                      <span className="text-gray-400 mx-0.5 text-xs">mm</span>
-                    </td>
-                    <td
-                      className={`p-4 ${isVoided ? "opacity-50 grayscale" : ""}`}
-                    >
-                      <WeightIndicator
-                        current={coil.currentWeight || 0}
-                        initial={coil.initialWeight || 0}
-                      />
-                    </td>
-                    <td className="p-4">
-                      <StatusBadge status={coil.status} />
-                    </td>
-                    <td className="p-4 relative">
-                      <ActionMenu
-                        coil={coil}
-                        role={role}
-                        isVoided={isVoided}
-                        onProcess={() => handleOpenProduction(coil)}
-                        onEdit={() => handleOpenEdit(coil)}
-                        onVoid={() => handleVoidCoil(coil.id)}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-              {displayCoils.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="p-12 text-center">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-50 mb-4 text-gray-400">
-                      <Search size={24} />
-                    </div>
-                    <h3 className="text-gray-900 font-bold text-lg">
-                      No hay resultados
-                    </h3>
-                    <p className="text-gray-500 mt-1 font-medium">
-                      No se encontraron bobinas con los filtros actuales.
-                    </p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <InventoryTable
+        displayCoils={displayCoils}
+        role={role}
+        onProcess={handleOpenProduction}
+        onEdit={handleOpenEdit}
+        onVoid={handleVoidCoil}
+      />
 
-      {/* BOTÓN CARGAR MÁS */}
       {!selectedCoilId && coils.length >= limitCount && (
         <div className="flex justify-center mt-6">
           <button
@@ -443,7 +331,6 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* MODALES EXTERNALIZADOS */}
       {editingCoil && (
         <EditCoilModal
           editingCoil={editingCoil}
@@ -480,92 +367,5 @@ export default function InventoryPage() {
         </div>
       )}
     </div>
-  );
-}
-
-// --- SUBCOMPONENTES PEQUEÑOS (Solo UI para la tabla) ---
-function ActionMenu({
-  coil,
-  role,
-  isVoided,
-  onProcess,
-  onEdit,
-  onVoid,
-}: {
-  coil: Coil;
-  role: string | null | undefined;
-  isVoided: boolean;
-  onProcess: () => void;
-  onEdit: () => void;
-  onVoid: () => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  if (isVoided)
-    return (
-      <span className="flex items-center justify-center gap-1 text-[10px] font-black text-red-400 uppercase tracking-widest">
-        <AlertCircle size={14} /> Sin Efecto
-      </span>
-    );
-
-  return (
-    <div className="relative flex justify-center">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
-        className="p-2 text-gray-500 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition"
-      >
-        <MoreHorizontal size={20} />
-      </button>
-      {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-40 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1 animate-in fade-in slide-in-from-top-2">
-          <button
-            onClick={onProcess}
-            disabled={coil.status === "PROCESSED"}
-            className="w-full text-left px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 font-bold disabled:opacity-50 disabled:hover:bg-transparent flex items-center gap-2"
-          >
-            <Scissors size={16} /> Procesar
-          </button>
-          {role === "ADMIN" && coil.status === "AVAILABLE" && (
-            <>
-              <button
-                onClick={onEdit}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition font-bold"
-              >
-                <Edit2 size={16} className="text-gray-400" /> Editar
-              </button>
-              <div className="h-px bg-gray-100 my-1 mx-2" />
-              <button
-                onClick={onVoid}
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-black flex items-center gap-2 transition"
-              >
-                <Trash2 size={16} /> Anular
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    AVAILABLE: "bg-green-100 text-green-700 border-green-200",
-    IN_PROGRESS: "bg-orange-100 text-orange-700 border-orange-200",
-    PROCESSED: "bg-gray-100 text-gray-600 border-gray-200",
-    VOIDED: "bg-red-100 text-red-700 border-red-200 line-through opacity-80",
-  };
-  const labels: Record<string, string> = {
-    AVAILABLE: "DISPONIBLE",
-    IN_PROGRESS: "EN PROCESO",
-    PROCESSED: "PROCESADA",
-    VOIDED: "ANULADA",
-  };
-  return (
-    <span
-      className={`px-2.5 py-1 rounded-full text-[10px] font-black border tracking-widest ${styles[status]}`}
-    >
-      {labels[status] || status}
-    </span>
   );
 }
