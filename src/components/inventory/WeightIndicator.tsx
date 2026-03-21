@@ -12,7 +12,7 @@ export function WeightIndicator({ current, initial }: WeightIndicatorProps) {
   else if (percentage <= 50) colorClass = "bg-orange-500";
 
   return (
-    <div className="w-full min-w-[140px]">
+    <div className="w-full min-w-35">
       <div className="flex justify-between items-end text-xs mb-1.5">
         <span className="font-bold text-gray-800 text-sm">{current} kg</span>
         <span className="text-gray-400 font-medium">/ {initial}</span>

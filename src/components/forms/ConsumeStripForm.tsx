@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Coil } from "@/types";
 import { processSingleStrip } from "@/services/productionService";
 import { getCatalog, ProductConfig } from "@/services/catalogService";
+import { useAuth } from "@/context/AuthContext"; // <-- Importamos el contexto de autenticación
 import {
   CheckCircle2,
   Factory,
@@ -21,6 +22,8 @@ export function ConsumeStripForm({
   coil: Coil;
   onClose: () => void;
 }) {
+  const { user } = useAuth(); // <-- Extraemos el usuario autenticado actual
+
   const availableStrips =
     coil.plannedStrips?.filter((s) => s.pendingCount > 0) || [];
   const [selectedSku, setSelectedSku] = useState<string>(
@@ -77,7 +80,7 @@ export function ConsumeStripForm({
       coil.id,
       selectedSku,
       Number(pieces),
-      "OPERADOR_ACTUAL",
+      user?.email || "Operador", // <-- Usamos el email del usuario real aquí
     );
 
     toast

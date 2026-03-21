@@ -1,9 +1,17 @@
 "use client";
 
-import { initializeApp, getApps, FirebaseApp } from "firebase/app";
-import { getAuth, Auth } from "firebase/auth";
-import { getFirestore, Firestore } from "firebase/firestore";
-import { getStorage, FirebaseStorage } from "firebase/storage";
+import { initializeApp, getApps, FirebaseApp, getApp } from "firebase/app";
+import { getAuth, Auth, connectAuthEmulator } from "firebase/auth";
+import {
+  getFirestore,
+  Firestore,
+  connectFirestoreEmulator,
+} from "firebase/firestore";
+import {
+  getStorage,
+  FirebaseStorage,
+  connectStorageEmulator,
+} from "firebase/storage";
 
 // Configuración para Vercel (Variables de entorno)
 export const firebaseConfig = {
@@ -15,10 +23,21 @@ export const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Inicialización segura para Next.js (evita duplicados en Hot Reload)
+// Inicialización segura para Next.js
 export const firebaseApp: FirebaseApp =
-  getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+  getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-export const auth: Auth = getAuth(firebaseApp);
-export const db: Firestore = getFirestore(firebaseApp);
-export const storage: FirebaseStorage = getStorage(firebaseApp);
+const auth: Auth = getAuth(firebaseApp);
+const db: Firestore = getFirestore(firebaseApp);
+const storage: FirebaseStorage = getStorage(firebaseApp);
+
+// --- CONFIGURACIÓN DE EMULADORES (SOLO DESARROLLO) ---
+// Usamos '127.0.0.1' para evitar problemas de resolución de 'localhost' en algunos sistemas
+if (process.env.NODE_ENV === "development") {
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  connectAuthEmulator(auth, "http://127.0.0.1:9099");
+  connectStorageEmulator(storage, "127.0.0.1", 9199);
+  console.log("🚀 Conectado a Firebase Local Emulators");
+}
+
+export { auth, db, storage };
