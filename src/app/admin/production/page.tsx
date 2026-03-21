@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { revertProductionLog } from "@/services/productionService";
+import toast from "react-hot-toast";
 
 export default function ProductionPage() {
   const { user, role } = useAuth();
@@ -107,9 +108,9 @@ export default function ProductionPage() {
     ) {
       try {
         await revertProductionLog(logId, user?.email || "Admin");
-        alert("✅ Producción anulada y costos revertidos.");
+        toast.success("✅ Producción anulada y costos revertidos.");
       } catch (error: any) {
-        alert(error.message);
+        toast.error(error.message);
       }
     }
   };

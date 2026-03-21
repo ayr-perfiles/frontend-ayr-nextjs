@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import NextTopLoader from "nextjs-toploader";
+import { Toaster } from "react-hot-toast"; // <-- IMPORTAMOS EL TOASTER
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,16 +30,40 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <NextTopLoader
-          color="#2563eb" // Usamos tu azul principal (blue-600)
+          color="#2563eb"
           initialPosition={0.08}
           crawlSpeed={200}
-          height={3} // Grosor de la línea
+          height={3}
           crawl={true}
-          showSpinner={false} // Ocultamos el circulito dando vueltas, dejamos solo la línea
+          showSpinner={false}
           easing="ease"
           speed={200}
-          shadow="0 0 10px #2563eb,0 0 5px #2563eb" // Efecto de brillo
+          shadow="0 0 10px #2563eb,0 0 5px #2563eb"
         />
+
+        {/* <-- CONFIGURACIÓN GLOBAL DEL TOASTER --> */}
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: "#ffffff",
+              color: "#1f2937",
+              fontWeight: "bold",
+              borderRadius: "12px",
+              border: "1px solid #f3f4f6",
+              boxShadow:
+                "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+            },
+            success: {
+              iconTheme: { primary: "#10b981", secondary: "#ffffff" },
+            },
+            error: {
+              iconTheme: { primary: "#ef4444", secondary: "#ffffff" },
+            },
+          }}
+        />
+
         {children}
       </body>
     </html>

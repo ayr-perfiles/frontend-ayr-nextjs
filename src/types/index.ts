@@ -66,7 +66,7 @@ export interface Sale {
   totalAmount: number; // Ingreso bruto
   totalCost: number; // Costo total de fabricación del pedido
   totalProfit: number; // Ganancia neta total del pedido
-  status: "QUOTATION" | "COMPLETED" | "CANCELLED";
+  status: "QUOTATION" | "COMPLETED" | "CANCELLED" | "CONVERTED"; // Nuevo estado "CONVERTED" para cotizaciones aprobadas
   validUntil?: any; // Para cotizaciones (ej: vence en 7 días)
   sellerId: string;
   timestamp: any;
