@@ -180,7 +180,7 @@ export const processSingleStrip = async (
         { merge: true },
       );
 
-      // Guardar Log
+      // Guardar Log (Ahora incluye reportedWeight para anulación segura)
       transaction.set(logRef, {
         parentCoilId: coilId,
         sku,
@@ -189,6 +189,7 @@ export const processSingleStrip = async (
         scrapWidth: Number(scrapPerStrip.toFixed(2)),
         stripCost: activeStrip.costPerStrip,
         costPerPiece: realCostPerPiece,
+        reportedWeight: reportedProductionWeight, // <-- CLAVE PARA ANULAR EXACTAMENTE ESTE PESO
         operatorId,
         status: "ACTIVE",
         timestamp: serverTimestamp(),
@@ -210,7 +211,9 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
     await runTransaction(db, async (transaction) => {
       const logDoc = await transaction.get(logRef);
       if (!logDoc.exists()) throw new Error("El registro no existe.");
-      const logData = logDoc.data() as ProductionLog;
+      const logData = logDoc.data() as ProductionLog & {
+        reportedWeight?: number;
+      };
 
       if (logData.status === "VOIDED")
         throw new Error("Este registro ya fue anulado.");
@@ -223,22 +226,34 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
       const stockDoc = await transaction.get(stockRef);
       const prodDoc = await transaction.get(prodRef);
 
+      // Leemos el peso que se reportó en su momento (o lo calculamos si es un registro antiguo)
       let standardWeight = prodDoc.exists()
         ? prodDoc.data().standardWeight || 0
         : 0;
-      const weightToSubtract = logData.piecesProduced * standardWeight;
+      const weightToSubtract =
+        logData.reportedWeight || logData.piecesProduced * standardWeight;
 
-      // 1. REVERTIR INVENTARIO
+      // 1. REVERTIR INVENTARIO CON LIMPIEZA A CERO ABSOLUTO
       if (stockDoc.exists()) {
         const stockData = stockDoc.data();
-        transaction.update(stockRef, {
-          totalQuantity: Math.max(
-            0,
-            stockData.totalQuantity - logData.piecesProduced,
-          ),
-          totalWeight: Math.max(0, stockData.totalWeight - weightToSubtract),
+        const newQuantity = Math.max(
+          0,
+          stockData.totalQuantity - logData.piecesProduced,
+        );
+        const newWeight = Math.max(0, stockData.totalWeight - weightToSubtract);
+
+        const stockUpdatePayload: any = {
+          totalQuantity: newQuantity,
+          totalWeight: newQuantity === 0 ? 0 : newWeight,
           lastUpdate: serverTimestamp(),
-        });
+        };
+
+        // Si el stock llega a 0, limpiamos el costo base para evitar descuadres en el dashboard
+        if (newQuantity === 0) {
+          stockUpdatePayload.lastCostPerPiece = 0;
+        }
+
+        transaction.update(stockRef, stockUpdatePayload);
       }
 
       // 2. REVERTIR BOBINA (Devolver el fleje)
