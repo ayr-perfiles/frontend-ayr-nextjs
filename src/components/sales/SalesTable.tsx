@@ -36,7 +36,7 @@ export function SalesTable({
   return (
     <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="overflow-x-auto pb-36">
-        <table className="w-full text-left min-w-[950px]">
+        <table className="w-full text-left min-w-237.5">
           <thead className="bg-gray-50/50 border-b border-gray-100">
             <tr>
               <th className="p-4 pl-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">
@@ -248,7 +248,7 @@ function ActionMenu({
         isOpen &&
         createPortal(
           <div
-            className="absolute w-48 bg-white border border-gray-100 rounded-xl shadow-2xl z-[9999] py-1 animate-in fade-in zoom-in-95"
+            className="absolute w-48 bg-white border border-gray-100 rounded-xl shadow-2xl z-9999 py-1 animate-in fade-in zoom-in-95"
             style={{ top: coords.top, right: coords.right }}
           >
             <button

@@ -30,6 +30,9 @@ import { ConsumeStripForm } from "@/components/forms/ConsumeStripForm";
 import { InventoryFilters } from "@/components/inventory/InventoryFilters";
 import { EditCoilModal } from "@/components/inventory/EditCoilModal";
 import InventoryTable from "@/components/inventory/InventoryTable";
+import { XmlInvoiceReader } from "@/components/purchases/XmlInvoiceReader";
+import { PurchaseCoilFromXml } from "@/components/purchases/PurchaseCoilFromXml";
+import { BulkUploadCoils } from "@/components/purchases/BulkUploadCoils";
 
 export default function InventoryPage() {
   const { user, role } = useAuth();
@@ -270,6 +273,9 @@ export default function InventoryPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* <XmlInvoiceReader /> */}
+          <PurchaseCoilFromXml />
+          <BulkUploadCoils />
           <button
             onClick={exportToExcel}
             className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition shadow-sm font-medium"

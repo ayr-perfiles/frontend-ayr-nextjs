@@ -24,6 +24,7 @@ import { SalesMetrics } from "@/components/sales/SalesMetrics";
 import { SalesFilters } from "@/components/sales/SalesFilters";
 import { SalesTable } from "@/components/sales/SalesTable";
 import toast from "react-hot-toast";
+import { BulkUploadSales } from "@/components/sales/BulkUploadSales";
 
 export default function SalesPage() {
   const router = useRouter();
@@ -220,6 +221,8 @@ export default function SalesPage() {
             Historial de operaciones, facturación y despachos.
           </p>
         </div>
+
+        <BulkUploadSales />
         <Link
           href="/admin/sales/new"
           className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-200 active:scale-95"
