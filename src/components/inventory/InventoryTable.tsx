@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { Search } from "lucide-react";
+import { Search, Eye } from "lucide-react";
 import { Coil } from "@/types";
 import { WeightIndicator } from "./WeightIndicator";
 import InventoryActions from "./InventoryActions";
@@ -11,6 +11,7 @@ interface InventoryTableProps {
   onProcess: (coil: Coil) => void;
   onEdit: (coil: Coil) => void;
   onVoid: (coilId: string) => void;
+  onViewDetails: (coil: Coil) => void;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -41,6 +42,7 @@ export default function InventoryTable({
   onProcess,
   onEdit,
   onVoid,
+  onViewDetails,
 }: InventoryTableProps) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100">
@@ -75,7 +77,6 @@ export default function InventoryTable({
             {displayCoils.map((coil) => {
               const isVoided = coil.status === "VOIDED";
 
-              // AHORA USAMOS coil.registeredBy EN LUGAR DE coil.createdBy
               const creatorEmail = coil.registeredBy || "Sistema";
               const initial = creatorEmail.charAt(0).toUpperCase();
 
@@ -116,7 +117,6 @@ export default function InventoryTable({
                     />
                   </td>
 
-                  {/* CELDA DE RESPONSABLE ACTUALIZADA */}
                   <td
                     className={`p-4 ${isVoided ? "opacity-50 grayscale" : ""}`}
                   >
@@ -137,14 +137,24 @@ export default function InventoryTable({
                     <StatusBadge status={coil.status} />
                   </td>
                   <td className="p-4 relative">
-                    <InventoryActions
-                      coil={coil}
-                      role={role}
-                      isVoided={isVoided}
-                      onProcess={() => onProcess(coil)}
-                      onEdit={() => onEdit(coil)}
-                      onVoid={() => onVoid(coil.id)}
-                    />
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        onClick={() => onViewDetails(coil)}
+                        className="p-2 text-gray-400 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition"
+                        title="Ver Ficha Técnica"
+                      >
+                        <Eye size={18} />
+                      </button>
+
+                      <InventoryActions
+                        coil={coil}
+                        role={role}
+                        isVoided={isVoided}
+                        onProcess={() => onProcess(coil)}
+                        onEdit={() => onEdit(coil)}
+                        onVoid={() => onVoid(coil.id)}
+                      />
+                    </div>
                   </td>
                 </tr>
               );

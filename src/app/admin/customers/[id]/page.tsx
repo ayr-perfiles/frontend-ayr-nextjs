@@ -12,11 +12,11 @@ import {
   CheckCircle2,
   ArrowLeft,
   Loader2,
-  CreditCard,
   Clock,
   Receipt,
   Users,
   AlertCircle,
+  Briefcase,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -41,7 +41,6 @@ export default function CustomerProfilePage() {
   }, [documentNumber]);
 
   const handleTogglePayment = async (saleId: string, currentStatus: string) => {
-    // Si la venta está pendiente, la pasamos a pagada (PAID). Si no existe el campo, asumimos que es nueva/pendiente.
     const newStatus = currentStatus === "PAID" ? "PENDING" : "PAID";
     const confirmMessage =
       newStatus === "PAID"
@@ -54,7 +53,6 @@ export default function CustomerProfilePage() {
     try {
       await updatePaymentStatus(saleId, newStatus);
 
-      // Actualizamos la UI sin recargar
       setProfile((prev: any) => ({
         ...prev,
         salesHistory: prev.salesHistory.map((sale: any) =>
@@ -89,7 +87,6 @@ export default function CustomerProfilePage() {
 
   const { customerData, contacts, salesHistory } = profile;
 
-  // Cálculos rápidos de CRM
   const totalSalesCount = salesHistory.filter(
     (s: any) => s.status === "COMPLETED",
   ).length;
@@ -99,7 +96,6 @@ export default function CustomerProfilePage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20">
-      {/* BOTÓN VOLVER */}
       <button
         onClick={() => router.push("/admin/customers")}
         className="text-gray-500 hover:text-blue-600 font-bold flex items-center gap-2 transition"
@@ -108,7 +104,7 @@ export default function CustomerProfilePage() {
       </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* COLUMNA IZQUIERDA: DATOS DE LA EMPRESA */}
+        {/* COLUMNA IZQUIERDA */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-4">
@@ -136,7 +132,6 @@ export default function CustomerProfilePage() {
             </div>
           </div>
 
-          {/* TARJETA DE DEUDA (CUENTAS POR COBRAR) */}
           {pendingDebt > 0 && (
             <div className="bg-red-50 p-6 rounded-3xl border border-red-200 shadow-sm animate-in fade-in zoom-in-95">
               <div className="flex items-center gap-2 mb-2">
@@ -157,36 +152,68 @@ export default function CustomerProfilePage() {
             </div>
           )}
 
-          {/* CONTACTOS */}
+          {/* MÓDULO DE CONTACTOS ACTUALIZADO */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <h3 className="text-sm font-black text-gray-800 mb-4 uppercase tracking-widest flex items-center gap-2">
-              <Users size={16} className="text-emerald-500" /> Contactos
-              Autorizados
+              <Users size={16} className="text-blue-500" /> Vínculo Comercial
             </h3>
+
             {contacts.length === 0 ? (
-              <p className="text-xs font-medium text-gray-400 italic">
-                No hay contactos registrados.
-              </p>
+              <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl flex items-start gap-3">
+                <Briefcase
+                  size={20}
+                  className="text-blue-500 mt-0.5 shrink-0"
+                />
+                <div>
+                  <p className="font-bold text-blue-800 text-sm">
+                    Trato Directo
+                  </p>
+                  <p className="text-xs font-medium text-blue-600 mt-1">
+                    Esta empresa no cuenta con intermediarios. La gestión
+                    operativa y de ventas se realiza directamente a nombre de la
+                    razón social.
+                  </p>
+                </div>
+              </div>
             ) : (
               <div className="space-y-4">
-                {contacts.map((contact: any) => (
-                  <div
-                    key={contact.id}
-                    className="bg-gray-50 p-3 rounded-xl border border-gray-100"
-                  >
-                    <p className="font-bold text-gray-900 text-sm mb-2">
-                      {contact.name}
-                    </p>
-                    <p className="text-xs font-medium text-gray-600 flex items-center gap-2 mb-1">
-                      <Phone size={12} className="text-gray-400" />{" "}
-                      {contact.phone || "---"}
-                    </p>
-                    <p className="text-xs font-medium text-gray-600 flex items-center gap-2">
-                      <Mail size={12} className="text-gray-400" />{" "}
-                      {contact.email || "---"}
-                    </p>
-                  </div>
-                ))}
+                {contacts.map((contact: any) => {
+                  const isMultiCompany =
+                    contact.associatedCompanyIds?.length > 1;
+
+                  return (
+                    <div
+                      key={contact.id}
+                      className="bg-gray-50 p-4 rounded-xl border border-gray-100 relative overflow-hidden"
+                    >
+                      {/* Etiqueta Visual si representa a varias empresas */}
+                      {isMultiCompany && (
+                        <div className="absolute top-0 right-0 bg-purple-100 text-purple-700 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-bl-lg">
+                          Multi-Empresa ({contact.associatedCompanyIds.length})
+                        </div>
+                      )}
+
+                      <p className="font-black text-gray-900 text-sm mb-3 pr-20">
+                        {contact.name}
+                      </p>
+
+                      <div className="space-y-2">
+                        {contact.phone && (
+                          <p className="text-xs font-bold text-gray-600 flex items-center gap-2">
+                            <Phone size={14} className="text-gray-400" />{" "}
+                            {contact.phone}
+                          </p>
+                        )}
+                        {contact.email && (
+                          <p className="text-xs font-bold text-gray-600 flex items-center gap-2">
+                            <Mail size={14} className="text-gray-400" />{" "}
+                            {contact.email}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -215,7 +242,7 @@ export default function CustomerProfilePage() {
                       Documento
                     </th>
                     <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                      Estado Documento
+                      Estado
                     </th>
                     <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">
                       Total
@@ -283,7 +310,6 @@ export default function CustomerProfilePage() {
                             </p>
                           </td>
                           <td className="p-4 pr-6 text-center">
-                            {/* LÓGICA DE CUENTAS POR COBRAR: Solo aplica a VENTAS REALES */}
                             {isCompleted ? (
                               <button
                                 onClick={() =>

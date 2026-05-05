@@ -11,6 +11,7 @@ import {
   Copy,
   Loader2,
   Link as LinkIcon,
+  Eye, // <-- Importamos Eye
 } from "lucide-react";
 import { createPortal } from "react-dom";
 
@@ -22,6 +23,7 @@ interface SalesTableProps {
   onPrint: (sale: Sale) => void;
   onDuplicate: (saleId: string) => void;
   onApprove: (sale: Sale) => void;
+  onViewDetails: (sale: Sale) => void; // <-- NUEVA PROP
 }
 
 export function SalesTable({
@@ -32,11 +34,12 @@ export function SalesTable({
   onPrint,
   onDuplicate,
   onApprove,
+  onViewDetails, // <-- Desestructuramos
 }: SalesTableProps) {
   return (
     <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="overflow-x-auto pb-36">
-        <table className="w-full text-left min-w-[950px]">
+        <table className="w-full text-left min-w-237.5">
           <thead className="bg-gray-50/50 border-b border-gray-100">
             <tr>
               <th className="p-4 pl-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">
@@ -54,7 +57,7 @@ export function SalesTable({
               <th className="p-4 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right">
                 Ganancia / Rastro
               </th>
-              <th className="p-4 pr-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center w-24">
+              <th className="p-4 pr-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center w-28">
                 Acciones
               </th>
             </tr>
@@ -118,7 +121,6 @@ export function SalesTable({
                           <FileText size={12} /> Cot. Pendiente
                         </span>
                       )}
-                      {/* NUEVO ESTADO: Cotización que ya fue aprobada */}
                       {sale.status === "CONVERTED" && (
                         <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-[10px] font-black border border-blue-200 uppercase tracking-widest">
                           <CheckCircle2 size={12} /> Cot. Aprobada
@@ -157,7 +159,6 @@ export function SalesTable({
                           En espera
                         </span>
                       )}
-                      {/* NUEVO: Mostrar qué Venta se generó a partir de esta cotización */}
                       {sale.status === "CONVERTED" && (
                         <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest flex items-center justify-end gap-1">
                           <LinkIcon size={12} /> Generó{" "}
@@ -167,14 +168,25 @@ export function SalesTable({
                     </td>
 
                     <td className="p-4 pr-6 relative">
-                      <ActionMenu
-                        sale={sale}
-                        role={role}
-                        isProcessing={isProcessing}
-                        onPrint={() => onPrint(sale)}
-                        onDuplicate={() => onDuplicate(sale.id!)}
-                        onApprove={() => onApprove(sale)}
-                      />
+                      <div className="flex items-center justify-center gap-1">
+                        {/* NUEVO BOTÓN PARA ABRIR LA FICHA */}
+                        <button
+                          onClick={() => onViewDetails(sale)}
+                          className="p-2 text-gray-400 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition"
+                          title="Ver Ficha Técnica"
+                        >
+                          <Eye size={20} />
+                        </button>
+
+                        <ActionMenu
+                          sale={sale}
+                          role={role}
+                          isProcessing={isProcessing}
+                          onPrint={() => onPrint(sale)}
+                          onDuplicate={() => onDuplicate(sale.id!)}
+                          onApprove={() => onApprove(sale)}
+                        />
+                      </div>
                     </td>
                   </tr>
                 );
@@ -187,6 +199,7 @@ export function SalesTable({
   );
 }
 
+// ... EL COMPONENTE ActionMenu SE MANTIENE EXACTAMENTE IGUAL ...
 function ActionMenu({
   sale,
   role,
@@ -248,7 +261,7 @@ function ActionMenu({
         isOpen &&
         createPortal(
           <div
-            className="absolute w-48 bg-white border border-gray-100 rounded-xl shadow-2xl z-[9999] py-1 animate-in fade-in zoom-in-95"
+            className="absolute w-48 bg-white border border-gray-100 rounded-xl shadow-2xl z-9999 py-1 animate-in fade-in zoom-in-95"
             style={{ top: coords.top, right: coords.right }}
           >
             <button
@@ -265,7 +278,6 @@ function ActionMenu({
               <Copy size={16} /> Duplicar Operación
             </button>
 
-            {/* 🔒 AQUÍ ESTÁ EL CANDADO: Admin o Supervisor pueden aprobar */}
             {sale.status === "QUOTATION" &&
               (role === "ADMIN" || role === "SUPERVISOR") && (
                 <>
