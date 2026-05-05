@@ -1,236 +1,230 @@
 "use client";
-
 import React, { useState, useRef } from "react";
-import {
-  FileCode2,
-  Loader2,
-  CheckCircle2,
-  User,
-  Receipt,
-  PlusCircle,
-  Trash2,
-} from "lucide-react";
-import toast from "react-hot-toast";
+import { Upload, FileCode2, Loader2, Database } from "lucide-react";
 import { db } from "@/lib/firebase/clientApp";
-import { doc, writeBatch, serverTimestamp } from "firebase/firestore";
+import { writeBatch, doc, serverTimestamp } from "firebase/firestore";
+import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
-
-// Interfaces para manejar los datos extraídos
-interface ParsedXML {
-  invoiceNumber: string;
-  issueDate: string;
-  currency: string;
-  provider: { ruc: string; name: string };
-  items: any[];
-}
-
-interface CoilEntry {
-  id: string; // La serie interna que tú le asignas
-  description: string;
-  initialWeight: number;
-  masterWidth: number;
-  thickness: number;
-  pricePerKg: number;
-}
 
 export function PurchaseCoilFromXml() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [parsedData, setParsedData] = useState<ParsedXML | null>(null);
-  const [coilsToRegister, setCoilsToRegister] = useState<CoilEntry[]>([]);
+  const [parsedCoils, setParsedCoils] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Función para buscar nodos en el XML ignorando prefijos (cac:, cbc:)
+  const getNodeText = (node: Element | Document, tagName: string): string => {
+    const elements = node.getElementsByTagNameNS("*", tagName);
+    if (elements.length > 0) return elements[0].textContent || "";
+    const fallback = node.getElementsByTagName(tagName);
+    if (fallback.length > 0) return fallback[0].textContent || "";
+    const cbcFallback = node.getElementsByTagName(`cbc:${tagName}`);
+    if (cbcFallback.length > 0) return cbcFallback[0].textContent || "";
+    return "";
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setLoading(true);
-    setParsedData(null);
-    setCoilsToRegister([]);
+    let allCoils: any[] = [];
 
     try {
-      const text = await file.text();
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(text, "text/xml");
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const text = await file.text();
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(text, "text/xml");
 
-      if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
-        throw new Error("El archivo no es un XML válido.");
-      }
+        // Datos Generales
+        const invoiceNumber = getNodeText(xmlDoc, "ID");
+        const issueDate = getNodeText(xmlDoc, "IssueDate");
 
-      const getTagText = (
-        parent: Document | Element,
-        tag: string,
-        index = 0,
-      ) => {
-        const nodes = parent.getElementsByTagName(tag);
-        return nodes.length > index ? nodes[index].textContent || "" : "";
-      };
+        // Datos Proveedor
+        const supplierParty =
+          xmlDoc.getElementsByTagNameNS("*", "AccountingSupplierParty")[0] ||
+          xmlDoc.getElementsByTagName("cac:AccountingSupplierParty")[0];
+        let providerDoc = "";
+        let providerName = "";
 
-      // 1. Datos Generales de la Compra
-      const invoiceNumber = getTagText(xmlDoc, "cbc:ID");
-      const issueDate = getTagText(xmlDoc, "cbc:IssueDate");
-      const currency = getTagText(xmlDoc, "cbc:DocumentCurrencyCode");
+        if (supplierParty) {
+          providerDoc = getNodeText(supplierParty, "ID");
+          providerName =
+            getNodeText(supplierParty, "RegistrationName") ||
+            getNodeText(supplierParty, "Name");
+        }
 
-      // 2. Datos del Proveedor (AccountingSupplierParty)
-      const supplierParty = xmlDoc.getElementsByTagName(
-        "cac:AccountingSupplierParty",
-      )[0];
-      const providerRuc = supplierParty
-        ? getTagText(supplierParty, "cbc:ID")
-        : "Sin RUC";
-      const providerName = supplierParty
-        ? getTagText(supplierParty, "cbc:RegistrationName")
-        : "Sin Nombre";
+        // Líneas de Factura (Varios ítems)
+        const invoiceLines = xmlDoc.getElementsByTagNameNS("*", "InvoiceLine");
+        const linesArray =
+          invoiceLines.length > 0
+            ? invoiceLines
+            : xmlDoc.getElementsByTagName("cac:InvoiceLine");
 
-      // 3. Extraemos las Bobinas (Líneas de la factura)
-      const lines = xmlDoc.getElementsByTagName("cac:InvoiceLine");
-      const items: CoilEntry[] = [];
+        Array.from(linesArray).forEach((line, index) => {
+          const description = getNodeText(line, "Description").toUpperCase();
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        // Generalmente en acero, la "cantidad" facturada son los Kilos
-        const quantity =
-          parseFloat(getTagText(line, "cbc:InvoicedQuantity")) || 0;
-        const description = getTagText(line, "cbc:Description");
-        const priceAmount =
-          parseFloat(getTagText(line, "cbc:PriceAmount")) || 0;
+          if (
+            !description.includes("BOB") &&
+            !description.includes("ALUZINC") &&
+            !description.includes("GALVANIZADO")
+          )
+            return;
 
-        // Intentamos adivinar espesor y ancho desde la descripción del proveedor (Ej: "BOBINA 0.45x1200")
-        let guessedThickness = 0.45;
-        let guessedWidth = 1192;
+          const rawQuantity =
+            parseFloat(getNodeText(line, "InvoicedQuantity")) || 0;
+          let weightInKg = rawQuantity < 100 ? rawQuantity * 1000 : rawQuantity;
 
-        const descUpper = description.toUpperCase();
-        if (descUpper.includes("0.40")) guessedThickness = 0.4;
-        else if (descUpper.includes("0.50")) guessedThickness = 0.5;
-        else if (descUpper.includes("0.60")) guessedThickness = 0.6;
+          const totalValue =
+            parseFloat(getNodeText(line, "LineExtensionAmount")) || 0;
+          let costPerKg = weightInKg > 0 ? totalValue / weightInKg : 0;
 
-        if (descUpper.includes("1200")) guessedWidth = 1200;
-        else if (descUpper.includes("1220")) guessedWidth = 1220;
-        else if (descUpper.includes("1000")) guessedWidth = 1000;
+          let thickness = 0.45;
+          let width = 1200;
+          const thicknessMatch = description.match(/0\.\d{2}/);
+          if (thicknessMatch) thickness = parseFloat(thicknessMatch[0]);
+          const widthMatch = description.match(/1[0-2]\d{2}/);
+          if (widthMatch) width = parseFloat(widthMatch[0]);
 
-        items.push({
-          id: "", // Lo dejas vacío para que el operario lo llene con su codificación (Ej: PD05-12)
-          description,
-          initialWeight: quantity,
-          masterWidth: guessedWidth,
-          thickness: guessedThickness,
-          pricePerKg: priceAmount,
+          const generatedId = `${invoiceNumber}-${index + 1}`;
+
+          allCoils.push({
+            id: generatedId,
+            initialWeight: Math.round(weightInKg),
+            currentWeight: Math.round(weightInKg),
+            masterWidth: width,
+            thickness: thickness,
+            pricePerKg: Number(costPerKg.toFixed(6)),
+            status: "AVAILABLE",
+            provider: providerName || "SISTEMA",
+            providerDoc: providerDoc.replace(/\D/g, ""),
+            invoiceNumber: invoiceNumber,
+            invoiceDate: issueDate,
+            originalDescription: description,
+            totalValueLine: totalValue, // Para recalcular si editan el peso
+          });
         });
       }
 
-      setParsedData({
-        invoiceNumber,
-        issueDate,
-        currency,
-        provider: { ruc: providerRuc, name: providerName },
-        items: [],
-      });
-
-      setCoilsToRegister(items);
-      toast.success("Factura del proveedor leída correctamente.");
+      setParsedCoils(allCoils);
+      if (allCoils.length > 0)
+        toast.success(`XML Procesado: ${allCoils.length} bobinas detectadas.`);
+      else toast.error(`El XML se leyó, pero no se detectó ninguna bobina.`);
     } catch (error) {
       console.error(error);
-      toast.error(
-        "Error al leer el XML. Asegúrate de que sea una factura válida.",
-      );
+      toast.error("Error al analizar el archivo XML de SUNAT.");
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  // Actualiza los datos que el usuario modifica en la tablita
-  const handleUpdateCoil = (
-    index: number,
-    field: keyof CoilEntry,
-    value: string | number,
-  ) => {
-    const updated = [...coilsToRegister];
-    updated[index] = { ...updated[index], [field]: value };
-    setCoilsToRegister(updated);
-  };
+  // Función para manejar la edición en vivo antes de subir a Firebase
+  const handleUpdateCoil = (index: number, field: string, value: any) => {
+    const updated = [...parsedCoils];
+    updated[index][field] = value;
 
-  const handleRemoveCoil = (index: number) => {
-    setCoilsToRegister(coilsToRegister.filter((_, i) => i !== index));
-  };
-
-  // Función final para subir las bobinas a Firebase
-  const handleSaveToSystem = async () => {
-    // Validar que todas tengan ID
-    const missingIds = coilsToRegister.some((coil) => !coil.id.trim());
-    if (missingIds) {
-      toast.error(
-        "Por favor, asigna una Serie (ID) a todas las bobinas antes de guardar.",
-      );
-      return;
+    // Si editan el peso inicial, recalculamos el costo por kilo automáticamente
+    if (field === "initialWeight" && updated[index].totalValueLine) {
+      const newWeight = Number(value);
+      updated[index].currentWeight = newWeight;
+      updated[index].pricePerKg =
+        newWeight > 0
+          ? Number((updated[index].totalValueLine / newWeight).toFixed(6))
+          : 0;
     }
 
-    setLoading(true);
-    try {
-      const batch = writeBatch(db);
+    setParsedCoils(updated);
+  };
 
-      coilsToRegister.forEach((coil) => {
+  const handleUploadToFirebase = async () => {
+    if (parsedCoils.length === 0) return;
+    setLoading(true);
+
+    try {
+      const batches = [];
+      let currentBatch = writeBatch(db);
+      let opCount = 0;
+
+      for (const coil of parsedCoils) {
+        if (opCount === 490) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          opCount = 0;
+        }
+
         const docRef = doc(db, "coils", coil.id.toUpperCase());
-        const newCoilData = {
+        const docType =
+          coil.providerDoc && coil.providerDoc.length === 11
+            ? "LOCAL"
+            : "TAX_ID";
+
+        const coilData = {
           id: coil.id.toUpperCase(),
-          initialWeight: coil.initialWeight,
-          currentWeight: coil.initialWeight,
-          masterWidth: coil.masterWidth,
-          thickness: coil.thickness,
-          pricePerKg: coil.pricePerKg,
-          status: "AVAILABLE",
+          initialWeight: Number(coil.initialWeight),
+          currentWeight: Number(coil.currentWeight),
+          masterWidth: Number(coil.masterWidth),
+          thickness: Number(coil.thickness),
+          pricePerKg: Number(coil.pricePerKg),
+          status: coil.status,
+          registeredBy: user?.email || "Admin (XML)",
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-          registeredBy: user?.email || "Sistema",
           metadata: {
-            provider: parsedData?.provider.name,
-            providerRuc: parsedData?.provider.ruc,
-            invoiceNumber: parsedData?.invoiceNumber,
-            originalDescription: coil.description,
+            providerDocType: docType,
+            providerDoc: coil.providerDoc || null,
+            provider: coil.provider,
+            invoiceNumber: coil.invoiceNumber,
+            originalDescription: coil.originalDescription,
+            isHistoricalMigration: false,
           },
         };
-        batch.set(docRef, newCoilData);
-      });
 
-      await batch.commit();
+        currentBatch.set(docRef, coilData);
+        opCount++;
+      }
+
+      if (opCount > 0) batches.push(currentBatch);
+      await Promise.all(batches.map((b) => b.commit()));
 
       toast.success(
-        `${coilsToRegister.length} bobinas ingresadas exitosamente al inventario.`,
+        `¡${parsedCoils.length} bobinas ingresadas al inventario con éxito!`,
       );
-      setParsedData(null);
-      setCoilsToRegister([]);
+      setParsedCoils([]);
     } catch (error) {
-      console.error("Error guardando bobinas:", error);
-      toast.error("Hubo un error al guardar las bobinas en el sistema.");
+      console.error("Error en importación XML:", error);
+      toast.error("Hubo un error guardando los datos en la base de datos.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mt-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
         <div>
-          <h2 className="text-xl font-black text-gray-800 flex items-center gap-2">
-            <FileCode2 className="text-blue-600" />
-            Ingreso de Bobinas vía Factura XML
+          <h2 className="text-lg font-black text-gray-800 flex items-center gap-2">
+            <FileCode2 className="text-blue-600" size={20} />
+            Ingreso por Factura XML (SUNAT)
           </h2>
-          <p className="text-sm text-gray-500 font-medium mt-1">
-            Sube el XML de tu proveedor para autocompletar el ingreso de
-            mercadería.
+          <p className="text-sm text-gray-500 font-medium">
+            Sube uno o varios XML. Revisa y ajusta los detalles antes de poblar
+            el inventario.
           </p>
         </div>
 
-        <label className="cursor-pointer bg-blue-600 text-white hover:bg-blue-700 transition px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-sm shadow-blue-200">
+        <label className="cursor-pointer bg-blue-50 text-blue-700 hover:bg-blue-100 transition px-4 py-2 rounded-xl font-bold flex items-center gap-2">
           {loading ? (
             <Loader2 size={18} className="animate-spin" />
           ) : (
-            <PlusCircle size={18} />
+            <Upload size={18} />
           )}
-          Cargar XML de Compra
+          Seleccionar XML
           <input
             type="file"
             accept=".xml"
+            multiple
             className="hidden"
             ref={fileInputRef}
             onChange={handleFileUpload}
@@ -239,180 +233,110 @@ export function PurchaseCoilFromXml() {
         </label>
       </div>
 
-      {parsedData && (
-        <div className="animate-in fade-in slide-in-from-bottom-4 space-y-6">
-          {/* --- RESUMEN DE LA FACTURA --- */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex items-start gap-3">
-              <User className="text-blue-600 mt-0.5" size={20} />
-              <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                  Proveedor
-                </p>
-                <p className="font-bold text-gray-900">
-                  {parsedData.provider.name}
-                </p>
-                <p className="text-xs font-medium text-gray-500 mt-0.5">
-                  RUC: {parsedData.provider.ruc}
-                </p>
-              </div>
+      {parsedCoils.length > 0 && (
+        <div className="bg-blue-50/30 rounded-xl border border-blue-100 animate-in fade-in overflow-hidden">
+          <div className="flex justify-between items-center p-4 bg-blue-50/50 border-b border-blue-100">
+            <div>
+              <p className="font-bold text-gray-800 text-sm">
+                Bobinas detectadas ({parsedCoils.length}):
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Verifica el Ancho y Espesor, ya que a veces la descripción de la
+                factura no los incluye.
+              </p>
             </div>
-
-            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex items-start gap-3">
-              <Receipt className="text-blue-600 mt-0.5" size={20} />
-              <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                  Documento de Compra
-                </p>
-                <p className="font-bold text-gray-900">
-                  {parsedData.invoiceNumber}
-                </p>
-                <p className="text-xs font-medium text-gray-500 mt-0.5">
-                  Fecha: {parsedData.issueDate} | Moneda: {parsedData.currency}
-                </p>
-              </div>
-            </div>
+            <button
+              onClick={handleUploadToFirebase}
+              disabled={loading}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-black flex items-center gap-2 transition disabled:opacity-50 shadow-md shadow-blue-200"
+            >
+              {loading ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Database size={18} />
+              )}
+              Confirmar e Ingresar
+            </button>
           </div>
 
-          {/* --- TABLA AUTOCOMPLETADA DE BOBINAS --- */}
-          <div className="border border-gray-200 rounded-xl overflow-x-auto">
-            <table className="w-full text-left min-w-[800px]">
-              <thead className="bg-gray-50 border-b border-gray-200">
+          {/* TABLA DE EDICIÓN EN VIVO */}
+          <div className="overflow-x-auto max-h-[40vh] overflow-y-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-white sticky top-0 shadow-sm text-xs text-gray-500 uppercase tracking-wider font-bold">
                 <tr>
-                  <th className="p-3 text-xs font-black text-gray-500 uppercase">
-                    Serie (ID Interno) *
-                  </th>
-                  <th className="p-3 text-xs font-black text-gray-500 uppercase">
-                    Descripción Proveedor
-                  </th>
-                  <th className="p-3 text-xs font-black text-gray-500 uppercase">
-                    Peso (kg)
-                  </th>
-                  <th className="p-3 text-xs font-black text-gray-500 uppercase">
-                    Ancho (mm)
-                  </th>
-                  <th className="p-3 text-xs font-black text-gray-500 uppercase">
-                    Esp (mm)
-                  </th>
-                  <th className="p-3 text-xs font-black text-gray-500 uppercase">
-                    Costo x Kg
-                  </th>
-                  <th className="p-3 text-xs font-black text-gray-500 uppercase text-center">
-                    X
-                  </th>
+                  <th className="p-3">Código / Serie *</th>
+                  <th className="p-3">Peso (kg) *</th>
+                  <th className="p-3">Ancho (mm) *</th>
+                  <th className="p-3">Espesor (mm) *</th>
+                  <th className="p-3 text-right">Costo x Kg</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {coilsToRegister.map((coil, index) => (
-                  <tr key={index} className="hover:bg-gray-50 transition">
+              <tbody className="divide-y divide-gray-100 bg-white">
+                {parsedCoils.map((c, i) => (
+                  <tr key={i} className="hover:bg-blue-50/30 transition">
                     <td className="p-2">
                       <input
                         type="text"
-                        placeholder="Ej: PD01-05"
-                        required
-                        value={coil.id}
+                        value={c.id}
                         onChange={(e) =>
                           handleUpdateCoil(
-                            index,
+                            i,
                             "id",
                             e.target.value.toUpperCase(),
                           )
                         }
-                        className="w-full p-2 border border-gray-300 rounded-lg text-sm font-bold uppercase focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full border border-gray-200 p-2 rounded-lg font-bold uppercase focus:ring-2 focus:ring-blue-500 outline-none"
                       />
-                    </td>
-                    <td
-                      className="p-2 text-xs font-medium text-gray-500 max-w-[150px] truncate"
-                      title={coil.description}
-                    >
-                      {coil.description}
-                    </td>
-                    <td className="p-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={coil.initialWeight}
-                        onChange={(e) =>
-                          handleUpdateCoil(
-                            index,
-                            "initialWeight",
-                            parseFloat(e.target.value) || 0,
-                          )
-                        }
-                        className="w-24 p-2 border border-gray-300 rounded-lg text-sm font-medium focus:border-blue-500 outline-none"
-                      />
-                    </td>
-                    <td className="p-2">
-                      <input
-                        type="number"
-                        value={coil.masterWidth}
-                        onChange={(e) =>
-                          handleUpdateCoil(
-                            index,
-                            "masterWidth",
-                            parseFloat(e.target.value) || 0,
-                          )
-                        }
-                        className="w-20 p-2 border border-gray-300 rounded-lg text-sm font-medium focus:border-blue-500 outline-none"
-                      />
-                    </td>
-                    <td className="p-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={coil.thickness}
-                        onChange={(e) =>
-                          handleUpdateCoil(
-                            index,
-                            "thickness",
-                            parseFloat(e.target.value) || 0,
-                          )
-                        }
-                        className="w-20 p-2 border border-gray-300 rounded-lg text-sm font-medium focus:border-blue-500 outline-none"
-                      />
-                    </td>
-                    <td className="p-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={coil.pricePerKg}
-                        onChange={(e) =>
-                          handleUpdateCoil(
-                            index,
-                            "pricePerKg",
-                            parseFloat(e.target.value) || 0,
-                          )
-                        }
-                        className="w-20 p-2 border border-gray-300 rounded-lg text-sm font-medium focus:border-blue-500 outline-none"
-                      />
-                    </td>
-                    <td className="p-2 text-center">
-                      <button
-                        onClick={() => handleRemoveCoil(index)}
-                        className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition"
+                      <p
+                        className="text-[9px] text-gray-400 mt-1 truncate max-w-[150px]"
+                        title={c.originalDescription}
                       >
-                        <Trash2 size={16} />
-                      </button>
+                        Desc: {c.originalDescription}
+                      </p>
+                    </td>
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        value={c.initialWeight}
+                        onChange={(e) =>
+                          handleUpdateCoil(i, "initialWeight", e.target.value)
+                        }
+                        className="w-24 border border-gray-200 p-2 rounded-lg font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        value={c.masterWidth}
+                        onChange={(e) =>
+                          handleUpdateCoil(i, "masterWidth", e.target.value)
+                        }
+                        className="w-20 border border-gray-200 p-2 rounded-lg font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={c.thickness}
+                        onChange={(e) =>
+                          handleUpdateCoil(i, "thickness", e.target.value)
+                        }
+                        className="w-20 border border-gray-200 p-2 rounded-lg font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </td>
+                    <td className="p-2 text-right">
+                      <div className="font-bold text-blue-700">
+                        S/ {Number(c.pricePerKg).toFixed(4)}
+                      </div>
+                      <div className="text-[10px] text-gray-400">
+                        Total: S/ {c.totalValueLine.toFixed(2)}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-
-          <div className="flex justify-end pt-4">
-            <button
-              onClick={handleSaveToSystem}
-              disabled={loading || coilsToRegister.length === 0}
-              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-8 py-3 rounded-xl font-black flex items-center gap-2 transition active:scale-95 shadow-md shadow-green-200"
-            >
-              {loading ? (
-                <Loader2 className="animate-spin" />
-              ) : (
-                <CheckCircle2 size={20} />
-              )}
-              Ingresar Bobinas al Inventario
-            </button>
           </div>
         </div>
       )}

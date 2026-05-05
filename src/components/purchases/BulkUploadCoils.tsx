@@ -18,6 +18,27 @@ export function BulkUploadCoils() {
   const [parsedCoils, setParsedCoils] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Función inteligente para leer números con cualquier formato (Latino o USA)
+  const parseNum = (val: any) => {
+    if (typeof val === "number") return val;
+    if (!val) return 0;
+
+    let str = String(val).trim();
+    str = str.replace(/[^\d.,-]/g, "");
+
+    const lastComma = str.lastIndexOf(",");
+    const lastDot = str.lastIndexOf(".");
+
+    if (lastComma > lastDot) {
+      str = str.replace(/\./g, "");
+      str = str.replace(/,/g, ".");
+    } else if (lastDot > lastComma) {
+      str = str.replace(/,/g, "");
+    }
+
+    return parseFloat(str) || 0;
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -29,49 +50,70 @@ export function BulkUploadCoils() {
 
       let allCoils: any[] = [];
 
-      // Iteramos por todas las pestañas (Enero, Febrero, Marzo, etc.)
       workbook.SheetNames.forEach((sheetName) => {
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
         jsonData.forEach((row: any, index: number) => {
           const itemDescription = String(row["ITEM"] || "").toUpperCase();
-          const serie = row["Serie del CDP"];
-          const nroDoc = row["Nro CP o Doc."];
+          const serie = row["Serie del CDP"] || row["SERIE"];
+          const nroDoc =
+            row["Nro CP o Doc."] || row["NUMERO"] || row["NRO DOC"];
 
-          // Si no hay factura o no dice BOBINA, lo saltamos
           if (!serie || !nroDoc || !itemDescription.includes("BOB")) return;
 
-          // 1. Limpieza de Cantidad (Kilos)
-          const rawCantidad = String(row["CANTIDAD"]).replace(/,/g, ".");
-          let parsedCantidad = parseFloat(rawCantidad) || 0;
-
-          // Lógica inteligente: Si dice < 100 asume que son Toneladas y convierte a Kg.
-          // Si es > 100 asume que ya vino escrito en Kilos (Ej: 3824)
+          // 1. Limpieza de Cantidad
+          let parsedCantidad = parseNum(row["CANTIDAD"]);
           let weightInKg =
             parsedCantidad < 100 ? parsedCantidad * 1000 : parsedCantidad;
 
-          // 2. Extracción Regex de Espesor y Ancho de la descripción
+          // 2. Extracción Regex de Espesor y Ancho
           let thickness = 0.45;
           let width = 1200;
 
           const thicknessMatch = itemDescription.match(/0\.\d{2}/);
           if (thicknessMatch) thickness = parseFloat(thicknessMatch[0]);
 
-          const widthMatch = itemDescription.match(/1[0-2]\d{2}/); // Busca números como 1000, 1200, 1220
+          const widthMatch = itemDescription.match(/1[0-2]\d{2}/);
           if (widthMatch) width = parseFloat(widthMatch[0]);
 
-          // 3. Calculo del costo por Kg
-          // La columna VALOR TOTAL EN SOLES o VALOR EN SOLES
-          const rawTotalSoles = String(
-            row["VALOR TOTAL EN SOLES"] || row["VALOR EN SOLES"],
-          )
-            .replace(/[^\d.,]/g, "")
-            .replace(/,/g, ".");
-          let totalCost = parseFloat(rawTotalSoles) || 0;
+          // 3. Calculo del costo por Kg contable (Alta precisión)
+          const totalCost = parseNum(
+            row["VALOR TOTAL EN SOLES"] ||
+              row["VALOR EN SOLES"] ||
+              row["TOTAL"],
+          );
           let costPerKg = weightInKg > 0 ? totalCost / weightInKg : 0;
 
-          // 4. Autogenerar un ID único para la bobina histórica
+          // 4. Extracción Inteligente del RUC
+          const rawRuc = String(
+            row["RUC"] ||
+              row["R.U.C."] ||
+              row["RUC PROVEEDOR"] ||
+              row["NRO DOC PROVEEDOR"] ||
+              "",
+          ).replace(/\D/g, "");
+
+          // 5. TRUCO DEL MEDIODÍA PARA EVITAR EL DESFASE DE FECHA
+          const rawDate =
+            row["FECHA"] || row["F. EMISIÓN"] || row["FECHA EMISION"];
+          const finalDate = (() => {
+            if (rawDate instanceof Date) {
+              return new Date(
+                rawDate.getUTCFullYear(),
+                rawDate.getUTCMonth(),
+                rawDate.getUTCDate(),
+                12,
+                0,
+                0,
+              );
+            } else if (typeof rawDate === "string") {
+              return new Date(`${rawDate}T12:00:00`);
+            }
+            return new Date(); // Si no hay fecha, usa hoy
+          })();
+
+          // 6. Autogenerar un ID
           const generatedId = `${serie}-${nroDoc}-${index + 1}`;
 
           allCoils.push({
@@ -80,11 +122,12 @@ export function BulkUploadCoils() {
             currentWeight: Math.round(weightInKg),
             masterWidth: width,
             thickness: thickness,
-            pricePerKg: Number(costPerKg.toFixed(3)),
+            pricePerKg: Number(costPerKg.toFixed(6)), // 6 decimales para exactitud contable
             status: "AVAILABLE",
-            provider: row["PROVEEDOR"] || "SISTEMA",
+            provider: row["PROVEEDOR"] || row["RAZON SOCIAL"] || "SISTEMA",
+            providerDoc: rawRuc,
             invoiceNumber: `${serie}-${nroDoc}`,
-            invoiceDate: row["FECHA"],
+            invoiceDate: finalDate, // Asignamos la fecha corregida
             originalDescription: itemDescription,
           });
         });
@@ -92,7 +135,7 @@ export function BulkUploadCoils() {
 
       setParsedCoils(allCoils);
       toast.success(
-        `Archivo procesado: ${allCoils.length} bobinas extraídas de ${workbook.SheetNames.length} pestañas.`,
+        `Excel procesado: ${allCoils.length} bobinas extraídas correctamente.`,
       );
     } catch (error) {
       console.error(error);
@@ -119,8 +162,13 @@ export function BulkUploadCoils() {
           opCount = 0;
         }
 
-        // Documento en la colección 'coils'
         const docRef = doc(db, "coils", coil.id);
+
+        const docType =
+          coil.providerDoc &&
+          (coil.providerDoc.length === 8 || coil.providerDoc.length === 11)
+            ? "LOCAL"
+            : "TAX_ID";
 
         const coilData = {
           id: coil.id,
@@ -134,8 +182,11 @@ export function BulkUploadCoils() {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           metadata: {
+            providerDocType: docType,
+            providerDoc: coil.providerDoc || null,
             provider: coil.provider,
             invoiceNumber: coil.invoiceNumber,
+            invoiceDate: coil.invoiceDate, // AHORA SÍ GUARDAMOS LA FECHA EN LA BD
             originalDescription: coil.originalDescription,
             isHistoricalMigration: true,
           },
@@ -150,12 +201,12 @@ export function BulkUploadCoils() {
       await Promise.all(batches.map((b) => b.commit()));
 
       toast.success(
-        `¡${parsedCoils.length} bobinas históricas migradas al inventario con éxito!`,
+        `¡${parsedCoils.length} bobinas migradas al inventario con éxito!`,
       );
       setParsedCoils([]);
     } catch (error) {
       console.error("Error en migración:", error);
-      toast.error("Hubo un error subiendo los datos a la base de datos.");
+      toast.error("Hubo un error guardando los datos en la base de datos.");
     } finally {
       setLoading(false);
     }
@@ -170,8 +221,8 @@ export function BulkUploadCoils() {
             Migración Histórica de Bobinas (Compras)
           </h2>
           <p className="text-sm text-gray-500 font-medium">
-            Sube tu Excel "Itemizado_Facturas". Extractor automático de Kilos,
-            Espesor y Ancho.
+            Sube tu Excel "Itemizado_Facturas". Convierte decimales, extrae
+            fechas exactas y calcula Costo x Kg automáticamente.
           </p>
         </div>
 
@@ -198,11 +249,13 @@ export function BulkUploadCoils() {
           <div className="flex justify-between items-center">
             <div>
               <p className="font-bold text-gray-800 text-sm">
-                Bobinas detectadas en todas las pestañas:
+                Bobinas detectadas y calculadas:
               </p>
               <p className="text-purple-600 font-black text-xl">
                 {parsedCoils.length}{" "}
-                <span className="text-sm font-medium">unidades físicas</span>
+                <span className="text-sm font-medium">
+                  unidades con costo validado
+                </span>
               </p>
             </div>
             <button

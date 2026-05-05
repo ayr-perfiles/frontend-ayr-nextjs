@@ -39,10 +39,13 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
+const IGV_RATE = 0.18;
+
 interface CartItem {
   sku: string;
   quantity: number;
   unitPrice: number;
+  unitValue: number;
   baseCost: number;
   unitWeight: number;
 }
@@ -61,16 +64,17 @@ export default function NewSalePage() {
 
   const { user } = useAuth();
 
-  // --- ESTADOS GLOBALES ---
   const [catalog, setCatalog] = useState<ProductConfig[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
 
-  // --- ESTADOS DEL CLIENTE ---
   const [documentNumber, setDocumentNumber] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContactId, setSelectedContactId] = useState<string>("");
+
+  // NUEVO: Lista global de contactos para autocompletar
+  const [globalContacts, setGlobalContacts] = useState<Contact[]>([]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [suggestedCustomers, setSuggestedCustomers] = useState<any[]>([]);
@@ -87,7 +91,6 @@ export default function NewSalePage() {
   const [addPrice, setAddPrice] = useState<number | "">("");
   const [baseCost, setBaseCost] = useState<number>(0);
 
-  // Carga inicial
   useEffect(() => {
     const fetchGlobals = async () => {
       const dataSettings = await getSystemSettings();
@@ -100,6 +103,12 @@ export default function NewSalePage() {
       if (activeProducts.length > 0 && !selectedSku) {
         setSelectedSku(activeProducts[0].sku);
       }
+
+      // Cargamos todos los contactos de la base de datos para el autocompletado
+      const contactsSnap = await getDocs(collection(db, "contacts"));
+      setGlobalContacts(
+        contactsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Contact),
+      );
     };
     fetchGlobals();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -151,8 +160,12 @@ export default function NewSalePage() {
           const oldItems = data.items || [];
           const migratedItems = oldItems.map((item: any) => {
             const productInfo = catalog.find((p) => p.sku === item.sku);
+            const unitPrice = item.unitPrice || 0;
+            const unitValue = item.unitValue || unitPrice / (1 + IGV_RATE);
+
             return {
               ...item,
+              unitValue,
               unitWeight: item.unitWeight || productInfo?.standardWeight || 0,
             };
           });
@@ -185,8 +198,10 @@ export default function NewSalePage() {
       setBaseCost(cost);
 
       const targetMargin = (settings?.minMarginPercent || 20) / 100;
-      const suggestedPrice = cost / (1 - targetMargin);
-      setAddPrice(Number(suggestedPrice.toFixed(2)));
+      const suggestedValueWithoutIGV = cost / (1 - targetMargin);
+      const suggestedPriceWithIGV = suggestedValueWithoutIGV * (1 + IGV_RATE);
+
+      setAddPrice(Number(suggestedPriceWithIGV.toFixed(2)));
     } else {
       setBaseCost(0);
       setAddPrice("");
@@ -279,6 +294,32 @@ export default function NewSalePage() {
     if (!selectedContactId) setSelectedContactId(tempId);
   };
 
+  // Función inteligente que autocompleta si detecta un nombre existente en la BD Global
+  const handleContactNameChange = (index: number, newName: string) => {
+    const newContacts = [...contacts];
+    newContacts[index].name = newName;
+
+    // Buscamos si ese nombre existe exactamente en la BD
+    const existingContact = globalContacts.find(
+      (c) => c.name.toLowerCase() === newName.toLowerCase(),
+    );
+
+    if (existingContact) {
+      newContacts[index].id = existingContact.id; // Reciclamos su ID para no duplicarlo
+      newContacts[index].phone = existingContact.phone || "";
+      newContacts[index].email = existingContact.email || "";
+      toast.success(`Contacto "${existingContact.name}" autocompletado.`);
+    } else if (
+      newContacts[index].id &&
+      !newContacts[index].id?.startsWith("temp_")
+    ) {
+      // Si antes era un contacto existente pero le cambió el nombre, lo volvemos temporal
+      newContacts[index].id = `temp_${Date.now()}`;
+    }
+
+    setContacts(newContacts);
+  };
+
   const updateContact = (
     index: number,
     field: keyof Contact,
@@ -291,10 +332,14 @@ export default function NewSalePage() {
 
   const handleAddToCart = () => {
     if (!selectedSku || !addQuantity || !addPrice) return;
-    if (Number(addPrice) < baseCost) {
+
+    const inputPrice = Number(addPrice);
+    const unitValueWithoutIGV = inputPrice / (1 + IGV_RATE);
+
+    if (unitValueWithoutIGV < baseCost) {
       if (
         !confirm(
-          `⚠️ ALERTA: Estás vendiendo por debajo del costo de producción (S/ ${baseCost}). ¿Deseas continuar y generar pérdida?`,
+          `⚠️ ALERTA DE PÉRDIDA: El valor real del producto sin IGV (S/ ${unitValueWithoutIGV.toFixed(2)}) es MENOR que su costo de producción (S/ ${baseCost.toFixed(2)}). ¿Deseas vender a pérdida?`,
         )
       )
         return;
@@ -307,7 +352,7 @@ export default function NewSalePage() {
 
     if (!stockItem || stockItem.totalQuantity < requestedTotal) {
       toast.error(
-        `⚠️ Stock insuficiente. Solo tienes ${stockItem?.totalQuantity || 0} unidades de ${selectedSku}.`,
+        `⚠️ Stock insuficiente. Solo tienes ${stockItem?.totalQuantity || 0} unidades.`,
       );
       return;
     }
@@ -321,7 +366,8 @@ export default function NewSalePage() {
     if (existingItemIndex >= 0) {
       const newCart = [...cart];
       newCart[existingItemIndex].quantity += Number(addQuantity);
-      newCart[existingItemIndex].unitPrice = Number(addPrice);
+      newCart[existingItemIndex].unitPrice = inputPrice;
+      newCart[existingItemIndex].unitValue = unitValueWithoutIGV;
       setCart(newCart);
     } else {
       setCart([
@@ -329,7 +375,8 @@ export default function NewSalePage() {
         {
           sku: selectedSku,
           quantity: Number(addQuantity),
-          unitPrice: Number(addPrice),
+          unitPrice: inputPrice,
+          unitValue: unitValueWithoutIGV,
           baseCost,
           unitWeight,
         },
@@ -345,18 +392,23 @@ export default function NewSalePage() {
     (sum, item) => sum + item.quantity * item.unitPrice,
     0,
   );
+  const totalValue = cart.reduce(
+    (sum, item) => sum + item.quantity * item.unitValue,
+    0,
+  );
   const totalCost = cart.reduce(
     (sum, item) => sum + item.quantity * item.baseCost,
     0,
   );
+  const totalIGV = totalAmount - totalValue;
   const totalWeight = cart.reduce(
     (sum, item) => sum + item.quantity * item.unitWeight,
     0,
   );
 
-  const projectedProfit = totalAmount - totalCost;
+  const projectedProfit = totalValue - totalCost;
   const marginPercent =
-    totalAmount > 0 ? (projectedProfit / totalAmount) * 100 : 0;
+    totalValue > 0 ? (projectedProfit / totalValue) * 100 : 0;
 
   const MIN_MARGIN_ALERT = settings?.minMarginPercent ?? 20;
   const LOW_STOCK_ALERT = settings?.lowStockProduct ?? 100;
@@ -400,11 +452,19 @@ export default function NewSalePage() {
         finalContactIds.push(contactId as string);
       }
 
+      const docType =
+        documentNumber.length === 11
+          ? "RUC"
+          : documentNumber.length === 8
+            ? "DNI"
+            : "TAX_ID";
+
       await setDoc(
         doc(db, "customers", documentNumber),
         {
           name: customerName,
           documentNumber: documentNumber,
+          documentType: docType,
           address: customerAddress,
           contactIds: finalContactIds,
           lastUpdate: serverTimestamp(),
@@ -451,13 +511,20 @@ export default function NewSalePage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20">
+      {/* Carga del datalist oculto para autocompletar contactos */}
+      <datalist id="global-contacts-list">
+        {globalContacts.map((c) => (
+          <option key={c.id} value={c.name} />
+        ))}
+      </datalist>
+
       <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <div>
           <h1 className="text-2xl font-black flex items-center gap-2 text-gray-800 tracking-tight">
             <ShoppingCart className="text-blue-600" /> Nuevo Documento
           </h1>
           <p className="text-gray-500 text-sm font-medium">
-            Cotización o Venta Directa con alertas dinámicas.
+            Cotización o Venta Directa con cálculo contable real (IGV separado).
           </p>
         </div>
         <button
@@ -485,7 +552,7 @@ export default function NewSalePage() {
                     <input
                       type="text"
                       placeholder="Ej: 20123..."
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 h-[48px]"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       onFocus={() =>
@@ -514,7 +581,7 @@ export default function NewSalePage() {
                   <button
                     onClick={handleDeepSearchClient}
                     disabled={isSearchingClient}
-                    className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition disabled:opacity-50 flex-shrink-0"
+                    className="bg-blue-600 text-white px-4 rounded-xl hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center shrink-0 h-[48px]"
                   >
                     {isSearchingClient ? (
                       <Loader2 size={20} className="animate-spin" />
@@ -530,12 +597,13 @@ export default function NewSalePage() {
                 </label>
                 <input
                   type="text"
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 h-[48px]"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                 />
               </div>
             </div>
+
             <div className="mb-6">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
                 <MapPin size={12} /> Dirección Fiscal
@@ -547,10 +615,11 @@ export default function NewSalePage() {
                 onChange={(e) => setCustomerAddress(e.target.value)}
               />
             </div>
+
             <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
               <div className="flex justify-between items-center mb-4">
                 <label className="text-[10px] font-black text-blue-800 uppercase tracking-widest flex items-center gap-1">
-                  <Users size={14} /> Contactos
+                  <Users size={14} /> Contactos (Vínculo Directo)
                 </label>
                 <button
                   onClick={addContact}
@@ -560,8 +629,9 @@ export default function NewSalePage() {
                 </button>
               </div>
               {contacts.length === 0 && (
-                <p className="text-xs text-blue-400 font-medium italic">
-                  Sin contactos registrados.
+                <p className="text-xs text-blue-400 font-medium italic mb-2">
+                  Sin contactos. Escribe un nombre y el sistema lo buscará en el
+                  Directorio Global.
                 </p>
               )}
               <div className="space-y-3">
@@ -580,19 +650,21 @@ export default function NewSalePage() {
                         className="w-4 h-4 text-blue-600 cursor-pointer"
                       />
                     </div>
+                    {/* AUTOCOMPLETADO DE CONTACTO */}
                     <input
                       type="text"
-                      placeholder="Nombre"
-                      className="md:col-span-4 p-2 border rounded-lg text-sm bg-gray-50"
+                      list="global-contacts-list"
+                      placeholder="Escribe el Nombre..."
+                      className="md:col-span-4 p-2 border border-gray-200 rounded-lg text-sm bg-white font-bold focus:ring-2 focus:ring-blue-400 outline-none"
                       value={contact.name}
                       onChange={(e) =>
-                        updateContact(idx, "name", e.target.value)
+                        handleContactNameChange(idx, e.target.value)
                       }
                     />
                     <input
                       type="tel"
                       placeholder="Celular"
-                      className="md:col-span-3 p-2 border rounded-lg text-sm bg-gray-50"
+                      className="md:col-span-3 p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-blue-400 outline-none"
                       value={contact.phone}
                       onChange={(e) =>
                         updateContact(idx, "phone", e.target.value)
@@ -601,7 +673,7 @@ export default function NewSalePage() {
                     <input
                       type="email"
                       placeholder="Correo"
-                      className="md:col-span-4 p-2 border rounded-lg text-sm bg-gray-50"
+                      className="md:col-span-4 p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-blue-400 outline-none"
                       value={contact.email}
                       onChange={(e) =>
                         updateContact(idx, "email", e.target.value)
@@ -613,18 +685,20 @@ export default function NewSalePage() {
             </div>
           </div>
 
-          {/* MÓDULO DE PRODUCTOS */}
+          {/* SECCIÓN PRODUCTOS CON ALINEACIÓN PERFECTA */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <h2 className="text-lg font-black text-gray-800 mb-6 flex items-center gap-2 border-b border-gray-50 pb-4">
               <Plus size={20} className="text-blue-500" /> Agregar Productos
             </h2>
-            <div className="flex flex-col md:flex-row items-end gap-4">
+
+            {/* AGREGAMOS pb-6 AL CONTENEDOR PARA DARLE ESPACIO AL TEXTO ABSOLUTO DE ABAJO */}
+            <div className="flex flex-col md:flex-row items-end gap-4 pb-6">
               <div className="flex-1 w-full">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
                   Seleccionar Producto
                 </label>
                 <select
-                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 h-[56px]"
                   value={selectedSku}
                   onChange={(e) => setSelectedSku(e.target.value)}
                 >
@@ -635,7 +709,6 @@ export default function NewSalePage() {
                         (s) => s.sku === prod.sku,
                       );
                       const stock = stockItem?.totalQuantity || 0;
-                      const isLowStock = stock > 0 && stock <= LOW_STOCK_ALERT;
                       return (
                         <option
                           key={prod.sku}
@@ -643,24 +716,11 @@ export default function NewSalePage() {
                           disabled={stock === 0}
                         >
                           {prod.sku} - {prod.name} | Disp: {stock}{" "}
-                          {isLowStock ? "⚠️ (Bajo)" : ""}
+                          {stock > 0 && stock <= LOW_STOCK_ALERT ? "⚠️" : ""}
                         </option>
                       );
                     })}
                 </select>
-                {(() => {
-                  const s =
-                    availableStock.find((s) => s.sku === selectedSku)
-                      ?.totalQuantity || 0;
-                  if (s > 0 && s <= LOW_STOCK_ALERT) {
-                    return (
-                      <p className="text-[10px] text-orange-500 font-bold mt-1 flex items-center gap-1">
-                        <AlertTriangle size={12} /> Quedan pocas unidades ({s}).
-                      </p>
-                    );
-                  }
-                  return null;
-                })()}
               </div>
 
               <div className="w-full md:w-32">
@@ -670,7 +730,7 @@ export default function NewSalePage() {
                 <input
                   type="number"
                   min="1"
-                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-blue-500 text-center h-[56px]"
                   value={addQuantity}
                   onChange={(e) =>
                     setAddQuantity(e.target.value ? Number(e.target.value) : "")
@@ -678,12 +738,12 @@ export default function NewSalePage() {
                 />
               </div>
 
-              <div className="w-full md:w-40 relative group">
+              <div className="w-full md:w-48 relative group">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                  Precio Venta (S/)
+                  Precio Venta (Con IGV)
                 </label>
-                <div className="absolute -top-10 left-0 bg-gray-900 text-white text-[10px] font-bold p-2 rounded-lg opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none z-10">
-                  Costo Base: S/ {baseCost.toFixed(2)}
+                <div className="absolute -top-12 left-0 bg-gray-900 text-white text-[10px] font-bold p-2 rounded-lg opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none z-10">
+                  Costo Base Empresa: S/ {baseCost.toFixed(2)}
                 </div>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">
@@ -693,19 +753,27 @@ export default function NewSalePage() {
                     type="number"
                     min="0"
                     step="0.01"
-                    className={`w-full p-4 pl-10 border-2 rounded-xl font-black outline-none transition ${Number(addPrice) < baseCost ? "border-red-400 text-red-600 bg-red-50" : "border-gray-200 text-green-700 bg-gray-50 focus:border-blue-500"}`}
+                    className={`w-full p-4 pl-10 border-2 rounded-xl font-black outline-none h-[56px] transition ${Number(addPrice) / (1 + IGV_RATE) < baseCost ? "border-red-400 text-red-600 bg-red-50" : "border-gray-200 text-green-700 bg-gray-50 focus:border-blue-500"}`}
                     value={addPrice}
                     onChange={(e) =>
                       setAddPrice(e.target.value ? Number(e.target.value) : "")
                     }
                   />
                 </div>
+
+                {/* SOLUCIÓN DE ALINEACIÓN: Position absolute saca el texto del flujo normal */}
+                {addPrice && (
+                  <p className="absolute -bottom-5 left-1 text-[10px] text-gray-500 font-bold whitespace-nowrap">
+                    Valor S/IGV: S/ {(Number(addPrice) / 1.18).toFixed(2)}
+                  </p>
+                )}
               </div>
 
+              {/* Botón con altura fija para alinearse perfecto con los inputs */}
               <button
                 onClick={handleAddToCart}
                 disabled={!addQuantity || !addPrice}
-                className="w-full md:w-auto bg-gray-900 text-white px-8 py-4 rounded-xl font-black hover:bg-black disabled:opacity-50 transition active:scale-95"
+                className="w-full md:w-auto bg-gray-900 text-white px-8 rounded-xl font-black hover:bg-black disabled:opacity-50 transition active:scale-95 h-[56px] flex items-center justify-center"
               >
                 Añadir
               </button>
@@ -713,7 +781,7 @@ export default function NewSalePage() {
           </div>
         </div>
 
-        {/* COLUMNA DERECHA: Resumen */}
+        {/* COLUMNA DERECHA (RESUMEN FINANCIERO) INTACTA */}
         <div className="lg:col-span-4 flex flex-col gap-6">
           <div className="bg-white p-6 rounded-3xl shadow-xl shadow-blue-100/50 border border-blue-100 flex flex-col h-full sticky top-6">
             <h2 className="text-xl font-black text-gray-800 mb-4 border-b border-gray-100 pb-4 flex justify-between items-center">
@@ -734,12 +802,10 @@ export default function NewSalePage() {
               ) : (
                 cart.map((item, index) => {
                   const itemProfit =
-                    (item.unitPrice - item.baseCost) * item.quantity;
+                    (item.unitValue - item.baseCost) * item.quantity;
                   const itemMargin =
-                    ((item.unitPrice - item.baseCost) / item.unitPrice) * 100;
-                  const isLoss = item.unitPrice < item.baseCost;
-
-                  // TOLERANCIA DEL 0.5% POR REDONDEO DECIMAL AL GENERAR PRECIO AUTO
+                    ((item.unitValue - item.baseCost) / item.unitValue) * 100;
+                  const isLoss = item.unitValue < item.baseCost;
                   const isLowMargin =
                     !isLoss && itemMargin < MIN_MARGIN_ALERT - 0.5;
 
@@ -784,21 +850,30 @@ export default function NewSalePage() {
               )}
             </div>
 
-            {/* TABLERO INFERIOR */}
             <div className="bg-gray-900 p-6 rounded-2xl text-white space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="font-bold text-gray-400 uppercase tracking-widest text-xs">
-                  Total Venta:
+              <div className="flex justify-between items-center text-gray-400 text-sm font-medium">
+                <span>Subtotal (Valor Venta)</span>
+                <span>S/ {totalValue.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center text-gray-400 text-sm font-medium">
+                <span>IGV (18%)</span>
+                <span>S/ {totalIGV.toFixed(2)}</span>
+              </div>
+
+              <div className="flex justify-between items-center pt-2 border-t border-gray-700">
+                <span className="font-bold text-gray-200 uppercase tracking-widest text-sm">
+                  TOTAL:
                 </span>
                 <span className="font-black text-3xl">
                   S/ {totalAmount.toFixed(2)}
                 </span>
               </div>
+
               {cart.length > 0 && (
                 <div className="flex justify-between items-center pt-3 border-t border-gray-700">
                   <div className="flex flex-col">
                     <span className="font-bold text-emerald-400 flex items-center gap-1 text-xs">
-                      <Info size={14} /> Ganancia Neta:
+                      <Info size={14} /> Ganancia Neta Real:
                     </span>
                     <span
                       className={`text-[10px] font-black mt-1 flex items-center gap-0.5 uppercase tracking-widest ${marginPercent < MIN_MARGIN_ALERT - 0.5 ? "text-red-400" : "text-gray-400"}`}

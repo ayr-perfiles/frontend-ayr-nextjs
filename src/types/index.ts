@@ -15,16 +15,25 @@ export interface Coil {
   id: string;
   initialWeight: number;
   currentWeight: number;
-  masterWidth: number;
-  thickness: number;
+  masterWidth?: number;
+  thickness?: number;
   pricePerKg: number;
   status: CoilStatus;
   plannedStrips?: PlannedStrip[];
-  registeredBy?: string; // Trazabilidad de ingreso
+  registeredBy: string;
   createdAt: any;
   updatedAt: any;
   metadata?: {
     provider?: string;
+    // --- NUEVOS CAMPOS AGREGADOS ---
+    providerDocType?: "LOCAL" | "TAX_ID";
+    providerDoc?: string;
+    providerRuc?: string; // Lo dejamos por retrocompatibilidad
+    invoiceNumber?: string;
+    // -------------------------------
+    originalDescription?: string;
+    isHistoricalMigration?: boolean;
+    isManualEntry?: boolean;
     observations?: string;
   };
 }
@@ -40,20 +49,32 @@ export interface StockSummary {
 export interface SaleItem {
   sku: string;
   quantity: number;
-  unitPrice: number;
-  unitCost: number;
-  subtotal: number;
-  profit: number;
+  unitPrice: number; // Precio FINAL (Con IGV)
+  unitValue: number; // NUEVO: Valor Real (Sin IGV)
+  baseCost: number; // NUEVO: Costo de producción (Sin IGV)
+  unitWeight: number; // NUEVO: Peso unitario para calcular el peso total de la venta
+
+  // --- Retrocompatibilidad (Para ventas antiguas) ---
+  unitCost?: number;
+  subtotal?: number;
+  profit?: number;
 }
 
 export interface Sale {
   id?: string;
   customerName: string;
   documentNumber?: string;
+
+  // --- NUEVOS CAMPOS DE DESPACHO Y CONTACTO ---
+  customerAddress?: string;
+  contactName?: string;
+  contactPhone?: string;
+  // --------------------------------------------
+
   items: SaleItem[];
   totalAmount: number;
   totalCost: number;
-  totalProfit: number;
+  totalProfit?: number;
   status: "QUOTATION" | "COMPLETED" | "CANCELLED" | "CONVERTED";
   validUntil?: any;
   sellerId: string;

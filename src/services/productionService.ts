@@ -105,6 +105,13 @@ export const processSingleStrip = async (
       const activeStrip = coil.plannedStrips![stripIndex];
 
       // --- 1. CAPA DE SEGURIDAD: VALIDACIÓN FÍSICA ---
+      // Validación Estricta para evitar NaN y errores de TypeScript
+      if (!coil.masterWidth || !coil.initialWeight) {
+        throw new Error(
+          "Data corrupta: La bobina seleccionada no tiene un ancho maestro o peso inicial registrado.",
+        );
+      }
+
       // Calculamos cuánto pesa exactamente este fleje
       const weightPerMm = coil.initialWeight / coil.masterWidth;
       const theoreticalStripWeight = activeStrip.width * weightPerMm;
@@ -142,7 +149,7 @@ export const processSingleStrip = async (
 
       const newCurrentWeight = Math.max(
         0,
-        coil.currentWeight - theoreticalStripWeight,
+        (coil.currentWeight || coil.initialWeight) - theoreticalStripWeight,
       );
 
       // --- 3. ACTUALIZACIÓN DE ESTADOS ---
@@ -259,6 +266,14 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
       // 2. REVERTIR BOBINA (Devolver el fleje)
       if (coilDoc.exists()) {
         const coilData = coilDoc.data() as Coil;
+
+        // Protección adicional de TypeScript al revertir
+        if (!coilData.masterWidth || !coilData.initialWeight) {
+          throw new Error(
+            "Data corrupta: La bobina madre no tiene un ancho maestro o peso inicial registrado.",
+          );
+        }
+
         const updatedStrips = coilData.plannedStrips?.map((strip) => {
           if (strip.sku === logData.sku) {
             return { ...strip, pendingCount: strip.pendingCount + 1 };
@@ -271,7 +286,7 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
         const restoredStripWeight = logData.totalUsedWidth * weightPerMm;
         const newCurrentWeight = Math.min(
           coilData.initialWeight,
-          coilData.currentWeight + restoredStripWeight,
+          (coilData.currentWeight || 0) + restoredStripWeight,
         );
 
         transaction.update(coilRef, {

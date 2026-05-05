@@ -17,7 +17,14 @@ import {
 import { Sale } from "@/types";
 import { approveQuotation } from "@/services/salesService";
 import { PrintableTicket } from "@/components/sales/PrintableTicket";
-import { ShoppingBag, Plus, ChevronDown } from "lucide-react";
+import {
+  ShoppingBag,
+  Plus,
+  ChevronDown,
+  Download,
+  FileSpreadsheet,
+  X,
+} from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 import { SalesMetrics } from "@/components/sales/SalesMetrics";
@@ -25,13 +32,76 @@ import { SalesFilters } from "@/components/sales/SalesFilters";
 import { SalesTable } from "@/components/sales/SalesTable";
 import toast from "react-hot-toast";
 import { BulkUploadSales } from "@/components/sales/BulkUploadSales";
+import { SaleDetailsModal } from "@/components/sales/SaleDetailsModal";
+
+// --- SUB-COMPONENTE: MENÚ DESPLEGABLE DE OPCIONES ---
+function HeaderOptions({
+  onExport,
+  onOpenExcel,
+}: {
+  onExport: () => void;
+  onOpenExcel: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative z-40">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2.5 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition font-bold shadow-sm h-full"
+      >
+        Opciones{" "}
+        <ChevronDown
+          size={18}
+          className={`transition-transform ${isOpen ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-30"
+            onClick={() => setIsOpen(false)}
+          ></div>
+          <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 py-2 animate-in fade-in zoom-in-95">
+            <p className="px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              Exportar / Importar
+            </p>
+
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                onExport();
+              }}
+              className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-3 font-medium transition"
+            >
+              <Download size={18} className="text-gray-400" /> Descargar Reporte
+              CSV
+            </button>
+
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                onOpenExcel();
+              }}
+              className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-3 font-medium transition"
+            >
+              <FileSpreadsheet size={18} className="text-green-500" /> Migración
+              Masiva (Excel)
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+// ------------------------------------------------------
 
 export default function SalesPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // Ahora guardamos el documento del cliente en la URL, no el ID de una venta
   const initialCustomerDoc = searchParams.get("customerDoc");
   const { role } = useAuth();
 
@@ -44,9 +114,8 @@ export default function SalesPage() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
 
-  // Búsqueda de Clientes
   const [searchTerm, setSearchTerm] = useState(initialCustomerDoc || "");
-  const [suggestions, setSuggestions] = useState<any[]>([]); // Clientes de Algolia
+  const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -54,6 +123,10 @@ export default function SalesPage() {
     initialCustomerDoc,
   );
   const searchInputRef = useRef<HTMLDivElement>(null);
+
+  // Estados de Modales
+  const [viewingSale, setViewingSale] = useState<Sale | null>(null);
+  const [showExcelModal, setShowExcelModal] = useState(false);
 
   const [saleToPrint, setSaleToPrint] = useState<Sale | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
@@ -78,30 +151,23 @@ export default function SalesPage() {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
-  // 1. CONSULTA PRINCIPAL A FIREBASE (Aplica TODOS los filtros dinámicamente)
   useEffect(() => {
     let baseQuery = collection(db, "sales");
     let queryConstraints: any[] = [];
 
-    // Filtro por Cliente
-    if (selectedCustomerDoc) {
+    if (selectedCustomerDoc)
       queryConstraints.push(where("documentNumber", "==", selectedCustomerDoc));
-    }
-    // Filtro por Estado
-    if (statusFilter !== "ALL") {
+    if (statusFilter !== "ALL")
       queryConstraints.push(where("status", "==", statusFilter));
-    }
-    // Filtros de Fecha
-    if (startDate) {
+
+    if (startDate)
       queryConstraints.push(
         where("timestamp", ">=", new Date(startDate + "T00:00:00")),
       );
-    }
-    if (endDate) {
+    if (endDate)
       queryConstraints.push(
         where("timestamp", "<=", new Date(endDate + "T23:59:59")),
       );
-    }
 
     queryConstraints.push(orderBy("timestamp", "desc"), limit(limitCount));
 
@@ -113,23 +179,20 @@ export default function SalesPage() {
     return () => unsub();
   }, [limitCount, startDate, endDate, statusFilter, selectedCustomerDoc]);
 
-  // 2. ALGOLIA SEARCH (Busca CLIENTES, no ventas)
   useEffect(() => {
     if (searchTerm.trim().length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
-
-    // Evita buscar si lo que hay en el input es el RUC/DNI ya seleccionado
     if (selectedCustomerDoc && searchTerm === selectedCustomerDoc) return;
-    if (selectedCustomerDoc && searchTerm !== selectedCustomerDoc) return; // Bloquea si hay cliente seleccionado pero tipean
+    if (selectedCustomerDoc && searchTerm !== selectedCustomerDoc) return;
 
     const getSuggestions = async () => {
       setIsSearching(true);
       try {
         const { hits } = await algoliaClient.searchSingleIndex({
-          indexName: ALGOLIA_INDICES.CUSTOMERS, // <-- Apuntamos a clientes
+          indexName: ALGOLIA_INDICES.CUSTOMERS,
           searchParams: { query: searchTerm, hitsPerPage: 5 },
         });
         setSuggestions(hits);
@@ -145,7 +208,6 @@ export default function SalesPage() {
     return () => clearTimeout(timeoutId);
   }, [searchTerm, selectedCustomerDoc]);
 
-  // Ocultar sugerencias clicando afuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -159,7 +221,6 @@ export default function SalesPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 3. CÁLCULOS FINANCIEROS (Se calculan sobre la data que devuelve Firebase)
   const validSales = sales.filter((s) => s.status === "COMPLETED");
   const totalRevenue = validSales.reduce(
     (sum, s) => sum + (s.totalAmount || 0),
@@ -174,7 +235,6 @@ export default function SalesPage() {
     0,
   );
 
-  // 4. ACCIONES
   const handleApprove = async (sale: Sale) => {
     if (
       !confirm(
@@ -197,9 +257,9 @@ export default function SalesPage() {
 
   const handleSelectCustomer = (docNumber: string, customerName: string) => {
     setSelectedCustomerDoc(docNumber);
-    setSearchTerm(customerName); // Muestra el nombre en el input para mejor UX
+    setSearchTerm(customerName);
     setShowSuggestions(false);
-    setLimitCount(30); // Reiniciamos paginación
+    setLimitCount(30);
     updateUrlParams(docNumber);
   };
 
@@ -210,8 +270,47 @@ export default function SalesPage() {
     updateUrlParams(null);
   };
 
+  const exportSalesToExcel = () => {
+    const headers = [
+      "Documento",
+      "Fecha",
+      "Cliente",
+      "RUC/DNI",
+      "Estado",
+      "Total (S/)",
+      "Ganancia Neta (S/)",
+    ];
+    const rows = sales.map((s) => [
+      s.id,
+      s.timestamp?.toDate ? s.timestamp.toDate().toLocaleDateString() : "",
+      s.customerName,
+      s.documentNumber || "",
+      s.status,
+      s.totalAmount?.toFixed(2) || "0.00",
+      s.totalProfit?.toFixed(2) || "0.00",
+    ]);
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((r) => r.join(",")),
+    ].join("\n");
+    const blob = new Blob(["\uFEFF" + csvContent], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `Reporte_Ventas_${new Date().toLocaleDateString()}.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="space-y-6 pb-10">
+    <div className="space-y-6 pb-10 relative">
+      {/* CABECERA LIMPIA Y PROFESIONAL */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
         <div>
           <h1 className="text-2xl font-black flex items-center gap-2 text-gray-800 tracking-tight">
@@ -222,13 +321,19 @@ export default function SalesPage() {
           </p>
         </div>
 
-        <BulkUploadSales />
-        <Link
-          href="/admin/sales/new"
-          className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-200 active:scale-95"
-        >
-          <Plus size={18} /> Nueva Operación
-        </Link>
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <HeaderOptions
+            onExport={exportSalesToExcel}
+            onOpenExcel={() => setShowExcelModal(true)}
+          />
+
+          <Link
+            href="/admin/sales/new"
+            className="bg-blue-600 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition active:scale-95 shadow-md shadow-blue-200 font-black flex-1 md:flex-none"
+          >
+            <Plus size={20} /> Nueva Operación
+          </Link>
+        </div>
       </div>
 
       <SalesMetrics
@@ -258,13 +363,14 @@ export default function SalesPage() {
       />
 
       <SalesTable
-        displaySales={sales} // <-- Le pasamos directamente la data de Firebase
+        displaySales={sales}
         isLoading={isLoading}
         role={role}
         isProcessing={isProcessing}
         onPrint={setSaleToPrint}
         onDuplicate={(id) => router.push(`/admin/sales/new?duplicateId=${id}`)}
         onApprove={handleApprove}
+        onViewDetails={setViewingSale}
       />
 
       {sales.length >= limitCount && (
@@ -278,6 +384,32 @@ export default function SalesPage() {
         </div>
       )}
 
+      {/* --- MODALES --- */}
+
+      {viewingSale && (
+        <SaleDetailsModal
+          sale={viewingSale}
+          onClose={() => setViewingSale(null)}
+        />
+      )}
+
+      {showExcelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl relative my-8 animate-in fade-in zoom-in-95">
+            <button
+              onClick={() => setShowExcelModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 z-10 bg-white rounded-full p-1 shadow-sm border border-gray-100 transition"
+            >
+              <X size={20} />
+            </button>
+            <div className="p-6">
+              <BulkUploadSales />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- TICKET OCULTO PARA IMPRESIÓN --- */}
       <div className="hidden">
         <div ref={printRef}>
           {saleToPrint && <PrintableTicket sale={saleToPrint} />}

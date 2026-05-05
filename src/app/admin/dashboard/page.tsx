@@ -57,7 +57,7 @@ export default function DashboardPage() {
       snapshot.docs.forEach((doc) => {
         const data = doc.data() as Sale;
         salesSum += data.totalAmount;
-        profitSum += data.totalProfit;
+        profitSum += data.totalProfit || 0;
       });
       setKpis((prev) => ({
         ...prev,
@@ -250,7 +250,7 @@ export default function DashboardPage() {
                       {sale.status === "COMPLETED" && (
                         <p className="text-xs font-bold text-emerald-600 mt-1">
                           + S/{" "}
-                          {sale.totalProfit.toLocaleString("es-PE", {
+                          {(sale.totalProfit || 0).toLocaleString("es-PE", {
                             minimumFractionDigits: 2,
                           })}{" "}
                           ganancia
