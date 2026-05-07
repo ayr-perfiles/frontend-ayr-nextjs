@@ -4,7 +4,18 @@ import {
   doc,
   runTransaction,
   serverTimestamp,
+  query,
+  where,
+  orderBy,
+  limit,
+  startAfter,
+  endBefore,
+  limitToLast,
+  getDocs,
+  documentId,
+  getCountFromServer,
 } from "firebase/firestore";
+import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
 
 interface CartItem {
   sku: string;
@@ -17,7 +28,9 @@ interface CartItem {
 const SETTINGS_DOC_ID = "general_settings";
 
 /**
- * PROCESAR VENTA DIRECTA
+ * ==========================================
+ * 1. PROCESAR VENTA DIRECTA
+ * ==========================================
  */
 export const processSale = async (
   customerName: string,
@@ -116,7 +129,9 @@ export const processSale = async (
 };
 
 /**
- * CREAR COTIZACIÓN
+ * ==========================================
+ * 2. CREAR COTIZACIÓN
+ * ==========================================
  */
 export const createQuotation = async (
   customerName: string,
@@ -186,7 +201,9 @@ export const createQuotation = async (
 };
 
 /**
- * APROBAR COTIZACIÓN (Genera Venta, descuenta Stock y archiva Cotización)
+ * ==========================================
+ * 3. APROBAR COTIZACIÓN
+ * ==========================================
  */
 export const approveQuotation = async (quotationId: string) => {
   const quoteRef = doc(db, "sales", quotationId);
@@ -200,7 +217,6 @@ export const approveQuotation = async (quotationId: string) => {
       if (quoteData.status === "COMPLETED" || quoteData.status === "CONVERTED")
         throw new Error("Esta cotización ya fue aprobada previamente.");
 
-      // 1. OBTENER CORRELATIVO DE VENTA
       const settingsRef = doc(db, "settings", SETTINGS_DOC_ID);
       const settingsDoc = await transaction.get(settingsRef);
 
@@ -214,7 +230,6 @@ export const approveQuotation = async (quotationId: string) => {
 
       const stockUpdates = [];
 
-      // 2. VERIFICAR STOCK
       for (const item of quoteData.items) {
         const stockRef = doc(db, "inventory_stock", item.sku);
         const stockDoc = await transaction.get(stockRef);
@@ -235,7 +250,6 @@ export const approveQuotation = async (quotationId: string) => {
         });
       }
 
-      // 3. DESCONTAR STOCK Y ACTUALIZAR CORRELATIVO
       transaction.set(
         settingsRef,
         { nextSaleNumber: nextSaleNumber + 1 },
@@ -249,15 +263,13 @@ export const approveQuotation = async (quotationId: string) => {
         });
       }
 
-      // 4. CREAR LA NUEVA VENTA BASADA EN LA COTIZACIÓN
       transaction.set(newSaleRef, {
         ...quoteData,
         status: "COMPLETED",
         approvedAt: serverTimestamp(),
-        originQuoteId: quotationId, // Rastro de auditoría para saber de dónde vino
+        originQuoteId: quotationId,
       });
 
-      // 5. ARCHIVAR LA COTIZACIÓN ORIGINAL (Para que no sume doble)
       transaction.update(quoteRef, {
         status: "CONVERTED",
         convertedToId: newSaleId,
@@ -270,4 +282,161 @@ export const approveQuotation = async (quotationId: string) => {
     console.error("Error en approveQuotation:", error);
     throw new Error(error.message || "Error al aprobar la cotización.");
   }
+};
+
+/**
+ * ==========================================
+ * 4. FETCH SALES (CON MOTOR ALGOLIA + FIRESTORE)
+ * ==========================================
+ */
+export interface FetchSalesParams {
+  pageSize: number;
+  statusFilter: string;
+  searchTerm: string; // <-- Búsqueda libre
+  startDate: string;
+  endDate: string;
+  customerDoc?: string | null; // <-- Búsqueda exacta por Documento
+  direction?: "first" | "next" | "prev";
+  cursorDoc?: any;
+  page?: number;
+}
+
+export const fetchSales = async (params: FetchSalesParams) => {
+  const {
+    pageSize,
+    statusFilter,
+    searchTerm,
+    startDate,
+    endDate,
+    customerDoc,
+    direction = "first",
+    cursorDoc,
+    page = 0,
+  } = params;
+
+  // ==========================================
+  // MOTOR 1: ALGOLIA (Búsqueda Libre + Hidratación)
+  // ==========================================
+  if (searchTerm && searchTerm.trim().length > 0 && !customerDoc) {
+    let filters = statusFilter !== "ALL" ? `status:${statusFilter}` : "";
+
+    const {
+      hits,
+      nbPages,
+      page: currentPage,
+      nbHits,
+    } = await algoliaClient.searchSingleIndex({
+      indexName: ALGOLIA_INDICES.SALES || "sales_index", // <-- Ajusta el nombre de tu índice de ventas
+      searchParams: { query: searchTerm, filters, hitsPerPage: pageSize, page },
+    });
+
+    const hitIds = hits.map((h: any) => h.objectID);
+    let sales: any[] = [];
+
+    // Hidratación desde Firestore usando los IDs de Algolia
+    if (hitIds.length > 0) {
+      const qDocs = query(
+        collection(db, "sales"),
+        where(documentId(), "in", hitIds),
+      );
+      const snap = await getDocs(qDocs);
+      const firestoreDocs = snap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      // Reordenar para respetar la relevancia de Algolia
+      sales = hitIds
+        .map((id) => firestoreDocs.find((d) => d.id === id))
+        .filter(Boolean);
+    }
+
+    return {
+      sales,
+      isAlgolia: true,
+      algoliaData: { totalPages: nbPages, currentPage, nbHits },
+      firstDoc: null,
+      lastDoc: null,
+      totalCount: nbHits,
+    };
+  }
+
+  // ==========================================
+  // MOTOR 2: FIRESTORE (Navegación normal y Filtros)
+  // ==========================================
+  const collRef = collection(db, "sales");
+  let baseConstraints: any[] = [];
+  const hasDateFilter = !!startDate && !!endDate;
+
+  // 1. Filtro de Estado
+  if (statusFilter === "ALL") {
+    // 🔥 PREVENCIÓN DE CRASH FIREBASE: Evitar "in" con filtros de fechas (rangos)
+    if (!hasDateFilter && !customerDoc) {
+      baseConstraints.push(
+        where("status", "in", ["COMPLETED", "QUOTATION", "CONVERTED"]),
+      );
+    }
+  } else {
+    baseConstraints.push(where("status", "==", statusFilter));
+  }
+
+  // 2. Filtro Exacto de Cliente (Viene del dropdown de sugerencias)
+  if (customerDoc) {
+    baseConstraints.push(where("documentNumber", "==", customerDoc));
+  }
+
+  // 3. Filtro de Fechas y Orden
+  if (hasDateFilter) {
+    baseConstraints.push(
+      where("timestamp", ">=", new Date(`${startDate}T00:00:00`)),
+    );
+    baseConstraints.push(
+      where("timestamp", "<=", new Date(`${endDate}T23:59:59`)),
+    );
+    baseConstraints.push(orderBy("timestamp", "desc"));
+  } else {
+    baseConstraints.push(orderBy("timestamp", "desc"));
+  }
+
+  // 4. Contar el Total Real en Base de Datos (getCountFromServer)
+  const baseQuery = query(collRef, ...baseConstraints);
+  const countSnapshot = await getCountFromServer(baseQuery);
+  const totalCount = countSnapshot.data().count;
+
+  // 5. Aplicar la Paginación con Cursores
+  let paginationConstraints = [...baseConstraints];
+  if (direction === "next" && cursorDoc) {
+    paginationConstraints.push(startAfter(cursorDoc));
+    paginationConstraints.push(limit(pageSize));
+  } else if (direction === "prev" && cursorDoc) {
+    paginationConstraints.push(endBefore(cursorDoc));
+    paginationConstraints.push(limitToLast(pageSize));
+  } else {
+    paginationConstraints.push(limit(pageSize));
+  }
+
+  // 6. Ejecutar la Consulta Final Paginada
+  const finalQuery = query(collRef, ...paginationConstraints);
+  const snapshot = await getDocs(finalQuery);
+
+  let sales = snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as any[];
+
+  // 7. Filtro local de exclusión si es necesario (cuando Firebase restringe)
+  if (statusFilter === "ALL" && (hasDateFilter || customerDoc)) {
+    sales = sales.filter((s) =>
+      ["COMPLETED", "QUOTATION", "CONVERTED"].includes(s.status),
+    );
+  }
+
+  return {
+    sales,
+    isAlgolia: false,
+    firstDoc: snapshot.docs.length > 0 ? snapshot.docs[0] : null,
+    lastDoc:
+      snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null,
+    totalCount,
+  };
 };

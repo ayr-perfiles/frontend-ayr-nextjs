@@ -11,19 +11,22 @@ import {
   Copy,
   Loader2,
   Link as LinkIcon,
-  Eye, // <-- Importamos Eye
+  Eye,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 
+// 1. INTERFACE ACTUALIZADA
 interface SalesTableProps {
   displaySales: Sale[];
   isLoading: boolean;
   role: string | null | undefined;
   isProcessing: boolean;
+  currentPage: number;
+  pageSize: number;
   onPrint: (sale: Sale) => void;
   onDuplicate: (saleId: string) => void;
   onApprove: (sale: Sale) => void;
-  onViewDetails: (sale: Sale) => void; // <-- NUEVA PROP
+  onViewDetails: (sale: Sale) => void;
 }
 
 export function SalesTable({
@@ -31,112 +34,125 @@ export function SalesTable({
   isLoading,
   role,
   isProcessing,
+  currentPage,
+  pageSize,
   onPrint,
   onDuplicate,
   onApprove,
-  onViewDetails, // <-- Desestructuramos
+  onViewDetails,
 }: SalesTableProps) {
   return (
-    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="overflow-x-auto pb-36">
-        <table className="w-full text-left min-w-237.5">
-          <thead className="bg-gray-50/50 border-b border-gray-100">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="overflow-x-auto min-h-[250px]">
+        <table className="w-full text-left min-w-[950px] border-collapse">
+          <thead className="bg-slate-50/80 border-b border-slate-100">
             <tr>
-              <th className="p-4 pl-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-center w-12">
+                #
+              </th>
+              <th className="p-4 pl-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Documento
               </th>
-              <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Cliente
               </th>
-              <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Estado
               </th>
-              <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">
+              <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">
                 Total
               </th>
-              <th className="p-4 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right">
+              <th className="p-4 text-xs font-bold text-emerald-600 uppercase tracking-wider text-right">
                 Ganancia / Rastro
               </th>
-              <th className="p-4 pr-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center w-28">
+              <th className="p-4 pr-6 text-xs font-bold text-slate-500 uppercase tracking-wider text-center w-28">
                 Acciones
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-slate-50">
             {displaySales.length === 0 && !isLoading ? (
               <tr>
-                <td colSpan={6} className="p-12 text-center text-gray-400">
-                  <AlertCircle
-                    className="mx-auto mb-3 text-gray-300"
-                    size={48}
-                  />
-                  <p className="font-bold">
-                    No se encontraron operaciones con estos filtros.
+                <td colSpan={7} className="p-12 text-center text-slate-400">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-50 mb-4 text-slate-400">
+                    <AlertCircle size={24} />
+                  </div>
+                  <h3 className="text-slate-900 font-bold text-lg">
+                    No hay resultados
+                  </h3>
+                  <p className="font-medium text-slate-500 mt-1">
+                    No se encontraron operaciones con los filtros actuales.
                   </p>
                 </td>
               </tr>
             ) : (
-              displaySales.map((sale) => {
+              displaySales.map((sale, index) => {
                 const saleWeight = (sale as any).totalWeight || 0;
+                // Calculamos el número de fila exacto según la paginación
+                const rowNumber = (currentPage - 1) * pageSize + index + 1;
 
                 return (
                   <tr
                     key={sale.id}
-                    className="hover:bg-blue-50/30 transition group"
+                    className="group transition-colors hover:bg-blue-50/20"
                   >
-                    <td className="p-4 pl-6">
-                      <p className="text-xs font-black text-gray-800 uppercase tracking-widest mb-1">
+                    <td className="p-4 text-center">
+                      <span className="text-xs font-bold text-slate-400">
+                        {rowNumber}
+                      </span>
+                    </td>
+
+                    <td className="p-4 pl-2">
+                      <p className="text-sm font-black text-blue-900 uppercase tracking-wider mb-1">
                         {sale.id}
                       </p>
-                      <p className="text-[10px] font-bold text-gray-400">
+                      <p className="text-[10px] font-bold text-slate-400">
                         {sale.timestamp?.toDate
                           ? sale.timestamp.toDate().toLocaleString("es-PE", {
                               day: "2-digit",
                               month: "short",
                               year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
                             })
                           : "Reciente"}
                       </p>
                     </td>
 
                     <td className="p-4">
-                      <p className="font-black text-gray-800 uppercase leading-none mb-1 text-sm">
+                      <p className="font-bold text-slate-700 uppercase text-sm mb-1">
                         {sale.customerName}
                       </p>
-                      <p className="text-xs font-bold text-gray-400">
-                        {sale.documentNumber || "---"}
+                      <p className="text-xs font-medium text-slate-400">
+                        Doc: {sale.documentNumber || "---"}
                       </p>
                     </td>
 
                     <td className="p-4">
                       {sale.status === "COMPLETED" && (
-                        <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-3 py-1.5 rounded-lg text-[10px] font-black border border-green-200 uppercase tracking-widest">
+                        <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2.5 py-1 rounded-full text-[10px] font-black border border-green-200 uppercase tracking-widest">
                           <CheckCircle2 size={12} /> Venta Cerrada
                         </span>
                       )}
                       {sale.status === "QUOTATION" && (
-                        <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 px-3 py-1.5 rounded-lg text-[10px] font-black border border-orange-200 uppercase tracking-widest">
+                        <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full text-[10px] font-black border border-orange-200 uppercase tracking-widest">
                           <FileText size={12} /> Cot. Pendiente
                         </span>
                       )}
                       {sale.status === "CONVERTED" && (
-                        <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-[10px] font-black border border-blue-200 uppercase tracking-widest">
+                        <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full text-[10px] font-black border border-slate-200 uppercase tracking-widest">
                           <CheckCircle2 size={12} /> Cot. Aprobada
                         </span>
                       )}
                     </td>
 
                     <td className="p-4 text-right">
-                      <p className="font-black text-gray-900 text-lg leading-tight">
+                      <p className="font-black text-slate-800 text-base">
                         S/{" "}
                         {sale.totalAmount?.toLocaleString("es-PE", {
                           minimumFractionDigits: 2,
                         })}
                       </p>
                       {saleWeight > 0 && (
-                        <p className="text-[10px] font-bold text-gray-400 flex items-center justify-end gap-1 mt-0.5">
+                        <p className="text-[10px] font-bold text-slate-400 flex items-center justify-end gap-1 mt-0.5">
                           <Scale size={10} />{" "}
                           {saleWeight.toLocaleString("es-PE")} kg
                         </p>
@@ -146,36 +162,34 @@ export function SalesTable({
                     <td className="p-4 text-right">
                       {sale.status === "COMPLETED" && (
                         <span
-                          className={`inline-flex items-center gap-1 font-mono font-bold px-3 py-1 rounded-lg border text-sm ${(sale.totalProfit || 0) < 0 ? "bg-red-50 text-red-600 border-red-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"}`}
+                          className={`inline-flex items-center gap-1 font-mono font-bold px-2 py-0.5 rounded text-xs ${(sale.totalProfit || 0) < 0 ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"}`}
                         >
-                          <TrendingUp size={14} /> S/{" "}
+                          <TrendingUp size={12} /> S/{" "}
                           {(sale.totalProfit || 0).toLocaleString("es-PE", {
                             minimumFractionDigits: 2,
                           })}
                         </span>
                       )}
                       {sale.status === "QUOTATION" && (
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                           En espera
                         </span>
                       )}
                       {sale.status === "CONVERTED" && (
                         <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest flex items-center justify-end gap-1">
-                          <LinkIcon size={12} /> Generó{" "}
-                          {(sale as any).convertedToId}
+                          <LinkIcon size={10} /> {(sale as any).convertedToId}
                         </span>
                       )}
                     </td>
 
                     <td className="p-4 pr-6 relative">
                       <div className="flex items-center justify-center gap-1">
-                        {/* NUEVO BOTÓN PARA ABRIR LA FICHA */}
                         <button
                           onClick={() => onViewDetails(sale)}
-                          className="p-2 text-gray-400 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition"
-                          title="Ver Ficha Técnica"
+                          className="p-2 text-slate-400 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition"
+                          title="Ver Detalles"
                         >
-                          <Eye size={20} />
+                          <Eye size={18} />
                         </button>
 
                         <ActionMenu
@@ -199,7 +213,7 @@ export function SalesTable({
   );
 }
 
-// ... EL COMPONENTE ActionMenu SE MANTIENE EXACTAMENTE IGUAL ...
+// 2. COMPONENTE ACTION MENU
 function ActionMenu({
   sale,
   role,
@@ -252,7 +266,7 @@ function ActionMenu({
       <button
         ref={buttonRef}
         onClick={toggleMenu}
-        className={`p-2 text-gray-500 rounded-lg transition ${isOpen ? "bg-blue-50 text-blue-600" : "hover:bg-blue-50 hover:text-blue-600"}`}
+        className={`p-2 text-slate-400 rounded-lg transition ${isOpen ? "bg-blue-50 text-blue-600" : "hover:bg-slate-100 hover:text-blue-600"}`}
       >
         <MoreHorizontal size={20} />
       </button>
@@ -261,19 +275,19 @@ function ActionMenu({
         isOpen &&
         createPortal(
           <div
-            className="absolute w-48 bg-white border border-gray-100 rounded-xl shadow-2xl z-9999 py-1 animate-in fade-in zoom-in-95"
+            className="absolute w-48 bg-white border border-slate-100 rounded-xl shadow-2xl z-[9999] py-1 animate-in fade-in zoom-in-95"
             style={{ top: coords.top, right: coords.right }}
           >
             <button
               onClick={onPrint}
-              className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 font-semibold flex items-center gap-2 transition"
+              className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 font-semibold flex items-center gap-2 transition"
             >
               <FileDown size={16} /> Imprimir Ticket
             </button>
 
             <button
               onClick={onDuplicate}
-              className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 font-semibold flex items-center gap-2 transition"
+              className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 font-semibold flex items-center gap-2 transition"
             >
               <Copy size={16} /> Duplicar Operación
             </button>
@@ -281,7 +295,7 @@ function ActionMenu({
             {sale.status === "QUOTATION" &&
               (role === "ADMIN" || role === "SUPERVISOR") && (
                 <>
-                  <div className="h-px bg-gray-100 my-1 mx-2" />
+                  <div className="h-px bg-slate-100 my-1 mx-2" />
                   <button
                     onClick={onApprove}
                     disabled={isProcessing}
