@@ -1,12 +1,15 @@
+"use client";
+
 import React from "react";
 import {
   X,
+  Calendar,
   Building2,
-  Ruler,
+  Scale,
   DollarSign,
-  Clock,
+  ArrowRightLeft,
+  FileText,
   Hash,
-  Tag,
 } from "lucide-react";
 import { Coil } from "@/types";
 
@@ -15,187 +18,280 @@ interface CoilDetailsModalProps {
   onClose: () => void;
 }
 
-export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
-  // Cálculos financieros
-  const totalValue = coil.initialWeight * coil.pricePerKg;
-  const currentValue = coil.currentWeight * coil.pricePerKg;
+// Función auxiliar para fechas
+const formatDate = (dateValue: any) => {
+  if (!dateValue) return "Sin fecha";
+  const date =
+    typeof dateValue.toDate === "function"
+      ? dateValue.toDate()
+      : new Date(dateValue);
+  if (isNaN(date.getTime())) return "Sin fecha";
+  return new Intl.DateTimeFormat("es-PE", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+};
 
-  // Formateador de moneda peruana
-  const formatMoney = (amount: number) => {
-    return new Intl.NumberFormat("es-PE", {
-      style: "currency",
-      currency: "PEN",
-    }).format(amount);
-  };
+export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
+  const isConverted = coil.metadata?.currency === "USD";
+  const exchangeRate = coil.metadata?.exchangeRate || 1;
+  const originalCurrencyValue = coil.metadata?.originalCurrencyValue || 0;
+  const isVoided = coil.status === "VOIDED";
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8 overflow-hidden animate-in fade-in zoom-in-95">
-        {/* CABECERA */}
-        <div className="p-6 bg-slate-800 text-white flex justify-between items-start">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h2 className="text-2xl font-black">{coil.id}</h2>
-              <span
-                className={`px-2 py-0.5 rounded-md text-[10px] font-black tracking-widest ${
-                  coil.status === "AVAILABLE"
-                    ? "bg-green-500/20 text-green-300 border border-green-500/30"
-                    : coil.status === "IN_PROGRESS"
-                      ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
-                      : "bg-gray-500/20 text-gray-300 border border-gray-500/30"
-                }`}
-              >
-                {coil.status}
-              </span>
-            </div>
-            <p className="text-slate-400 text-xs font-medium flex items-center gap-1">
-              <Clock size={12} /> Registrado el:{" "}
-              {coil.createdAt?.toDate
-                ? coil.createdAt.toDate().toLocaleDateString()
-                : "N/A"}{" "}
-              por {coil.registeredBy}
-            </p>
+    <div className="flex flex-col bg-slate-50 w-full max-w-3xl rounded-2xl overflow-hidden shadow-2xl">
+      {/* HEADER OSCURO */}
+      <div
+        className={`p-6 flex justify-between items-start ${isVoided ? "bg-red-950" : "bg-slate-900"} text-white shrink-0 relative`}
+      >
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <h2 className="text-3xl font-black tracking-tight">{coil.id}</h2>
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-black tracking-widest border ${
+                isVoided
+                  ? "bg-red-500/20 text-red-300 border-red-500/30"
+                  : coil.status === "AVAILABLE"
+                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                    : "bg-orange-500/20 text-orange-300 border-orange-500/30"
+              }`}
+            >
+              {coil.status}
+            </span>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white hover:bg-slate-700 p-2 rounded-full transition"
-          >
-            <X size={20} />
-          </button>
+          <p className="text-slate-400 text-xs font-medium flex items-center gap-1">
+            Registrado en sistema el {formatDate(coil.createdAt)} por{" "}
+            {coil.registeredBy}
+          </p>
         </div>
+        <button
+          onClick={onClose}
+          className="p-2 hover:bg-white/10 rounded-full transition text-slate-400 hover:text-white"
+        >
+          <X size={24} />
+        </button>
+      </div>
 
-        <div className="p-6 space-y-6">
-          {/* SECCIÓN 1: DATOS DEL PROVEEDOR */}
-          <div className="bg-gray-50 rounded-xl p-5 border border-gray-100">
-            <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 mb-4">
-              <Building2 size={16} className="text-gray-500" /> Información de
-              Origen
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* ALERTA DE CONVERSIÓN DE MONEDA (Solo si es USD) */}
+        {isConverted && (
+          <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-3">
+            <ArrowRightLeft
+              className="text-blue-500 mt-0.5 shrink-0"
+              size={18}
+            />
+            <div>
+              <p className="text-sm font-bold text-blue-900">
+                Conversión Automática a Soles Aplicada
+              </p>
+              <p className="text-xs text-blue-700 mt-1">
+                Esta bobina fue comprada en Dólares (USD). El sistema la ha
+                convertido a Soles (PEN) usando el tipo de cambio de{" "}
+                <strong>S/ {exchangeRate}</strong> para mantener el Kardex
+                unificado.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* 1. INFORMACIÓN DE ORIGEN */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <header className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <Building2 size={16} className="text-slate-500" />
+            <h3 className="text-xs font-black text-slate-600 uppercase tracking-wider">
+              Información de Origen
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-6">
-              <div className="col-span-2 md:col-span-1">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                  Razón Social
-                </p>
-                <p className="font-bold text-gray-800">
-                  {coil.metadata?.provider || "SISTEMA / NO REGISTRADO"}
-                </p>
+          </header>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="col-span-2">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase">
+                Razón Social
+              </label>
+              <p className="text-sm font-black text-slate-800 uppercase">
+                {coil.metadata?.provider || "N/A"}
+              </p>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase">
+                Documento
+              </label>
+              <p className="text-sm font-bold text-slate-700">
+                {coil.metadata?.providerDoc || "N/A"}
+              </p>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase">
+                Factura N°
+              </label>
+              <p className="text-sm font-bold text-slate-700">
+                {coil.metadata?.invoiceNumber || "S/N"}
+              </p>
+            </div>
+
+            <div className="col-span-2 md:col-span-4 bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar size={16} className="text-blue-500" />
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase">
+                    Fecha de Facturación Oficial
+                  </label>
+                  <p className="text-sm font-black text-blue-900">
+                    {formatDate(coil.metadata?.invoiceDate)}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                  Documento ({coil.metadata?.providerDocType || "RUC"})
-                </p>
-                <p className="font-bold text-gray-800">
-                  {coil.metadata?.providerDoc ||
-                    coil.metadata?.providerRuc ||
-                    "-"}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                  Factura N°
-                </p>
-                <p className="font-bold text-gray-800">
-                  {coil.metadata?.invoiceNumber || "-"}
+              <div className="text-right">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase">
+                  Método Ingreso
+                </label>
+                <p className="text-xs font-bold text-slate-600">
+                  {coil.metadata?.isManualEntry
+                    ? "Formulario Manual"
+                    : "Carga XML (SUNAT)"}
                 </p>
               </div>
             </div>
+
             {coil.metadata?.originalDescription && (
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                  <Tag size={12} /> Descripción Original (XML/Excel)
-                </p>
-                <p className="text-sm font-medium text-gray-600 bg-white p-2 rounded border border-gray-200 italic">
+              <div className="col-span-2 md:col-span-4">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase">
+                  Descripción Original (Factura)
+                </label>
+                <p className="text-xs font-mono bg-slate-100 p-2 rounded-lg text-slate-600 mt-1">
                   {coil.metadata.originalDescription}
                 </p>
               </div>
             )}
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* SECCIÓN 2: DATOS FÍSICOS */}
-            <div className="space-y-4">
-              <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 border-b pb-2">
-                <Ruler size={16} className="text-blue-500" /> Dimensiones y Peso
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* 2. DIMENSIONES Y PESO */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+            <header className="flex items-center gap-2 pb-2 border-b border-slate-100">
+              <Scale size={16} className="text-blue-500" />
+              <h3 className="text-xs font-black text-slate-600 uppercase tracking-wider">
+                Físico y Stock
               </h3>
+            </header>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-                  <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">
-                    Peso Inicial
-                  </p>
-                  <p className="font-black text-gray-800 text-lg">
-                    {coil.initialWeight}{" "}
-                    <span className="text-xs text-gray-500">kg</span>
-                  </p>
-                </div>
-                <div className="bg-green-50/50 p-3 rounded-lg border border-green-100">
-                  <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">
-                    Kilos Restantes
-                  </p>
-                  <p className="font-black text-green-700 text-lg">
-                    {coil.currentWeight}{" "}
-                    <span className="text-xs text-green-600">kg</span>
-                  </p>
-                </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase">
+                  Peso Inicial (Compra)
+                </label>
+                <p className="text-xl font-black text-slate-800">
+                  {coil.initialWeight}{" "}
+                  <span className="text-xs text-slate-500">kg</span>
+                </p>
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                    Ancho Maestro
-                  </p>
-                  <p className="font-bold text-gray-700">
-                    {coil.masterWidth} mm
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                    Espesor
-                  </p>
-                  <p className="font-bold text-gray-700">{coil.thickness} mm</p>
-                </div>
+              <div
+                className={`p-3 rounded-xl border ${coil.currentWeight === 0 ? "bg-slate-100 border-slate-200" : "bg-emerald-50 border-emerald-100"}`}
+              >
+                <label
+                  className={`block text-[10px] font-bold uppercase ${coil.currentWeight === 0 ? "text-slate-400" : "text-emerald-600"}`}
+                >
+                  Stock Restante
+                </label>
+                <p
+                  className={`text-xl font-black ${coil.currentWeight === 0 ? "text-slate-500" : "text-emerald-700"}`}
+                >
+                  {coil.currentWeight}{" "}
+                  <span className="text-xs opacity-70">kg</span>
+                </p>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase">
+                  Ancho Maestro
+                </label>
+                <p className="text-sm font-black text-slate-700">
+                  {coil.masterWidth} mm
+                </p>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase">
+                  Espesor
+                </label>
+                <p className="text-sm font-black text-slate-700">
+                  {coil.thickness} mm
+                </p>
               </div>
             </div>
+          </div>
 
-            {/* SECCIÓN 3: DATOS FINANCIEROS (KARDEX VALORIZADO) */}
-            <div className="space-y-4">
-              <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 border-b pb-2">
-                <DollarSign size={16} className="text-green-600" /> Valorización
-                (Sin IGV)
+          {/* 3. VALORIZACIÓN (CONTABILIDAD) */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+            <header className="flex items-center gap-2 pb-2 border-b border-slate-100">
+              <DollarSign size={16} className="text-emerald-500" />
+              <h3 className="text-xs font-black text-slate-600 uppercase tracking-wider">
+                Valorización (Sin IGV)
               </h3>
+            </header>
 
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-gray-500">
-                    Costo Unitario (por Kg)
-                  </span>
-                  <span className="font-black text-gray-800">
-                    {formatMoney(coil.pricePerKg)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center pt-3 border-t border-slate-200">
-                  <span className="text-xs font-bold text-gray-500">
-                    Valor Total de Compra
-                  </span>
-                  <span className="font-black text-gray-800">
-                    {formatMoney(totalValue)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center pt-3 border-t border-slate-200">
-                  <span className="text-xs font-bold text-green-600">
-                    Valor del Saldo Actual
-                  </span>
-                  <span className="font-black text-green-700">
-                    {formatMoney(currentValue)}
-                  </span>
-                </div>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                <span className="text-xs font-bold text-slate-500">
+                  Costo Unitario (Soles)
+                </span>
+                <span className="text-sm font-black text-slate-800">
+                  S/ {Number(coil.pricePerKg).toFixed(4)}{" "}
+                  <span className="text-[10px] text-slate-400">x Kg</span>
+                </span>
               </div>
 
-              <p className="text-[10px] text-gray-400 font-medium text-center italic">
-                * Valores base para contabilidad y cálculo de márgenes.
-              </p>
+              <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+                <span className="text-xs font-bold text-slate-500">
+                  Valorización Inicial
+                </span>
+                <span className="text-sm font-black text-slate-800">
+                  S/{" "}
+                  {(
+                    (coil.initialWeight || 0) * (coil.pricePerKg || 0)
+                  ).toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center bg-slate-50 p-2 rounded-lg">
+                <span className="text-xs font-black text-slate-600">
+                  Valorización del Saldo Actual
+                </span>
+                <span className="text-base font-black text-emerald-600">
+                  S/{" "}
+                  {(
+                    (coil.currentWeight || 0) * (coil.pricePerKg || 0)
+                  ).toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {/* AUDITORÍA DE COMPRA ORIGINAL */}
+              {isConverted && originalCurrencyValue > 0 && (
+                <div className="mt-4 pt-3 border-t border-dashed border-slate-200">
+                  <p className="text-[9px] font-black text-slate-400 uppercase mb-2">
+                    Auditoría de Compra Original
+                  </p>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-medium text-slate-500">
+                      Monto Facturado (USD)
+                    </span>
+                    <span className="text-xs font-bold text-slate-700">
+                      ${" "}
+                      {originalCurrencyValue.toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center mt-1">
+                    <span className="text-xs font-medium text-slate-500">
+                      Tipo de Cambio Aplicado
+                    </span>
+                    <span className="text-xs font-bold text-slate-700">
+                      {exchangeRate}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

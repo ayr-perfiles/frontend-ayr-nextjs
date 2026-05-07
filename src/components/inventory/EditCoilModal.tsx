@@ -1,4 +1,4 @@
-import { X, Save, Building2, Lock } from "lucide-react";
+import { X, Save, Building2, Lock, Calendar } from "lucide-react";
 import { Coil } from "@/types";
 
 export interface EditData {
@@ -11,6 +11,7 @@ export interface EditData {
   providerDoc: string;
   providerName: string;
   invoiceNumber: string;
+  invoiceDate: string; // <-- AÑADIMOS LA FECHA
 }
 
 interface EditCoilModalProps {
@@ -28,10 +29,7 @@ export function EditCoilModal({
   onClose,
   onSave,
 }: EditCoilModalProps) {
-  // Verificamos si la bobina ya fue tocada para bloquear campos financieros
   const isLocked = editingCoil.status !== "AVAILABLE";
-
-  // Calculamos el valor total actual en base al peso y el costo por kilo
   const currentTotalValue = editData.initialWeight * editData.pricePerKg;
 
   const handleTotalValueChange = (newTotal: number) => {
@@ -41,7 +39,6 @@ export function EditCoilModal({
   };
 
   const handleInitialWeightChange = (newWeight: number) => {
-    // Si cambia el peso, mantenemos el costo x kilo intacto, el valor total se ajustará solo
     setEditData({
       ...editData,
       initialWeight: newWeight,
@@ -50,7 +47,7 @@ export function EditCoilModal({
   };
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg my-8 overflow-hidden animate-in fade-in zoom-in-95">
         <div className="p-6 bg-blue-600 text-white flex justify-between items-center">
           <div>
@@ -67,7 +64,7 @@ export function EditCoilModal({
           </button>
         </div>
 
-        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
           {isLocked && (
             <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex gap-3">
               <Lock className="text-red-500 shrink-0" size={20} />
@@ -76,20 +73,18 @@ export function EditCoilModal({
                   Campos Financieros Bloqueados
                 </p>
                 <p className="text-xs text-red-600 font-medium mt-1">
-                  Esta bobina ya tiene cortes registrados (Estado:{" "}
-                  {editingCoil.status}). Alterar su peso inicial o costo
-                  arruinaría el Kardex histórico.
+                  Esta bobina ya tiene cortes registrados. Alterar su peso
+                  inicial o costo arruinaría el Kardex histórico.
                 </p>
               </div>
             </div>
           )}
 
-          {/* SECCIÓN FINANCIERA Y FÍSICA */}
+          {/* DATOS FÍSICOS Y FINANCIEROS */}
           <div className="space-y-4">
             <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest border-b pb-2">
               Datos Base
             </h3>
-
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">
@@ -158,12 +153,11 @@ export function EditCoilModal({
             </div>
           </div>
 
-          {/* SECCIÓN PROVEEDOR */}
+          {/* DATOS DE PROVEEDOR */}
           <div className="space-y-4 pt-2">
             <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 border-b pb-2">
               <Building2 size={14} /> Datos de Proveedor
             </h3>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">
@@ -181,10 +175,9 @@ export function EditCoilModal({
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500"
                 />
               </div>
-
               <div>
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">
-                  Documento
+                  RUC / Documento
                 </label>
                 <input
                   type="text"
@@ -195,7 +188,6 @@ export function EditCoilModal({
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500"
                 />
               </div>
-
               <div>
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">
                   Factura N°
@@ -210,6 +202,19 @@ export function EditCoilModal({
                     })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1 flex items-center gap-1">
+                  <Calendar size={12} /> Fecha de Factura
+                </label>
+                <input
+                  type="date"
+                  value={editData.invoiceDate}
+                  onChange={(e) =>
+                    setEditData({ ...editData, invoiceDate: e.target.value })
+                  }
+                  className="w-full p-3 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl font-bold outline-none focus:border-blue-500"
                 />
               </div>
             </div>

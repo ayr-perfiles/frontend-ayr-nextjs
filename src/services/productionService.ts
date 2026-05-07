@@ -4,6 +4,11 @@ import {
   runTransaction,
   serverTimestamp,
   collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  where,
 } from "firebase/firestore";
 import { Coil, ProductionLog } from "@/types";
 
@@ -35,9 +40,32 @@ export const saveCuttingPlan = async (
         productsData[item.sku] = prodDoc.data();
       }
 
-      // Costo base del acero por milímetro de ancho
-      const costPerMm =
-        (coil.initialWeight / coil.masterWidth) * coil.pricePerKg;
+      // --- NUEVA LÓGICA DE COSTO ABSORBIDO (MERMA DE REFILADO) ---
+
+      // 1. Calculamos el Ancho Total que realmente se va a convertir en flejes
+      const totalPlannedWidth = items.reduce((sum, item) => {
+        const product = productsData[item.sku];
+        return sum + (product.stripWidth || 0) * item.quantity;
+      }, 0);
+
+      if (totalPlannedWidth > coil.masterWidth) {
+        throw new Error(
+          "El ancho total de los flejes supera el ancho de la bobina.",
+        );
+      }
+
+      // 2. Costo Total de la Bobina Madre
+      const totalCoilCost = coil.initialWeight * coil.pricePerKg;
+
+      // 3. Calculamos el costo por milímetro (absorbiendo merma si aplica)
+      let effectiveCostPerMm = totalCoilCost / coil.masterWidth; // Costo estándar
+
+      const leftoverWidth = coil.masterWidth - totalPlannedWidth;
+
+      // Si sobra algo, pero es 40mm o menos, asumimos que es chatarra de bordes (refile) y la absorbemos
+      if (leftoverWidth > 0 && leftoverWidth <= 40) {
+        effectiveCostPerMm = totalCoilCost / totalPlannedWidth;
+      }
 
       const plannedStrips = items.map((item) => {
         const product = productsData[item.sku];
@@ -54,7 +82,8 @@ export const saveCuttingPlan = async (
           initialCount: qty,
           pendingCount: qty,
           width: width,
-          costPerStrip: Number((width * costPerMm).toFixed(2)),
+          // Aquí usamos el nuevo costo efectivo que ya incluye la merma de los bordes
+          costPerStrip: Number((width * effectiveCostPerMm).toFixed(2)),
         };
       });
 
@@ -71,7 +100,7 @@ export const saveCuttingPlan = async (
   }
 };
 
-// FASE 2: PROCESAR UN FLEJE (CONFORMADORA) CON VALIDACIÓN FÍSICA Y COSTO REAL
+// FASE 2: PROCESAR UN FLEJE (CONFORMADORA) CON COSTO PROMEDIO PONDERADO
 export const processSingleStrip = async (
   coilId: string,
   sku: string,
@@ -105,18 +134,15 @@ export const processSingleStrip = async (
       const activeStrip = coil.plannedStrips![stripIndex];
 
       // --- 1. CAPA DE SEGURIDAD: VALIDACIÓN FÍSICA ---
-      // Validación Estricta para evitar NaN y errores de TypeScript
       if (!coil.masterWidth || !coil.initialWeight) {
         throw new Error(
           "Data corrupta: La bobina seleccionada no tiene un ancho maestro o peso inicial registrado.",
         );
       }
 
-      // Calculamos cuánto pesa exactamente este fleje
       const weightPerMm = coil.initialWeight / coil.masterWidth;
       const theoreticalStripWeight = activeStrip.width * weightPerMm;
 
-      // Calculamos el peso de la producción reportada
       const standardWeight = product.standardWeight || 0;
       if (standardWeight === 0)
         throw new Error(
@@ -125,7 +151,6 @@ export const processSingleStrip = async (
 
       const reportedProductionWeight = pieces * standardWeight;
 
-      // Validación: El peso producido no puede superar el peso del fleje (damos 5% de tolerancia por calibración de máquina)
       if (reportedProductionWeight > theoreticalStripWeight * 1.05) {
         throw new Error(
           `¡Límite Físico Excedido! Es imposible sacar ${pieces} piezas. ` +
@@ -133,11 +158,35 @@ export const processSingleStrip = async (
         );
       }
 
-      // --- 2. CÁLCULO DE COSTO REAL Y MERMA ---
-      // Costo Dinámico: Si el operador sacó menos piezas, cada pieza le costó más a la fábrica.
-      const realCostPerPiece = Number(
-        (activeStrip.costPerStrip / pieces).toFixed(4),
-      );
+      // Extraemos el inventario actual antes del nuevo ingreso
+      const currentQty = stockDoc.exists()
+        ? stockDoc.data().totalQuantity || 0
+        : 0;
+      const currentWeightStock = stockDoc.exists()
+        ? stockDoc.data().totalWeight || 0
+        : 0;
+      const currentAverageCost = stockDoc.exists()
+        ? stockDoc.data().lastCostPerPiece || 0
+        : 0;
+
+      // --- 2. CÁLCULO DE COSTO PROMEDIO PONDERADO ---
+
+      // Costo específico de ESTE lote que sale de la máquina hoy
+      const costOfThisBatch = activeStrip.costPerStrip / pieces;
+
+      let newAverageCost = costOfThisBatch; // Por defecto asume el costo de hoy
+
+      // Si tenemos stock positivo real en el almacén, aplicamos el Promedio Ponderado
+      if (currentQty > 0) {
+        const inventoryValueBefore = currentQty * currentAverageCost;
+        const newBatchValue = activeStrip.costPerStrip; // El valor total en dinero del fleje
+
+        // Fórmula contable: (Valor Total Antiguo + Valor Total Nuevo) / (Piezas Antiguas + Piezas Nuevas)
+        newAverageCost =
+          (inventoryValueBefore + newBatchValue) / (currentQty + pieces);
+      }
+      // NOTA: Si currentQty es <= 0 (negativo por ventas), omitimos el promedio
+      // y usamos el 'costOfThisBatch' como nuevo precio base para no distorsionar las matemáticas.
 
       const totalPlannedWidth = coil.plannedStrips!.reduce(
         (sum, s) => sum + s.width * s.initialCount,
@@ -169,25 +218,20 @@ export const processSingleStrip = async (
         updatedAt: serverTimestamp(),
       });
 
-      // Sumar al Stock
-      const currentQty = stockDoc.exists() ? stockDoc.data().totalQuantity : 0;
-      const currentWeightStock = stockDoc.exists()
-        ? stockDoc.data().totalWeight
-        : 0;
-
+      // Sumar al Stock e Inyectar el Costo Promedio
       transaction.set(
         stockRef,
         {
           sku,
           totalQuantity: currentQty + pieces,
           totalWeight: currentWeightStock + reportedProductionWeight,
-          lastCostPerPiece: realCostPerPiece, // <--- ACTUALIZA EL COSTO PARA EL DASHBOARD Y VENTAS
+          lastCostPerPiece: Number(newAverageCost.toFixed(6)), // <--- AHORA GUARDA EL COSTO PROMEDIO
           lastUpdate: serverTimestamp(),
         },
         { merge: true },
       );
 
-      // Guardar Log (Ahora incluye reportedWeight para anulación segura)
+      // Guardar Log (Mantiene el costo de este lote individual para auditoría)
       transaction.set(logRef, {
         parentCoilId: coilId,
         sku,
@@ -195,8 +239,9 @@ export const processSingleStrip = async (
         totalUsedWidth: activeStrip.width,
         scrapWidth: Number(scrapPerStrip.toFixed(2)),
         stripCost: activeStrip.costPerStrip,
-        costPerPiece: realCostPerPiece,
-        reportedWeight: reportedProductionWeight, // <-- CLAVE PARA ANULAR EXACTAMENTE ESTE PESO
+        costPerPiece: Number(costOfThisBatch.toFixed(6)), // El costo que rindió esta máquina
+        averageCostAfter: Number(newAverageCost.toFixed(6)), // El promedio que generó en el almacén global
+        reportedWeight: reportedProductionWeight,
         operatorId,
         status: "ACTIVE",
         timestamp: serverTimestamp(),
@@ -215,6 +260,35 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
   const auditRef = doc(collection(db, "audit_logs"));
 
   try {
+    // --- 1. BÚSQUEDA DEL COSTO ANTERIOR ---
+    // Leemos el registro que vamos a anular para saber de qué producto (SKU) se trata
+    const logSnap = await getDocs(
+      query(collection(db, "production_logs"), where("__name__", "==", logId)),
+    );
+    if (logSnap.empty) throw new Error("El registro no existe.");
+    const logDataForQuery = logSnap.docs[0].data();
+
+    // Buscamos los últimos 2 cortes válidos de este producto en el historial
+    const recentLogsQuery = query(
+      collection(db, "production_logs"),
+      where("sku", "==", logDataForQuery.sku),
+      where("status", "==", "ACTIVE"),
+      orderBy("timestamp", "desc"),
+      limit(2),
+    );
+    const recentLogsSnap = await getDocs(recentLogsQuery);
+
+    let previousValidCost: number | null = null;
+
+    // Si el log que estamos anulando es el último, tomamos el costo del "penúltimo"
+    recentLogsSnap.docs.forEach((docSnap) => {
+      if (docSnap.id !== logId) {
+        previousValidCost =
+          docSnap.data().averageCostAfter || docSnap.data().costPerPiece || 0;
+      }
+    });
+
+    // --- 2. EJECUTAR LA TRANSACCIÓN DE ANULACIÓN ---
     await runTransaction(db, async (transaction) => {
       const logDoc = await transaction.get(logRef);
       if (!logDoc.exists()) throw new Error("El registro no existe.");
@@ -233,44 +307,42 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
       const stockDoc = await transaction.get(stockRef);
       const prodDoc = await transaction.get(prodRef);
 
-      // Leemos el peso que se reportó en su momento (o lo calculamos si es un registro antiguo)
       let standardWeight = prodDoc.exists()
         ? prodDoc.data().standardWeight || 0
         : 0;
       const weightToSubtract =
         logData.reportedWeight || logData.piecesProduced * standardWeight;
 
-      // 1. REVERTIR INVENTARIO CON LIMPIEZA A CERO ABSOLUTO
+      // REVERTIR INVENTARIO Y RESTAURAR COSTO EXACTO
       if (stockDoc.exists()) {
         const stockData = stockDoc.data();
-        const newQuantity = Math.max(
-          0,
-          stockData.totalQuantity - logData.piecesProduced,
-        );
-        const newWeight = Math.max(0, stockData.totalWeight - weightToSubtract);
+        const newQuantity = stockData.totalQuantity - logData.piecesProduced;
+        const newWeight = stockData.totalWeight - weightToSubtract;
 
         const stockUpdatePayload: any = {
           totalQuantity: newQuantity,
-          totalWeight: newQuantity === 0 ? 0 : newWeight,
+          totalWeight: newWeight,
           lastUpdate: serverTimestamp(),
         };
 
-        // Si el stock llega a 0, limpiamos el costo base para evitar descuadres en el dashboard
-        if (newQuantity === 0) {
+        // 💡 AQUÍ APLICAMOS LA MAGIA: Restauramos el costo al valor del corte anterior
+        if (previousValidCost !== null) {
+          stockUpdatePayload.lastCostPerPiece = previousValidCost;
+        } else if (newQuantity === 0) {
+          // Si no hay cortes anteriores y el stock llega a cero, reseteamos a cero
           stockUpdatePayload.lastCostPerPiece = 0;
         }
 
         transaction.update(stockRef, stockUpdatePayload);
       }
 
-      // 2. REVERTIR BOBINA (Devolver el fleje)
+      // REVERTIR BOBINA (Devolver el fleje a la máquina)
       if (coilDoc.exists()) {
         const coilData = coilDoc.data() as Coil;
 
-        // Protección adicional de TypeScript al revertir
         if (!coilData.masterWidth || !coilData.initialWeight) {
           throw new Error(
-            "Data corrupta: La bobina madre no tiene un ancho maestro o peso inicial registrado.",
+            "Data corrupta: La bobina madre no tiene ancho o peso inicial.",
           );
         }
 
@@ -281,7 +353,6 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
           return strip;
         });
 
-        // Devolvemos el peso exacto del fleje a la bobina
         const weightPerMm = coilData.initialWeight / coilData.masterWidth;
         const restoredStripWeight = logData.totalUsedWidth * weightPerMm;
         const newCurrentWeight = Math.min(
@@ -291,13 +362,13 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
 
         transaction.update(coilRef, {
           plannedStrips: updatedStrips,
-          status: "IN_PROGRESS", // Si estaba procesada, vuelve a estar en progreso
+          status: "IN_PROGRESS",
           currentWeight: Number(newCurrentWeight.toFixed(2)),
           updatedAt: serverTimestamp(),
         });
       }
 
-      // 3. AUDITORÍA
+      // MARCAR COMO ANULADO EN AUDITORÍA
       transaction.update(logRef, {
         status: "VOIDED",
         voidedBy: userEmail,
@@ -319,7 +390,6 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
     throw new Error(error.message || "Error al anular el registro.");
   }
 };
-
 // ANULAR BOBINA MADRE
 export const voidCoil = async (coilId: string, userEmail: string) => {
   const coilRef = doc(db, "coils", coilId);
@@ -356,15 +426,10 @@ export const voidCoil = async (coilId: string, userEmail: string) => {
   }
 };
 
-// EDITAR BOBINA MADRE (AHORA INCLUYE ESPESOR)
+// EDITAR BOBINA MADRE (MEJORADO: AHORA GUARDA DATOS FINANCIEROS Y DE PROVEEDOR)
 export const updateCoil = async (
   coilId: string,
-  updates: {
-    initialWeight: number;
-    currentWeight: number;
-    masterWidth: number;
-    thickness: number;
-  },
+  updates: any, // Recibe toda la data del modal
   userEmail: string,
 ) => {
   const coilRef = doc(db, "coils", coilId);
@@ -381,24 +446,92 @@ export const updateCoil = async (
         );
       }
 
-      transaction.update(coilRef, {
+      // Convertimos la fecha de string a Date exacto de mediodía
+      const finalInvoiceDate = updates.invoiceDate
+        ? new Date(`${updates.invoiceDate}T12:00:00`)
+        : null;
+
+      const updatePayload: any = {
         initialWeight: updates.initialWeight,
         currentWeight: updates.currentWeight,
         masterWidth: updates.masterWidth,
-        thickness: updates.thickness, // Aseguramos que se actualice el espesor
+        thickness: updates.thickness,
+        pricePerKg: updates.pricePerKg,
+        "metadata.providerName": updates.providerName,
+        "metadata.provider": updates.providerName, // Mantenemos compatibilidad
+        "metadata.providerDoc": updates.providerDoc,
+        "metadata.providerDocType": updates.providerDocType,
+        "metadata.invoiceNumber": updates.invoiceNumber,
         updatedAt: serverTimestamp(),
-      });
+      };
+
+      if (finalInvoiceDate) {
+        updatePayload["metadata.invoiceDate"] = finalInvoiceDate;
+      }
+
+      transaction.update(coilRef, updatePayload);
 
       transaction.set(auditRef, {
         action: "EDIT_COIL",
         entityId: coilId,
         userEmail: userEmail,
-        details: `Editó bobina: Peso a ${updates.initialWeight}kg, Ancho a ${updates.masterWidth}mm, Espesor a ${updates.thickness}mm.`,
+        details: `Editó bobina: Peso ${updates.initialWeight}kg, Espesor ${updates.thickness}mm, Valor /Kg S/ ${updates.pricePerKg}.`,
         timestamp: serverTimestamp(),
       });
     });
     return { success: true };
   } catch (error: any) {
     throw new Error(error.message || "Error al editar.");
+  }
+};
+
+// --- NUEVA FUNCIÓN: CANCELAR PLAN DE CORTE (REVERTIR A DISPONIBLE) ---
+export const cancelCuttingPlan = async (coilId: string, userEmail: string) => {
+  const coilRef = doc(db, "coils", coilId);
+  const auditRef = doc(collection(db, "audit_logs"));
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const coilDoc = await transaction.get(coilRef);
+      if (!coilDoc.exists()) throw new Error("La bobina no existe.");
+
+      const coilData = coilDoc.data() as Coil;
+
+      if (coilData.status !== "IN_PROGRESS") {
+        throw new Error(
+          "Solo se pueden cancelar planes de bobinas EN PROCESO.",
+        );
+      }
+
+      // 🛡️ VALIDACIÓN ESTRICTA A PRUEBA DE ERRORES:
+      // Verificamos si AL MENOS UN fleje ya tiene menos cantidad pendiente que la inicial (es decir, ya pasó por la máquina)
+      const hasProcessedStrips = coilData.plannedStrips?.some(
+        (strip) => strip.initialCount !== strip.pendingCount,
+      );
+
+      if (hasProcessedStrips) {
+        throw new Error(
+          "⛔ IMPOSIBLE CANCELAR: Ya se han ejecutado cortes en esta bobina. Para cancelar, primero debes anular los cortes realizados desde el historial de producción.",
+        );
+      }
+
+      // Si pasa la validación (nadie ha cortado nada aún), limpiamos y devolvemos a AVAILABLE
+      transaction.update(coilRef, {
+        status: "AVAILABLE",
+        plannedStrips: [], // Borramos el plan de corte erróneo
+        updatedAt: serverTimestamp(),
+      });
+
+      transaction.set(auditRef, {
+        action: "CANCEL_CUTTING_PLAN",
+        entityId: coilId,
+        userEmail: userEmail,
+        details: `Canceló plan de corte. Bobina devuelta a DISPONIBLE de forma segura.`,
+        timestamp: serverTimestamp(),
+      });
+    });
+    return { success: true };
+  } catch (error: any) {
+    throw new Error(error.message || "Error al cancelar el plan.");
   }
 };

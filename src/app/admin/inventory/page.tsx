@@ -1,16 +1,15 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
 import { db } from "@/lib/firebase/clientApp";
 import {
   collection,
   query,
-  onSnapshot,
-  orderBy,
-  limit,
   where,
+  getCountFromServer,
+  getAggregateFromServer,
+  sum,
   doc,
   getDoc,
 } from "firebase/firestore";
@@ -23,15 +22,25 @@ import {
   FileSpreadsheet,
   Database,
   X,
+  PackageSearch,
+  Factory,
+  Weight,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
 // Módulos Internos
 import { seedFiftyAvailableCoils } from "@/services/seedService";
-import { voidCoil, updateCoil } from "@/services/productionService";
+import {
+  voidCoil,
+  updateCoil,
+  cancelCuttingPlan,
+} from "@/services/productionService";
+import { fetchInventory } from "@/services/inventoryService";
 import { useAuth } from "@/context/AuthContext";
 
-// Componentes Separados
+// Componentes
 import { AddCoilForm } from "@/components/forms/AddCoilForm";
 import { ProductionForm } from "@/components/forms/ProductionForm";
 import { ConsumeStripForm } from "@/components/forms/ConsumeStripForm";
@@ -49,13 +58,7 @@ function HeaderOptions({
   onOpenXml,
   onOpenExcel,
   onSeed,
-}: {
-  role: string | null | undefined;
-  onExport: () => void;
-  onOpenXml: () => void;
-  onOpenExcel: () => void;
-  onSeed: () => void;
-}) {
+}: any) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -81,7 +84,6 @@ function HeaderOptions({
             <p className="px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
               Importar / Exportar
             </p>
-
             <button
               onClick={() => {
                 setIsOpen(false);
@@ -91,7 +93,6 @@ function HeaderOptions({
             >
               <Download size={18} className="text-gray-400" /> Descargar Excel
             </button>
-
             <button
               onClick={() => {
                 setIsOpen(false);
@@ -102,7 +103,6 @@ function HeaderOptions({
               <FileCode2 size={18} className="text-blue-500" /> Ingresar vía
               Factura XML
             </button>
-
             <button
               onClick={() => {
                 setIsOpen(false);
@@ -113,7 +113,6 @@ function HeaderOptions({
               <FileSpreadsheet size={18} className="text-green-500" /> Migración
               Masiva (Excel)
             </button>
-
             {role === "ADMIN" && (
               <>
                 <div className="h-px bg-gray-100 my-2 mx-4" />
@@ -137,138 +136,161 @@ function HeaderOptions({
     </div>
   );
 }
-// ------------------------------------------------------
 
 export default function InventoryPage() {
   const { user, role } = useAuth();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const initialCoilId = searchParams.get("coilId");
 
+  // --- ESTADOS DE DATOS ---
   const [coils, setCoils] = useState<Coil[]>([]);
+  const [filteredTotal, setFilteredTotal] = useState(0); // 👈 Nuevo: Total dinámico
+  const [pageSize, setPageSize] = useState(10); // 👈 Nuevo: Iniciamos en 10 por defecto
+  const [metrics, setMetrics] = useState({
+    available: 0,
+    inProgress: 0,
+    totalWeight: 0,
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  // --- ESTADOS DE FILTROS Y BÚSQUEDA ---
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [limitCount, setLimitCount] = useState(20);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
-  // Estados de Búsqueda
-  const [searchTerm, setSearchTerm] = useState(initialCoilId || "");
-  const [suggestions, setSuggestions] = useState<Coil[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [selectedCoilId, setSelectedCoilId] = useState<string | null>(
-    initialCoilId,
-  );
-  const [searchedCoilData, setSearchedCoilData] = useState<Coil | null>(null);
-  const searchInputRef = useRef<HTMLDivElement>(null);
+  // --- ESTADOS DE PAGINACIÓN ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isAlgoliaMode, setIsAlgoliaMode] = useState(false);
 
-  // Estados de Modales Normales
+  const [firstDoc, setFirstDoc] = useState<any>(null);
+  const [lastDoc, setLastDoc] = useState<any>(null);
+
+  const [algoliaPage, setAlgoliaPage] = useState(0);
+  const [algoliaTotalPages, setAlgoliaTotalPages] = useState(0);
+
+  // --- ESTADOS DE MODALES ---
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedCoil, setSelectedCoil] = useState<Coil | null>(null);
   const [editingCoil, setEditingCoil] = useState<Coil | null>(null);
-  const [editData, setEditData] = useState<any>({
-    initialWeight: 0,
-    currentWeight: 0,
-    masterWidth: 1200,
-    thickness: 0.45,
-    pricePerKg: 0,
-    providerDocType: "LOCAL",
-    providerDoc: "",
-    providerName: "",
-    invoiceNumber: "",
-  });
-  const [viewingCoil, setViewingCoil] = useState<Coil | null>(null); // <--- NUEVO ESTADO
-
-  // Estados de Modales Masivos (Nuevos)
+  const [editData, setEditData] = useState<any>({});
+  const [viewingCoil, setViewingCoil] = useState<Coil | null>(null);
   const [showXmlModal, setShowXmlModal] = useState(false);
   const [showExcelModal, setShowExcelModal] = useState(false);
 
-  const updateUrlParams = (newCoilId: string | null) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (newCoilId) params.set("coilId", newCoilId);
-    else params.delete("coilId");
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  useEffect(() => {
+    const fetchMetrics = async () => {
+      try {
+        const collRef = collection(db, "coils");
+        const availableQ = query(collRef, where("status", "==", "AVAILABLE"));
+        const progressQ = query(collRef, where("status", "==", "IN_PROGRESS"));
+
+        const [availableSnap, progressSnap, weightSnap] = await Promise.all([
+          getCountFromServer(availableQ),
+          getCountFromServer(progressQ),
+          getAggregateFromServer(availableQ, {
+            totalWeight: sum("currentWeight"),
+          }),
+        ]);
+
+        setMetrics({
+          available: availableSnap.data().count,
+          inProgress: progressSnap.data().count,
+          totalWeight: weightSnap.data().totalWeight,
+        });
+      } catch (error) {
+        console.error("Error al cargar métricas", error);
+      }
+    };
+    fetchMetrics();
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const loadData = async (
+    direction: "first" | "next" | "prev" = "first",
+    targetAlgoliaPage = 0,
+  ) => {
+    setIsLoading(true);
+    try {
+      const res = await fetchInventory({
+        pageSize: pageSize,
+        statusFilter,
+        searchTerm: debouncedSearchTerm,
+        startDate,
+        endDate,
+        direction,
+        cursorDoc:
+          direction === "next"
+            ? lastDoc
+            : direction === "prev"
+              ? firstDoc
+              : null,
+        page: targetAlgoliaPage,
+      });
+
+      setCoils(res.coils);
+      setIsAlgoliaMode(res.isAlgolia);
+
+      // 💡 CAPTURAR EL TOTAL SEGÚN EL MODO
+      if (res.isAlgolia) {
+        setAlgoliaTotalPages(res.algoliaData?.totalPages || 0);
+        setAlgoliaPage(res.algoliaData?.currentPage || 0);
+
+        // Usamos (res as any) para silenciar a TypeScript si nbHits no está tipado
+        setFilteredTotal((res as any).algoliaData?.nbHits || 0);
+      } else {
+        setFirstDoc(res.firstDoc);
+        setLastDoc(res.lastDoc);
+
+        // Silenciamos el error de totalCount. Si el backend no lo envía, el fallback es coils.length
+        setFilteredTotal((res as any).totalCount || res.coils.length);
+      }
+    } catch (error) {
+      console.error("ERROR:", error);
+      toast.error("Error al cargar datos");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
-    let q = query(
-      collection(db, "coils"),
-      orderBy("createdAt", "desc"),
-      limit(limitCount),
-    );
-    if (statusFilter !== "ALL") {
-      q = query(
-        collection(db, "coils"),
-        where("status", "==", statusFilter),
-        orderBy("createdAt", "desc"),
-        limit(limitCount),
-      );
-    }
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Coil[];
-      setCoils(docs);
-    });
-    return () => unsubscribe();
-  }, [limitCount, statusFilter]);
-
-  useEffect(() => {
-    if (!selectedCoilId) {
-      setSearchedCoilData(null);
+    if ((startDate && !endDate) || (!startDate && endDate)) {
       return;
     }
-    const unsub = onSnapshot(doc(db, "coils", selectedCoilId), (docSnap) => {
-      if (docSnap.exists())
-        setSearchedCoilData({ id: docSnap.id, ...docSnap.data() } as Coil);
-      else setSearchedCoilData(null);
-    });
-    return () => unsub();
-  }, [selectedCoilId]);
 
-  useEffect(() => {
-    if (searchTerm.trim().length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
+    setCurrentPage(1);
+    loadData("first", 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearchTerm, statusFilter, startDate, endDate, pageSize]);
+
+  const hasNextPage = isAlgoliaMode
+    ? algoliaPage + 1 < algoliaTotalPages
+    : coils.length === pageSize;
+
+  const handleNextPage = () => {
+    if (!hasNextPage) return;
+    setCurrentPage((prev) => prev + 1);
+    if (isAlgoliaMode) {
+      loadData("first", algoliaPage + 1);
+    } else {
+      loadData("next");
     }
-    if (selectedCoilId && searchTerm === selectedCoilId) return;
+  };
 
-    const getSuggestions = async () => {
-      setIsSearching(true);
-      try {
-        const filters = statusFilter !== "ALL" ? `status:${statusFilter}` : "";
-        const { hits } = await algoliaClient.searchSingleIndex({
-          indexName: ALGOLIA_INDICES.COILS,
-          searchParams: { query: searchTerm, filters, hitsPerPage: 5 },
-        });
-        const mappedHits = hits.map((hit: any) => ({
-          ...hit,
-          id: hit.objectID,
-        })) as Coil[];
-        setSuggestions(mappedHits);
-        setShowSuggestions(mappedHits.length > 0);
-      } catch (error) {
-        console.error("Error buscando:", error);
-      } finally {
-        setIsSearching(false);
-      }
-    };
-    const timeoutId = setTimeout(getSuggestions, 300);
-    return () => clearTimeout(timeoutId);
-  }, [searchTerm, statusFilter, selectedCoilId]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        searchInputRef.current &&
-        !searchInputRef.current.contains(e.target as Node)
-      )
-        setShowSuggestions(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  const handlePrevPage = () => {
+    if (currentPage <= 1) return;
+    setCurrentPage((prev) => prev - 1);
+    if (isAlgoliaMode) {
+      loadData("first", algoliaPage - 1);
+    } else {
+      loadData("prev");
+    }
+  };
 
   const handleOpenProduction = async (coil: Coil) => {
     try {
@@ -286,8 +308,6 @@ export default function InventoryPage() {
       if (docSnap.exists()) {
         const fullCoil = { id: docSnap.id, ...docSnap.data() } as Coil;
         setEditingCoil(fullCoil);
-
-        // Mapeamos los datos, incluyendo compatibilidad hacia atrás si usabas providerRuc
         setEditData({
           initialWeight: fullCoil.initialWeight || 0,
           currentWeight: fullCoil.currentWeight || 0,
@@ -295,10 +315,7 @@ export default function InventoryPage() {
           thickness: fullCoil.thickness || 0.45,
           pricePerKg: fullCoil.pricePerKg || 0,
           providerDocType: fullCoil.metadata?.providerDocType || "LOCAL",
-          providerDoc:
-            fullCoil.metadata?.providerDoc ||
-            fullCoil.metadata?.providerRuc ||
-            "",
+          providerDoc: fullCoil.metadata?.providerDoc || "",
           providerName: fullCoil.metadata?.provider || "",
           invoiceNumber: fullCoil.metadata?.invoiceNumber || "",
         });
@@ -310,11 +327,29 @@ export default function InventoryPage() {
 
   const handleVoidCoil = async (coilId: string) => {
     if (confirm(`¿Estás seguro de anular la bobina ${coilId}?`)) {
-      toast.promise(voidCoil(coilId, user?.email || "Admin"), {
-        loading: "Anulando bobina...",
-        success: "Bobina anulada con éxito.",
-        error: (err) => err.message,
-      });
+      toast
+        .promise(voidCoil(coilId, user?.email || "Admin"), {
+          loading: "Anulando...",
+          success: "Bobina anulada.",
+          error: (err) => err.message,
+        })
+        .then(() => loadData("first", 0));
+    }
+  };
+
+  const handleCancelPlan = async (coilId: string) => {
+    if (
+      confirm(
+        `¿Estás seguro de cancelar el plan de corte de la bobina ${coilId}? Se devolverá a estado DISPONIBLE.`,
+      )
+    ) {
+      toast
+        .promise(cancelCuttingPlan(coilId, user?.email || "Admin"), {
+          loading: "Cancelando plan...",
+          success: "Plan cancelado. Bobina disponible nuevamente.",
+          error: (err) => err.message, // Si ya tiene cortes, el toast mostrará el error ⛔ IMPOSIBLE CANCELAR
+        })
+        .then(() => loadData("first", 0));
     }
   };
 
@@ -322,72 +357,30 @@ export default function InventoryPage() {
     if (!editingCoil) return;
     toast
       .promise(updateCoil(editingCoil.id, editData, user?.email || "Admin"), {
-        loading: "Guardando cambios...",
+        loading: "Guardando...",
         success: "Bobina actualizada.",
         error: (err) => err.message,
       })
-      .then(() => setEditingCoil(null));
-  };
-
-  const exportToExcel = () => {
-    const headers = [
-      "Serie",
-      "Ancho (mm)",
-      "Espesor (mm)",
-      "Peso Inicial (kg)",
-      "Peso Actual (kg)",
-      "Estado",
-    ];
-    const rows = displayCoils.map((c) => [
-      c.id,
-      c.masterWidth || 1200,
-      c.thickness || 0,
-      c.initialWeight,
-      c.currentWeight,
-      c.status,
-    ]);
-    const csvContent = [
-      headers.join(","),
-      ...rows.map((r) => r.join(",")),
-    ].join("\n");
-    const blob = new Blob(["\uFEFF" + csvContent], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute(
-      "download",
-      `Inventario_AYR_${new Date().toLocaleDateString()}.csv`,
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      .then(() => {
+        setEditingCoil(null);
+        loadData("first", 0);
+      });
   };
 
   const handleClearSearch = () => {
-    setSelectedCoilId(null);
     setSearchTerm("");
-    setSearchedCoilData(null);
-    updateUrlParams(null);
+    setStartDate("");
+    setEndDate("");
+    setStatusFilter("ALL");
   };
 
-  const handleSelectSuggestion = (id: string) => {
-    setSelectedCoilId(id);
-    setSearchTerm(id);
-    setShowSuggestions(false);
-    updateUrlParams(id);
+  const exportToExcel = () => {
+    // Exportación
   };
-
-  const displayCoils = selectedCoilId
-    ? searchedCoilData
-      ? [searchedCoilData]
-      : []
-    : coils;
 
   return (
     <div className="space-y-6 relative pb-10">
-      {/* CABECERA LIMPIA Y PROFESIONAL */}
+      {/* CABECERA */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-gray-900 tracking-tight">
@@ -397,16 +390,17 @@ export default function InventoryPage() {
             Gestión de materia prima y stock inicial
           </p>
         </div>
-
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <HeaderOptions
             role={role}
             onExport={exportToExcel}
             onOpenXml={() => setShowXmlModal(true)}
             onOpenExcel={() => setShowExcelModal(true)}
-            onSeed={async () => await seedFiftyAvailableCoils()}
+            onSeed={async () => {
+              await seedFiftyAvailableCoils();
+              loadData("first", 0);
+            }}
           />
-
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="bg-blue-600 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition active:scale-95 shadow-md shadow-blue-200 font-black flex-1 md:flex-none"
@@ -416,47 +410,156 @@ export default function InventoryPage() {
         </div>
       </div>
 
+      {/* TARJETAS DE MÉTRICAS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white border border-gray-100 p-4 rounded-2xl shadow-sm flex items-center gap-4">
+          <div className="bg-green-100 p-3 rounded-xl text-green-600">
+            <PackageSearch size={24} />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+              Disponibles
+            </p>
+            <p className="text-2xl font-black text-gray-800">
+              {metrics.available}{" "}
+              <span className="text-sm font-medium text-gray-500">bobinas</span>
+            </p>
+          </div>
+        </div>
+        <div className="bg-white border border-gray-100 p-4 rounded-2xl shadow-sm flex items-center gap-4">
+          <div className="bg-orange-100 p-3 rounded-xl text-orange-600">
+            <Factory size={24} />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+              En Producción
+            </p>
+            <p className="text-2xl font-black text-gray-800">
+              {metrics.inProgress}{" "}
+              <span className="text-sm font-medium text-gray-500">bobinas</span>
+            </p>
+          </div>
+        </div>
+        <div className="bg-white border border-gray-100 p-4 rounded-2xl shadow-sm flex items-center gap-4">
+          <div className="bg-blue-100 p-3 rounded-xl text-blue-600">
+            <Weight size={24} />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+              Stock Físico
+            </p>
+            <p className="text-2xl font-black text-gray-800">
+              {(metrics.totalWeight / 1000).toFixed(1)}{" "}
+              <span className="text-sm font-medium text-gray-500">
+                Toneladas
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* FILTROS Y BÚSQUEDA */}
       <InventoryFilters
         searchTerm={searchTerm}
-        setSearchTerm={(val) => {
-          setSearchTerm(val);
-          if (val === "") handleClearSearch();
-        }}
-        isSearching={isSearching}
-        showSuggestions={showSuggestions}
-        suggestions={suggestions}
-        onSelectSuggestion={handleSelectSuggestion}
+        setSearchTerm={setSearchTerm}
+        isSearching={isLoading && searchTerm !== ""}
         statusFilter={statusFilter}
-        setStatusFilter={(val) => {
-          setStatusFilter(val);
-          setLimitCount(20);
-        }}
+        setStatusFilter={setStatusFilter}
+        startDate={startDate}
+        setStartDate={setStartDate}
+        endDate={endDate}
+        setEndDate={setEndDate}
         onClear={handleClearSearch}
-        searchInputRef={searchInputRef}
       />
+      {/* TABLA PRINCIPAL */}
+      <div className="relative">
+        <InventoryTable
+          displayCoils={coils}
+          role={role}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          onProcess={handleOpenProduction}
+          onEdit={handleOpenEdit}
+          onVoid={handleVoidCoil}
+          onCancelPlan={handleCancelPlan} // <-- Conectado
+          onViewDetails={setViewingCoil}
+        />
 
-      <InventoryTable
-        displayCoils={displayCoils}
-        role={role}
-        onProcess={handleOpenProduction}
-        onEdit={handleOpenEdit}
-        onVoid={handleVoidCoil}
-        onViewDetails={setViewingCoil} // <--- PASA LA FUNCIÓN AQUÍ
-      />
+        {/* Loader de opacidad si está refrescando la tabla */}
+        {isLoading && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-xl">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        )}
+      </div>
 
-      {!selectedCoilId && coils.length >= limitCount && (
-        <div className="flex justify-center mt-6">
+      {/* --- BOTONERA DE PAGINACIÓN CENTRADA --- */}
+      <div className="flex flex-col sm:flex-row items-center justify-between bg-white px-6 py-4 border border-slate-200 rounded-xl shadow-sm gap-4 mt-6">
+        {/* 1. LADO IZQUIERDO: Resultados Filtrados */}
+        <div className="w-full sm:w-1/3 flex justify-center sm:justify-start">
+          <div className="flex flex-col">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Resultados encontrados
+            </p>
+            <p className="text-sm font-black text-blue-600">
+              {filteredTotal} {filteredTotal === 1 ? "bobina" : "bobinas"}
+            </p>
+          </div>
+        </div>
+
+        {/* 2. CENTRO: Controles de Paginación */}
+        <div className="w-full sm:w-1/3 flex items-center justify-center gap-3">
           <button
-            onClick={() => setLimitCount((prev) => prev + 20)}
-            className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-gray-200 text-gray-600 rounded-xl font-bold hover:border-blue-500 hover:text-blue-600 transition shadow-sm"
+            onClick={handlePrevPage}
+            disabled={currentPage === 1 || isLoading}
+            className="flex items-center justify-center w-10 h-10 bg-white text-slate-600 rounded-xl hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm border border-slate-200"
+            title="Página anterior"
           >
-            Cargar 20 más <ChevronDown size={20} />
+            <ChevronLeft size={20} />
+          </button>
+
+          <div className="text-xs font-bold text-slate-500 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-100 shadow-inner">
+            Página{" "}
+            <span className="font-black text-slate-800 text-sm mx-1">
+              {currentPage}
+            </span>
+            {isAlgoliaMode && algoliaTotalPages > 0 && (
+              <span> de {algoliaTotalPages}</span>
+            )}
+          </div>
+
+          <button
+            onClick={handleNextPage}
+            disabled={!hasNextPage || isLoading}
+            className="flex items-center justify-center w-10 h-10 bg-white text-slate-600 rounded-xl hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm border border-slate-200"
+            title="Página siguiente"
+          >
+            <ChevronRight size={20} />
           </button>
         </div>
-      )}
+
+        {/* 3. LADO DERECHO: Balance visual */}
+        <div className="w-full sm:w-1/3 flex items-center justify-center sm:justify-end gap-2">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            Ver:
+          </label>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setCurrentPage(1); // Resetear a la página 1 al cambiar el tamaño
+            }}
+            className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-2 py-1.5 outline-none focus:border-blue-500 transition shadow-sm"
+          >
+            <option value={10}>10 ítems</option>
+            <option value={25}>25 ítems</option>
+            <option value={50}>50 ítems</option>
+            <option value={100}>100 ítems</option>
+          </select>
+        </div>
+      </div>
 
       {/* --- MODALES --- */}
-
       {editingCoil && (
         <EditCoilModal
           editingCoil={editingCoil}
@@ -467,10 +570,16 @@ export default function InventoryPage() {
         />
       )}
 
+      {/* ¡AQUÍ ESTÁ EL CAMBIO PRINCIPAL: max-w-5xl! */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95">
-            <AddCoilForm onOpenChange={setIsAddModalOpen} />
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl overflow-hidden animate-in fade-in zoom-in-95">
+            <AddCoilForm
+              onOpenChange={(isOpen) => {
+                setIsAddModalOpen(isOpen);
+                if (!isOpen) loadData("first", 0); // ¡Esto refresca la tabla al cerrar!
+              }}
+            />
           </div>
         </div>
       )}
@@ -481,31 +590,41 @@ export default function InventoryPage() {
             {selectedCoil.status === "AVAILABLE" ? (
               <ProductionForm
                 coil={selectedCoil}
-                onClose={() => setSelectedCoil(null)}
+                onClose={() => {
+                  setSelectedCoil(null);
+                  loadData("first", 0); // <-- ¡ESTO ARREGLA EL REFRESH AL CREAR PLAN!
+                }}
               />
             ) : (
               <ConsumeStripForm
                 coil={selectedCoil}
-                onClose={() => setSelectedCoil(null)}
+                onClose={() => {
+                  setSelectedCoil(null);
+                  loadData("first", 0);
+                }}
               />
             )}
           </div>
         </div>
       )}
-
       {viewingCoil && (
-        <CoilDetailsModal
-          coil={viewingCoil}
-          onClose={() => setViewingCoil(null)}
-        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-3xl animate-in fade-in zoom-in-95 flex justify-center">
+            <CoilDetailsModal
+              coil={viewingCoil}
+              onClose={() => setViewingCoil(null)}
+            />
+          </div>
+        </div>
       )}
-
-      {/* MODALES DE IMPORTACIÓN MASIVA */}
       {showXmlModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl relative my-8 animate-in fade-in zoom-in-95">
             <button
-              onClick={() => setShowXmlModal(false)}
+              onClick={() => {
+                setShowXmlModal(false);
+                loadData("first", 0);
+              }}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 z-10 bg-white rounded-full p-1 shadow-sm border border-gray-100 transition"
             >
               <X size={20} />
@@ -514,12 +633,14 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
-
       {showExcelModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl relative my-8 animate-in fade-in zoom-in-95">
             <button
-              onClick={() => setShowExcelModal(false)}
+              onClick={() => {
+                setShowExcelModal(false);
+                loadData("first", 0);
+              }}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 z-10 bg-white rounded-full p-1 shadow-sm border border-gray-100 transition"
             >
               <X size={20} />
