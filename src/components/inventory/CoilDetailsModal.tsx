@@ -10,6 +10,7 @@ import {
   ArrowRightLeft,
   FileText,
   Hash,
+  Scissors, // <-- Agregado para el ícono del plan de corte
 } from "lucide-react";
 import { Coil } from "@/types";
 
@@ -39,8 +40,21 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
   const originalCurrencyValue = coil.metadata?.originalCurrencyValue || 0;
   const isVoided = coil.status === "VOIDED";
 
+  // --- VARIABLES PARA EL PLAN DE CORTE ---
+  const isPlanned = coil.plannedStrips && coil.plannedStrips.length > 0;
+  const totalPlannedWidth = isPlanned
+    ? coil.plannedStrips!.reduce(
+        (sum, strip) => sum + strip.width * strip.initialCount,
+        0,
+      )
+    : 0;
+  const scrapWidth = coil.masterWidth
+    ? coil.masterWidth - totalPlannedWidth
+    : 0;
+
   return (
-    <div className="flex flex-col bg-slate-50 w-full max-w-3xl rounded-2xl overflow-hidden shadow-2xl">
+    <div className="flex flex-col bg-slate-50 w-full max-w-3xl max-h-[90vh] rounded-2xl overflow-hidden shadow-2xl">
+      {" "}
       {/* HEADER OSCURO */}
       <div
         className={`p-6 flex justify-between items-start ${isVoided ? "bg-red-950" : "bg-slate-900"} text-white shrink-0 relative`}
@@ -72,8 +86,7 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
           <X size={24} />
         </button>
       </div>
-
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
         {/* ALERTA DE CONVERSIÓN DE MONEDA (Solo si es USD) */}
         {isConverted && (
           <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-3">
@@ -159,7 +172,7 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
                 <label className="block text-[10px] font-bold text-slate-400 uppercase">
                   Descripción Original (Factura)
                 </label>
-                <p className="text-xs font-mono bg-slate-100 p-2 rounded-lg text-slate-600 mt-1">
+                <p className="text-xs font-mono bg-slate-100 p-2 rounded-lg text-slate-600 mt-1 break-words">
                   {coil.metadata.originalDescription}
                 </p>
               </div>
@@ -180,7 +193,7 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                 <label className="block text-[10px] font-bold text-slate-400 uppercase">
-                  Peso Inicial (Compra)
+                  Peso Inicial
                 </label>
                 <p className="text-xl font-black text-slate-800">
                   {coil.initialWeight}{" "}
@@ -255,7 +268,7 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
 
               <div className="flex justify-between items-center bg-slate-50 p-2 rounded-lg">
                 <span className="text-xs font-black text-slate-600">
-                  Valorización del Saldo Actual
+                  Valorización del Saldo
                 </span>
                 <span className="text-base font-black text-emerald-600">
                   S/{" "}
@@ -294,6 +307,122 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
               )}
             </div>
           </div>
+        </div>
+
+        {/* 4. PLAN DE CORTE (NUEVA SECCIÓN UNIFICADA) */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <header className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <Scissors size={16} className="text-purple-500" />
+            <h3 className="text-xs font-black text-slate-600 uppercase tracking-wider">
+              Plan de Corte (Flejes Operativos)
+            </h3>
+          </header>
+
+          {!isPlanned ? (
+            <div className="bg-slate-50 border border-slate-200 border-dashed p-8 rounded-xl text-center">
+              <p className="text-slate-500 font-bold">
+                Esta bobina aún no tiene un plan de corte asignado.
+              </p>
+              <p className="text-sm text-slate-400 mt-1">
+                Debe procesarse desde la tabla principal para generar los
+                flejes.
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="p-3 text-[10px] font-black text-slate-500 uppercase">
+                      Producto (SKU)
+                    </th>
+                    <th className="p-3 text-[10px] font-black text-slate-500 uppercase text-center">
+                      Ancho Fleje
+                    </th>
+                    <th className="p-3 text-[10px] font-black text-slate-500 uppercase text-center">
+                      Cortes (Progreso)
+                    </th>
+                    <th className="p-3 text-[10px] font-black text-slate-500 uppercase text-right">
+                      Costo Asignado
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {coil.plannedStrips!.map((strip, idx) => {
+                    const completedCuts =
+                      strip.initialCount - strip.pendingCount;
+                    const isDone = strip.pendingCount === 0;
+
+                    return (
+                      <tr
+                        key={idx}
+                        className={`hover:bg-slate-50 transition ${
+                          isDone ? "opacity-60 bg-slate-50/50" : ""
+                        }`}
+                      >
+                        <td className="p-3 font-bold text-slate-700 text-sm">
+                          {strip.sku}
+                          {isDone && (
+                            <span className="ml-2 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                              Completado
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center text-sm font-medium text-slate-600">
+                          {strip.width} mm
+                        </td>
+                        <td className="p-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="text-sm font-black text-blue-600">
+                              {completedCuts}
+                            </span>
+                            <span className="text-xs text-slate-400">de</span>
+                            <span className="text-sm font-bold text-slate-700">
+                              {strip.initialCount}
+                            </span>
+                          </div>
+                          {/* Barra de progreso visual */}
+                          <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${
+                                isDone ? "bg-green-500" : "bg-blue-500"
+                              }`}
+                              style={{
+                                width: `${(completedCuts / strip.initialCount) * 100}%`,
+                              }}
+                            ></div>
+                          </div>
+                        </td>
+                        <td className="p-3 text-right text-sm font-black text-slate-700">
+                          S/ {strip.costPerStrip.toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot className="bg-slate-50/50 border-t border-slate-200">
+                  <tr>
+                    <td
+                      colSpan={2}
+                      className="p-3 text-xs font-bold text-slate-500"
+                    >
+                      Ancho Consumido:{" "}
+                      <span className="text-slate-800">
+                        {totalPlannedWidth} mm
+                      </span>
+                    </td>
+                    <td
+                      colSpan={2}
+                      className="p-3 text-xs font-bold text-slate-500 text-right"
+                    >
+                      Merma (Retazo):{" "}
+                      <span className="text-red-500">{scrapWidth} mm</span>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>
