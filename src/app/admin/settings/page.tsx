@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   DatabaseZap,
   Loader2,
+  Wrench,
 } from "lucide-react";
 import {
   getSystemSettings,
@@ -22,6 +23,7 @@ import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings
 import { UsersSettings } from "@/components/settings/UsersSettings";
 import { useAuth } from "@/context/AuthContext"; // <-- Necessário para o log de auditoria
 import toast from "react-hot-toast";
+import { fixAllHistoricalCosts } from "@/services/seedService";
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -33,6 +35,7 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [isFixing, setIsFixing] = useState(false);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -42,6 +45,25 @@ export default function SettingsPage() {
     };
     loadSettings();
   }, []);
+
+  const handleFixCosts = async () => {
+    if (
+      !confirm(
+        "¿Estás seguro de querer recalcular los costos de los flejes en progreso?",
+      )
+    )
+      return;
+
+    setIsFixing(true);
+    try {
+      const res = await fixAllHistoricalCosts();
+      toast.success(res.message);
+    } catch (error: any) {
+      toast.error("Error al recalcular: " + error.message);
+    } finally {
+      setIsFixing(false);
+    }
+  };
 
   const handleSaveSettings = async (newSettings: SystemSettings) => {
     setIsSaving(true);
@@ -231,6 +253,30 @@ export default function SettingsPage() {
                       </>
                     )}
                   </button>
+
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100 mt-6">
+                    <h3 className="text-lg font-black text-orange-600 mb-2 flex items-center gap-2">
+                      <Wrench size={20} />
+                      Mantenimiento de Base de Datos
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Utiliza esta herramienta solo si detectaste descuadres en
+                      el costo de la merma de refilado. Recalculará el costo de
+                      todos los flejes que estén "En Progreso".
+                    </p>
+                    <button
+                      onClick={handleFixCosts}
+                      disabled={isFixing}
+                      className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition"
+                    >
+                      {isFixing ? (
+                        <Loader2 className="animate-spin" />
+                      ) : (
+                        <Wrench size={16} />
+                      )}
+                      Recalcular Costos Históricos
+                    </button>
+                  </div>
                 </div>
               )}
             </>

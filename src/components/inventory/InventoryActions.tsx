@@ -7,6 +7,7 @@ import {
   Edit2,
   Trash2,
   AlertCircle,
+  RotateCcw, // <-- NUEVO ICONO
 } from "lucide-react";
 import { Coil } from "@/types";
 
@@ -17,6 +18,7 @@ interface InventoryActionsProps {
   onProcess: () => void;
   onEdit: () => void;
   onVoid: () => void;
+  onCancelPlan: () => void; // <-- NUEVA PROP
 }
 
 export default function InventoryActions({
@@ -26,23 +28,19 @@ export default function InventoryActions({
   onProcess,
   onEdit,
   onVoid,
+  onCancelPlan,
 }: InventoryActionsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [mounted, setMounted] = useState(false);
 
-  // Evita errores de hidratación en Next.js
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  // Cierra el menú automáticamente si el usuario hace scroll
   useEffect(() => {
     const handleScroll = () => setIsOpen(false);
-    if (isOpen) {
-      window.addEventListener("scroll", handleScroll, true);
-    }
+    if (isOpen) window.addEventListener("scroll", handleScroll, true);
     return () => window.removeEventListener("scroll", handleScroll, true);
   }, [isOpen]);
 
@@ -58,9 +56,7 @@ export default function InventoryActions({
     if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
       setMenuPosition({
-        // Posicionamos el menú justo debajo del botón
         top: rect.bottom + window.scrollY + 4,
-        // Alinear a la derecha restando el ancho aproximado del menú (160px)
         left: rect.right - 160,
       });
       setIsOpen(true);
@@ -79,7 +75,6 @@ export default function InventoryActions({
         </button>
       </div>
 
-      {/* PORTAL: Renderiza el menú en el body, fuera del contenedor de la tabla */}
       {mounted &&
         isOpen &&
         createPortal(
@@ -87,7 +82,6 @@ export default function InventoryActions({
             className="fixed inset-0 z-[9999]"
             style={{ pointerEvents: "none" }}
           >
-            {/* Overlay invisible en toda la pantalla para cerrar al clic */}
             <div
               className="absolute inset-0"
               style={{ pointerEvents: "auto" }}
@@ -96,8 +90,6 @@ export default function InventoryActions({
                 setIsOpen(false);
               }}
             />
-
-            {/* Menú Flotante */}
             <div
               className="absolute w-40 bg-white border border-gray-100 rounded-xl shadow-2xl py-1 animate-in fade-in zoom-in-95"
               style={{
@@ -116,6 +108,19 @@ export default function InventoryActions({
               >
                 <Scissors size={16} /> Procesar
               </button>
+
+              {/* 👇 NUEVO BOTÓN: CANCELAR PLAN DE CORTE 👇 */}
+              {role === "ADMIN" && coil.status === "IN_PROGRESS" && (
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    onCancelPlan();
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-orange-600 hover:bg-orange-50 font-bold flex items-center gap-2 transition"
+                >
+                  <RotateCcw size={16} /> Cancelar Plan
+                </button>
+              )}
 
               {role === "ADMIN" && coil.status === "AVAILABLE" && (
                 <>

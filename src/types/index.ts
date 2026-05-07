@@ -30,6 +30,10 @@ export interface Coil {
     providerDoc?: string;
     providerRuc?: string; // Lo dejamos por retrocompatibilidad
     invoiceNumber?: string;
+    invoiceDate?: any;
+    currency?: "PEN" | "USD";
+    exchangeRate?: number;
+    originalCurrencyValue?: number;
     // -------------------------------
     originalDescription?: string;
     isHistoricalMigration?: boolean;

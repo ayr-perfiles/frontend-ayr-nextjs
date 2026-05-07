@@ -8,9 +8,12 @@ import InventoryActions from "./InventoryActions";
 interface InventoryTableProps {
   displayCoils: Coil[];
   role: string | null | undefined;
+  currentPage: number; // <-- NUEVO
+  pageSize: number; // <-- NUEVO
   onProcess: (coil: Coil) => void;
   onEdit: (coil: Coil) => void;
   onVoid: (coilId: string) => void;
+  onCancelPlan: (coilId: string) => void; // <-- Agrega esta
   onViewDetails: (coil: Coil) => void;
 }
 
@@ -36,12 +39,39 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// --- NUEVA FUNCIÓN PARA FORMATEAR FECHAS ---
+const formatDate = (dateValue: any) => {
+  if (!dateValue) return "Sin fecha";
+
+  // Si viene como Timestamp de Firebase
+  if (typeof dateValue.toDate === "function") {
+    return dateValue.toDate().toLocaleDateString("es-PE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  }
+
+  // Si viene como Date u otro formato string
+  const date = new Date(dateValue);
+  if (isNaN(date.getTime())) return "Sin fecha";
+
+  return date.toLocaleDateString("es-PE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
 export default function InventoryTable({
   displayCoils,
   role,
+  currentPage,
+  pageSize,
   onProcess,
   onEdit,
   onVoid,
+  onCancelPlan, // <-- Agrega esta
   onViewDetails,
 }: InventoryTableProps) {
   return (
@@ -50,8 +80,15 @@ export default function InventoryTable({
         <table className="w-full text-left border-collapse">
           <thead className="bg-gray-50/80 border-b border-gray-100">
             <tr>
+              <th className="p-4 text-xs font-bold text-gray-400 uppercase tracking-wider text-center w-12">
+                #
+              </th>
               <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                 Serie
+              </th>
+              {/* --- NUEVA COLUMNA DE FECHA --- */}
+              <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                Fecha Ingreso
               </th>
               <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                 Material{" "}
@@ -74,17 +111,25 @@ export default function InventoryTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {displayCoils.map((coil) => {
+            {displayCoils.map((coil, index) => {
               const isVoided = coil.status === "VOIDED";
 
               const creatorEmail = coil.registeredBy || "Sistema";
               const initial = creatorEmail.charAt(0).toUpperCase();
+
+              // Calculamos el número real de la fila según la página
+              const rowNumber = (currentPage - 1) * pageSize + index + 1;
 
               return (
                 <tr
                   key={coil.id}
                   className={`group transition-colors ${isVoided ? "bg-red-50/10" : "hover:bg-blue-50/20"}`}
                 >
+                  <td className="p-4 text-center">
+                    <span className="text-xs font-bold text-gray-400">
+                      {rowNumber}
+                    </span>
+                  </td>
                   <td className="p-4">
                     <div className="flex flex-col">
                       <span
@@ -99,6 +144,16 @@ export default function InventoryTable({
                       )}
                     </div>
                   </td>
+
+                  {/* --- NUEVA CELDA DE FECHA --- */}
+                  <td className="p-4">
+                    <div
+                      className={`text-sm font-bold ${isVoided ? "text-gray-400 line-through" : "text-gray-700"}`}
+                    >
+                      {formatDate(coil.metadata?.invoiceDate || coil.createdAt)}
+                    </div>
+                  </td>
+
                   <td
                     className={`p-4 text-sm font-medium ${isVoided ? "text-gray-400 line-through" : "text-gray-600"}`}
                   >
@@ -153,6 +208,7 @@ export default function InventoryTable({
                         onProcess={() => onProcess(coil)}
                         onEdit={() => onEdit(coil)}
                         onVoid={() => onVoid(coil.id)}
+                        onCancelPlan={() => onCancelPlan(coil.id)} // <-- Agrega esta línea
                       />
                     </div>
                   </td>
@@ -162,7 +218,8 @@ export default function InventoryTable({
 
             {displayCoils.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-12 text-center">
+                {/* --- SE AUMENTÓ EL COLSPAN A 8 POR LA NUEVA COLUMNA --- */}
+                <td colSpan={8} className="p-12 text-center">
                   <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-50 mb-4 text-gray-400">
                     <Search size={24} />
                   </div>

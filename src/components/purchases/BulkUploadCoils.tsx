@@ -94,11 +94,13 @@ export function BulkUploadCoils() {
               "",
           ).replace(/\D/g, "");
 
-          // 5. TRUCO DEL MEDIODÍA PARA EVITAR EL DESFASE DE FECHA
+          // 5. TRUCO DEL MEDIODÍA PARA EVITAR EL DESFASE DE FECHA (A prueba de fallos)
           const rawDate =
             row["FECHA"] || row["F. EMISIÓN"] || row["FECHA EMISION"];
+
           const finalDate = (() => {
-            if (rawDate instanceof Date) {
+            // A. Si es un Objeto de Fecha válido
+            if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
               return new Date(
                 rawDate.getUTCFullYear(),
                 rawDate.getUTCMonth(),
@@ -107,10 +109,23 @@ export function BulkUploadCoils() {
                 0,
                 0,
               );
-            } else if (typeof rawDate === "string") {
-              return new Date(`${rawDate}T12:00:00`);
             }
-            return new Date(); // Si no hay fecha, usa hoy
+            // B. Si es un texto (Ej: "16/01/2026")
+            else if (typeof rawDate === "string") {
+              const parts = rawDate.split(" ")[0].split("/");
+              if (parts.length >= 3) {
+                // Lo volteamos a YYYY-MM-DD
+                const isoDate = `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+                const parsedDate = new Date(`${isoDate}T12:00:00`);
+                return isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+              }
+              // Fallback si ya venía en formato internacional
+              const fallbackDate = new Date(`${rawDate}T12:00:00`);
+              return isNaN(fallbackDate.getTime()) ? new Date() : fallbackDate;
+            }
+
+            // C. Si la celda estaba vacía o con basura, usamos la fecha de hoy
+            return new Date();
           })();
 
           // 6. Autogenerar un ID
@@ -127,7 +142,7 @@ export function BulkUploadCoils() {
             provider: row["PROVEEDOR"] || row["RAZON SOCIAL"] || "SISTEMA",
             providerDoc: rawRuc,
             invoiceNumber: `${serie}-${nroDoc}`,
-            invoiceDate: finalDate, // Asignamos la fecha corregida
+            invoiceDate: finalDate, // Asignamos la fecha ultra-protegida
             originalDescription: itemDescription,
           });
         });
@@ -186,7 +201,7 @@ export function BulkUploadCoils() {
             providerDoc: coil.providerDoc || null,
             provider: coil.provider,
             invoiceNumber: coil.invoiceNumber,
-            invoiceDate: coil.invoiceDate, // AHORA SÍ GUARDAMOS LA FECHA EN LA BD
+            invoiceDate: coil.invoiceDate, // Aquí ya guarda sin error
             originalDescription: coil.originalDescription,
             isHistoricalMigration: true,
           },
