@@ -1,3 +1,4 @@
+import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
 import { db } from "@/lib/firebase/clientApp";
 import {
   collection,
@@ -8,29 +9,128 @@ import {
   where,
   orderBy,
   updateDoc,
+  documentId,
+  endBefore,
+  getCountFromServer,
+  limit,
+  limitToLast,
+  startAfter,
+  addDoc,
+  arrayRemove,
+  arrayUnion,
+  deleteDoc,
 } from "firebase/firestore";
 
 // 1. OBTENER TODOS LOS CLIENTES (Para la tabla principal)
-export const getAllCustomers = async () => {
-  try {
-    const snap = await getDocs(collection(db, "customers"));
-    return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  } catch (error) {
-    console.error("Error obteniendo clientes:", error);
-    return [];
+export interface FetchCustomersParams {
+  pageSize: number;
+  searchTerm: string;
+  direction?: "first" | "next" | "prev";
+  cursorDoc?: any;
+  page?: number;
+}
+
+export const fetchCustomersPaginated = async (params: FetchCustomersParams) => {
+  const {
+    pageSize,
+    searchTerm,
+    direction = "first",
+    cursorDoc,
+    page = 0,
+  } = params;
+
+  // ==========================================
+  // MOTOR 1: ALGOLIA (Búsqueda ultrarrápida por Nombre o RUC)
+  // ==========================================
+  if (searchTerm && searchTerm.trim().length > 0) {
+    const {
+      hits,
+      nbPages,
+      page: currentPage,
+      nbHits,
+    } = await algoliaClient.searchSingleIndex({
+      indexName: ALGOLIA_INDICES.CUSTOMERS || "customers_index",
+      searchParams: { query: searchTerm, hitsPerPage: pageSize, page },
+    });
+
+    const hitIds = hits.map((h: any) => h.objectID);
+    let customers: any[] = [];
+
+    if (hitIds.length > 0) {
+      const qDocs = query(
+        collection(db, "customers"),
+        where(documentId(), "in", hitIds),
+      );
+      const snap = await getDocs(qDocs);
+      const firestoreDocs = snap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      // Reordenar según relevancia de Algolia
+      customers = hitIds
+        .map((id) => firestoreDocs.find((d) => d.id === id))
+        .filter(Boolean);
+    }
+
+    return {
+      customers,
+      isAlgolia: true,
+      algoliaData: { totalPages: nbPages, currentPage, nbHits },
+      firstDoc: null,
+      lastDoc: null,
+      totalCount: nbHits,
+    };
   }
+
+  // ==========================================
+  // MOTOR 2: FIRESTORE (Navegación normal)
+  // ==========================================
+  const collRef = collection(db, "customers");
+
+  const countSnapshot = await getCountFromServer(collRef);
+  const totalCount = countSnapshot.data().count;
+
+  // Firebase no permite ordenar por defecto sin un campo específico,
+  // usaremos el documentId (RUC) para mantener un orden consistente en la paginación.
+  let paginationConstraints: any[] = [orderBy(documentId(), "asc")];
+
+  if (direction === "next" && cursorDoc) {
+    paginationConstraints.push(startAfter(cursorDoc));
+    paginationConstraints.push(limit(pageSize));
+  } else if (direction === "prev" && cursorDoc) {
+    paginationConstraints.push(endBefore(cursorDoc));
+    paginationConstraints.push(limitToLast(pageSize));
+  } else {
+    paginationConstraints.push(limit(pageSize));
+  }
+
+  const finalQuery = query(collRef, ...paginationConstraints);
+  const snapshot = await getDocs(finalQuery);
+
+  const customers = snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+
+  return {
+    customers,
+    isAlgolia: false,
+    firstDoc: snapshot.docs.length > 0 ? snapshot.docs[0] : null,
+    lastDoc:
+      snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null,
+    totalCount,
+  };
 };
 
 // 2. OBTENER EL PERFIL COMPLETO DEL CLIENTE (Datos, Contactos e Historial)
 export const getCustomerProfile = async (documentNumber: string) => {
   try {
-    // A. Datos de la empresa
     const customerRef = doc(db, "customers", documentNumber);
     const customerSnap = await getDoc(customerRef);
     if (!customerSnap.exists()) throw new Error("Cliente no encontrado");
     const customerData = { id: customerSnap.id, ...customerSnap.data() };
 
-    // B. Contactos asociados
     const contactsQuery = query(
       collection(db, "contacts"),
       where("associatedCompanyIds", "array-contains", documentNumber),
@@ -38,26 +138,20 @@ export const getCustomerProfile = async (documentNumber: string) => {
     const contactsSnap = await getDocs(contactsQuery);
     const contacts = contactsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-    // C. Historial de Ventas y Cotizaciones
+    // 🔥 MEJORA ENTERPRISE: Solo traemos las últimas 50 operaciones
     const salesQuery = query(
       collection(db, "sales"),
-      where("documentNumber", "==", documentNumber),
-      // Firebase requiere un índice compuesto si usas where + orderBy en distintos campos,
-      // así que ordenaremos en memoria (frontend) para evitar que tengas que crear índices manuales ahora.
+      where("documentNumber", "==", String(documentNumber).trim()),
+      orderBy("timestamp", "desc"), // Requiere el índice compuesto en Firebase
+      limit(50), // <--- ESTO SALVA TU FACTURA Y LA MEMORIA DEL NAVEGADOR
     );
+
     const salesSnap = await getDocs(salesQuery);
     const salesHistory = salesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-    // Ordenamos cronológicamente (del más reciente al más antiguo)
-    salesHistory.sort((a: any, b: any) => {
-      const dateA = a.timestamp?.toMillis() || 0;
-      const dateB = b.timestamp?.toMillis() || 0;
-      return dateB - dateA;
-    });
-
     return { customerData, contacts, salesHistory };
   } catch (error) {
-    console.error("Error obteniendo perfil del cliente:", error);
+    console.error("Error obteniendo perfil:", error);
     return null;
   }
 };
@@ -74,5 +168,80 @@ export const updatePaymentStatus = async (
   } catch (error) {
     console.error("Error actualizando pago:", error);
     throw new Error("No se pudo actualizar el estado de pago.");
+  }
+};
+
+// 4. GUARDAR CONTACTO (Crea o Edita y lo enlaza a la empresa)
+export const saveContact = async (
+  contactId: string | null,
+  contactData: { name: string; phone: string; email: string; role?: string },
+  companyId: string,
+) => {
+  try {
+    if (contactId) {
+      // EDITAR CONTACTO EXISTENTE
+      const contactRef = doc(db, "contacts", contactId);
+      await updateDoc(contactRef, {
+        ...contactData,
+        // Nos aseguramos que la empresa siga en su array por seguridad
+        associatedCompanyIds: arrayUnion(companyId),
+      });
+      return { success: true, id: contactId };
+    } else {
+      // CREAR NUEVO CONTACTO
+      const newContactRef = await addDoc(collection(db, "contacts"), {
+        ...contactData,
+        associatedCompanyIds: [companyId], // Lo enlazamos desde el nacimiento
+        createdAt: new Date(),
+      });
+      return { success: true, id: newContactRef.id };
+    }
+  } catch (error) {
+    console.error("Error guardando contacto:", error);
+    throw new Error("No se pudo guardar el contacto.");
+  }
+};
+
+// 5. DESENLAZAR CONTACTO DE UNA EMPRESA
+export const unlinkContact = async (contactId: string, companyId: string) => {
+  try {
+    const contactRef = doc(db, "contacts", contactId);
+    const contactSnap = await getDoc(contactRef);
+
+    if (!contactSnap.exists()) throw new Error("Contacto no encontrado");
+
+    const contactData = contactSnap.data();
+    const companies = contactData.associatedCompanyIds || [];
+
+    // Si solo pertenece a esta empresa, lo borramos de la base de datos para no dejar "basura"
+    if (companies.length <= 1 && companies.includes(companyId)) {
+      await deleteDoc(contactRef);
+    } else {
+      // Si pertenece a múltiples empresas, solo le quitamos esta empresa de su array
+      await updateDoc(contactRef, {
+        associatedCompanyIds: arrayRemove(companyId),
+      });
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error desenlazando contacto:", error);
+    throw new Error("No se pudo remover el contacto.");
+  }
+};
+
+export const linkExistingContact = async (
+  contactId: string,
+  companyId: string,
+) => {
+  try {
+    const contactRef = doc(db, "contacts", contactId);
+    await updateDoc(contactRef, {
+      associatedCompanyIds: arrayUnion(companyId),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Error enlazando contacto:", error);
+    throw new Error("No se pudo enlazar el contacto.");
   }
 };

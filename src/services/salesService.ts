@@ -1,21 +1,21 @@
+import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
 import { db } from "@/lib/firebase/clientApp";
 import {
   collection,
   doc,
+  documentId,
+  endBefore,
+  getCountFromServer,
+  getDocs,
+  limit,
+  limitToLast,
+  orderBy,
+  query,
   runTransaction,
   serverTimestamp,
-  query,
-  where,
-  orderBy,
-  limit,
   startAfter,
-  endBefore,
-  limitToLast,
-  getDocs,
-  documentId,
-  getCountFromServer,
+  where,
 } from "firebase/firestore";
-import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
 
 interface CartItem {
   sku: string;
@@ -27,11 +27,6 @@ interface CartItem {
 
 const SETTINGS_DOC_ID = "general_settings";
 
-/**
- * ==========================================
- * 1. PROCESAR VENTA DIRECTA
- * ==========================================
- */
 export const processSale = async (
   customerName: string,
   documentNumber: string,
@@ -75,18 +70,28 @@ export const processSale = async (
         const currentStock = stockDoc.data().totalQuantity;
         if (currentStock < item.quantity) {
           throw new Error(
-            `Stock insuficiente para ${item.sku}. Solo quedan ${currentStock} unidades.`,
+            `Stock insuficiente para ${item.sku}. Quedan ${currentStock} unidades.`,
           );
         }
 
-        stockUpdates.push({
-          ref: stockRef,
-          newQuantity: currentStock - item.quantity,
-        });
+        const newStock = currentStock - item.quantity;
+        stockUpdates.push({ ref: stockRef, newQuantity: newStock });
 
         totalAmount += item.quantity * item.unitPrice;
         totalCost += item.quantity * item.baseCost;
         totalWeight += item.quantity * (item.unitWeight || 0);
+
+        const kardexRef = doc(collection(db, "kardex_movements"));
+        transaction.set(kardexRef, {
+          sku: item.sku,
+          date: serverTimestamp(),
+          type: "OUT",
+          quantity: item.quantity,
+          balance: newStock,
+          reference: saleId,
+          description: `Venta a ${customerName}`,
+          user: sellerId,
+        });
       }
 
       const totalProfit = totalAmount - totalCost;
@@ -104,6 +109,9 @@ export const processSale = async (
         });
       }
 
+      // 🔥 ÍNDICE PLANO DE BÚSQUEDA
+      const skusArray = Array.from(new Set(cart.map((item) => item.sku)));
+
       transaction.set(saleRef, {
         customerName,
         documentNumber,
@@ -111,6 +119,7 @@ export const processSale = async (
         contactName,
         contactPhone,
         items: cart,
+        skus: skusArray, // <-- Magia
         totalAmount,
         totalCost,
         totalProfit,
@@ -123,16 +132,10 @@ export const processSale = async (
 
     return { success: true, id: generatedSaleId };
   } catch (error: any) {
-    console.error("Error en processSale:", error);
     throw new Error(error.message || "Error al procesar la venta.");
   }
 };
 
-/**
- * ==========================================
- * 2. CREAR COTIZACIÓN
- * ==========================================
- */
 export const createQuotation = async (
   customerName: string,
   documentNumber: string,
@@ -143,7 +146,6 @@ export const createQuotation = async (
   contactPhone: string = "",
 ) => {
   let generatedQuoteId = "";
-
   try {
     await runTransaction(db, async (transaction) => {
       const settingsRef = doc(db, "settings", SETTINGS_DOC_ID);
@@ -161,7 +163,6 @@ export const createQuotation = async (
       let totalAmount = 0;
       let totalCost = 0;
       let totalWeight = 0;
-
       cart.forEach((item) => {
         totalAmount += item.quantity * item.unitPrice;
         totalCost += item.quantity * item.baseCost;
@@ -169,13 +170,13 @@ export const createQuotation = async (
       });
 
       const totalProfit = totalAmount - totalCost;
+      const skusArray = Array.from(new Set(cart.map((item) => item.sku)));
 
       transaction.set(
         settingsRef,
         { nextQuotationNumber: nextQuoteNumber + 1 },
         { merge: true },
       );
-
       transaction.set(quoteRef, {
         customerName,
         documentNumber,
@@ -183,6 +184,7 @@ export const createQuotation = async (
         contactName,
         contactPhone,
         items: cart,
+        skus: skusArray, // <-- Magia
         totalAmount,
         totalCost,
         totalProfit,
@@ -192,22 +194,14 @@ export const createQuotation = async (
         timestamp: serverTimestamp(),
       });
     });
-
     return { success: true, id: generatedQuoteId };
   } catch (error: any) {
-    console.error("Error en createQuotation:", error);
     throw new Error("Error al generar la cotización.");
   }
 };
 
-/**
- * ==========================================
- * 3. APROBAR COTIZACIÓN
- * ==========================================
- */
 export const approveQuotation = async (quotationId: string) => {
   const quoteRef = doc(db, "sales", quotationId);
-
   try {
     await runTransaction(db, async (transaction) => {
       const quoteDoc = await transaction.get(quoteRef);
@@ -215,7 +209,7 @@ export const approveQuotation = async (quotationId: string) => {
 
       const quoteData = quoteDoc.data();
       if (quoteData.status === "COMPLETED" || quoteData.status === "CONVERTED")
-        throw new Error("Esta cotización ya fue aprobada previamente.");
+        throw new Error("Esta cotización ya fue aprobada.");
 
       const settingsRef = doc(db, "settings", SETTINGS_DOC_ID);
       const settingsDoc = await transaction.get(settingsRef);
@@ -235,18 +229,24 @@ export const approveQuotation = async (quotationId: string) => {
         const stockDoc = await transaction.get(stockRef);
 
         if (!stockDoc.exists())
-          throw new Error(`El producto ${item.sku} no existe en inventario.`);
-
+          throw new Error(`El producto ${item.sku} no existe.`);
         const currentStock = stockDoc.data().totalQuantity;
-        if (currentStock < item.quantity) {
-          throw new Error(
-            `No puedes aprobar. Stock insuficiente para ${item.sku}.`,
-          );
-        }
+        if (currentStock < item.quantity)
+          throw new Error(`Stock insuficiente para ${item.sku}.`);
 
-        stockUpdates.push({
-          ref: stockRef,
-          newQuantity: currentStock - item.quantity,
+        const newStock = currentStock - item.quantity;
+        stockUpdates.push({ ref: stockRef, newQuantity: newStock });
+
+        const kardexRef = doc(collection(db, "kardex_movements"));
+        transaction.set(kardexRef, {
+          sku: item.sku,
+          date: serverTimestamp(),
+          type: "OUT",
+          quantity: item.quantity,
+          balance: newStock,
+          reference: newSaleId,
+          description: `Conversión de Cot. ${quotationId}`,
+          user: quoteData.sellerId || "Sistema",
         });
       }
 
@@ -263,8 +263,13 @@ export const approveQuotation = async (quotationId: string) => {
         });
       }
 
+      const skusArray = Array.from(
+        new Set(quoteData.items.map((i: any) => i.sku)),
+      );
+
       transaction.set(newSaleRef, {
         ...quoteData,
+        skus: skusArray, // <-- Magia
         status: "COMPLETED",
         approvedAt: serverTimestamp(),
         originQuoteId: quotationId,
@@ -276,26 +281,19 @@ export const approveQuotation = async (quotationId: string) => {
         updatedAt: serverTimestamp(),
       });
     });
-
     return { success: true };
   } catch (error: any) {
-    console.error("Error en approveQuotation:", error);
-    throw new Error(error.message || "Error al aprobar la cotización.");
+    throw new Error(error.message || "Error al aprobar.");
   }
 };
 
-/**
- * ==========================================
- * 4. FETCH SALES (CON MOTOR ALGOLIA + FIRESTORE)
- * ==========================================
- */
 export interface FetchSalesParams {
   pageSize: number;
   statusFilter: string;
-  searchTerm: string; // <-- Búsqueda libre
+  searchTerm: string;
   startDate: string;
   endDate: string;
-  customerDoc?: string | null; // <-- Búsqueda exacta por Documento
+  customerDoc?: string | null;
   direction?: "first" | "next" | "prev";
   cursorDoc?: any;
   page?: number;
@@ -314,9 +312,6 @@ export const fetchSales = async (params: FetchSalesParams) => {
     page = 0,
   } = params;
 
-  // ==========================================
-  // MOTOR 1: ALGOLIA (Búsqueda Libre + Hidratación)
-  // ==========================================
   if (searchTerm && searchTerm.trim().length > 0 && !customerDoc) {
     let filters = statusFilter !== "ALL" ? `status:${statusFilter}` : "";
 
@@ -326,14 +321,13 @@ export const fetchSales = async (params: FetchSalesParams) => {
       page: currentPage,
       nbHits,
     } = await algoliaClient.searchSingleIndex({
-      indexName: ALGOLIA_INDICES.SALES || "sales_index", // <-- Ajusta el nombre de tu índice de ventas
+      indexName: ALGOLIA_INDICES.SALES || "sales_index",
       searchParams: { query: searchTerm, filters, hitsPerPage: pageSize, page },
     });
 
     const hitIds = hits.map((h: any) => h.objectID);
     let sales: any[] = [];
 
-    // Hidratación desde Firestore usando los IDs de Algolia
     if (hitIds.length > 0) {
       const qDocs = query(
         collection(db, "sales"),
@@ -344,8 +338,6 @@ export const fetchSales = async (params: FetchSalesParams) => {
         id: doc.id,
         ...doc.data(),
       }));
-
-      // Reordenar para respetar la relevancia de Algolia
       sales = hitIds
         .map((id) => firestoreDocs.find((d) => d.id === id))
         .filter(Boolean);
@@ -361,16 +353,11 @@ export const fetchSales = async (params: FetchSalesParams) => {
     };
   }
 
-  // ==========================================
-  // MOTOR 2: FIRESTORE (Navegación normal y Filtros)
-  // ==========================================
   const collRef = collection(db, "sales");
   let baseConstraints: any[] = [];
   const hasDateFilter = !!startDate && !!endDate;
 
-  // 1. Filtro de Estado
   if (statusFilter === "ALL") {
-    // 🔥 PREVENCIÓN DE CRASH FIREBASE: Evitar "in" con filtros de fechas (rangos)
     if (!hasDateFilter && !customerDoc) {
       baseConstraints.push(
         where("status", "in", ["COMPLETED", "QUOTATION", "CONVERTED"]),
@@ -380,12 +367,9 @@ export const fetchSales = async (params: FetchSalesParams) => {
     baseConstraints.push(where("status", "==", statusFilter));
   }
 
-  // 2. Filtro Exacto de Cliente (Viene del dropdown de sugerencias)
-  if (customerDoc) {
+  if (customerDoc)
     baseConstraints.push(where("documentNumber", "==", customerDoc));
-  }
 
-  // 3. Filtro de Fechas y Orden
   if (hasDateFilter) {
     baseConstraints.push(
       where("timestamp", ">=", new Date(`${startDate}T00:00:00`)),
@@ -398,12 +382,10 @@ export const fetchSales = async (params: FetchSalesParams) => {
     baseConstraints.push(orderBy("timestamp", "desc"));
   }
 
-  // 4. Contar el Total Real en Base de Datos (getCountFromServer)
   const baseQuery = query(collRef, ...baseConstraints);
   const countSnapshot = await getCountFromServer(baseQuery);
   const totalCount = countSnapshot.data().count;
 
-  // 5. Aplicar la Paginación con Cursores
   let paginationConstraints = [...baseConstraints];
   if (direction === "next" && cursorDoc) {
     paginationConstraints.push(startAfter(cursorDoc));
@@ -415,7 +397,6 @@ export const fetchSales = async (params: FetchSalesParams) => {
     paginationConstraints.push(limit(pageSize));
   }
 
-  // 6. Ejecutar la Consulta Final Paginada
   const finalQuery = query(collRef, ...paginationConstraints);
   const snapshot = await getDocs(finalQuery);
 
@@ -424,7 +405,6 @@ export const fetchSales = async (params: FetchSalesParams) => {
     ...doc.data(),
   })) as any[];
 
-  // 7. Filtro local de exclusión si es necesario (cuando Firebase restringe)
   if (statusFilter === "ALL" && (hasDateFilter || customerDoc)) {
     sales = sales.filter((s) =>
       ["COMPLETED", "QUOTATION", "CONVERTED"].includes(s.status),

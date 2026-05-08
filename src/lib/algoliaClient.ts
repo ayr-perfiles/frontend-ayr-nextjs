@@ -46,5 +46,6 @@ export const ALGOLIA_INDICES = {
   COILS: "coils_index",
   CUSTOMERS: "customers_index",
   CONTACTS: "contacts_index",
-  SALES: "sales_index", // <--- Agregamos este
+  SALES: "sales_index",
+  PRODUCTION: "production_logs_index",
 };
