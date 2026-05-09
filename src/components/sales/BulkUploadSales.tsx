@@ -6,8 +6,8 @@ import {
   FileSpreadsheet,
   Loader2,
   Database,
-  AlertCircle,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { db } from "@/lib/firebase/clientApp";
 import {
@@ -69,6 +69,11 @@ export function BulkUploadSales() {
       return d.toISOString().split("T")[0];
     return new Date().toISOString().split("T")[0];
   };
+
+  const parseNum = (val: any) =>
+    typeof val === "string"
+      ? parseFloat(val.replace(/,/g, ""))
+      : parseFloat(val) || 0;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -145,15 +150,13 @@ export function BulkUploadSales() {
         const isUSD = moneda.includes("dólar") || moneda.includes("usd");
         const apiDate = formatDateForApi(row["F. EMISIÓN"]);
         const exchangeRate = isUSD ? newRates[apiDate] || 3.75 : 1;
-        const parseNum = (val: any) =>
-          typeof val === "string"
-            ? parseFloat(val.replace(/,/g, ""))
-            : parseFloat(val) || 0;
 
+        const rawValorVenta = parseNum(row["VALOR DE VENTA"]);
+        const rawPrecioVenta = parseNum(row["PRECIO DE VENTA"]);
+
+        const valorVentaSoles = rawValorVenta * exchangeRate;
+        const precioVentaSoles = rawPrecioVenta * exchangeRate;
         const cantidad = parseNum(row["CANTIDAD"]);
-        const valorVentaSoles = parseNum(row["VALOR DE VENTA"]) * exchangeRate;
-        const precioVentaSoles =
-          parseNum(row["PRECIO DE VENTA"]) * exchangeRate;
 
         const sku = row["CÓDIGO PRODUCTO"] || "GENERIC";
         const productInfo = catalogRef.find((p) => p.sku === sku);
@@ -180,6 +183,7 @@ export function BulkUploadSales() {
             sellerId: row["VENDEDOR"] || "SISTEMA",
             currency: isUSD ? "USD" : "PEN",
             exchangeRateApplied: exchangeRate,
+            originalCurrencyAmount: 0, // Inicia en 0 y se suma abajo
             timestamp:
               row["F. EMISIÓN"] instanceof Date
                 ? new Date(row["F. EMISIÓN"].setHours(12, 0, 0))
@@ -199,6 +203,10 @@ export function BulkUploadSales() {
         sale.totalCost += cantidad * baseCost;
         sale.totalProfit += valorVentaSoles - cantidad * baseCost;
         sale.totalWeight += cantidad * unitWeight;
+
+        if (isUSD) {
+          sale.originalCurrencyAmount += rawPrecioVenta;
+        }
       });
 
       let sortedSales = Array.from(salesMap.values()).sort((a, b) => {
@@ -224,18 +232,22 @@ export function BulkUploadSales() {
       toast.error("Error al analizar el Excel.");
     } finally {
       setLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  // ============================================================
-  // 🚀 MOTOR KARDEX ESCALABLE CON ARRAY-CONTAINS
-  // ============================================================
+  const handleDeleteParsedSale = (indexToRemove: number) => {
+    setParsedSales((prev) =>
+      prev.filter((_, index) => index !== indexToRemove),
+    );
+    toast.success("Factura removida de la lista de subida.");
+  };
+
   const syncKardexForSkus = async (skus: string[]) => {
     setStatusMessage("Sincronizando Kardex de forma escalable...");
     for (const sku of skus) {
       if (!sku || sku === "GENERIC") continue;
 
-      // 1. Lectura Ultra Rápida: Solo traemos logs donde se movió ESTE producto
       const prodSnap = await getDocs(
         query(collection(db, "production_logs"), where("sku", "==", sku)),
       );
@@ -253,8 +265,8 @@ export function BulkUploadSales() {
             type: "IN",
             quantity: data.piecesProduced,
             date: data.timestamp.toDate(),
-            ref: data.parentCoilId,
-            desc: "Ingreso por Producción",
+            reference: data.parentCoilId,
+            description: "Ingreso por Producción",
             user: data.operatorId,
           });
       });
@@ -269,14 +281,13 @@ export function BulkUploadSales() {
               type: "OUT",
               quantity: item.quantity,
               date: data.timestamp.toDate(),
-              ref: d.id,
-              desc: `Venta a ${data.customerName}`,
+              reference: d.id,
+              description: `Venta a ${data.customerName}`,
               user: data.sellerId,
             });
         }
       });
 
-      // 2. Desempate por Milisegundos y Re-Cálculo
       allMovements.sort((a, b) => a.date.getTime() - b.date.getTime());
       let balance = 0;
       let lastT = 0;
@@ -288,7 +299,6 @@ export function BulkUploadSales() {
         return { ...m, balance };
       });
 
-      // 3. Batch Overwrite
       const oldKardex = await getDocs(
         query(collection(db, "kardex_movements"), where("sku", "==", sku)),
       );
@@ -352,16 +362,23 @@ export function BulkUploadSales() {
       for (const sale of parsedSales) {
         checkLimit(1 + sale.items.length);
 
-        // 🔥 MAGIA: Creamos un array plano de SKUs para búsquedas ultra rápidas
         const skusArray = Array.from(
           new Set(sale.items.map((i: any) => i.sku)),
         );
 
         currentBatch.set(doc(db, "sales", sale.documentNumber), {
           ...sale,
-          skus: skusArray, // <-- NUEVO ÍNDICE
+          skus: skusArray,
           uploadedAt: serverTimestamp(),
-          metadata: { isHistorical: true },
+          metadata: {
+            isHistorical: true,
+            currency: sale.currency,
+            exchangeRate: sale.exchangeRateApplied,
+            originalCurrencyAmount:
+              sale.currency === "USD"
+                ? Number(sale.originalCurrencyAmount.toFixed(2))
+                : null,
+          },
         });
         opCount++;
 
@@ -385,7 +402,6 @@ export function BulkUploadSales() {
       if (opCount > 0) batches.push(currentBatch);
       await Promise.all(batches.map((b) => b.commit()));
 
-      // Lanzar Kardex solo con los SKUs afectados
       await syncKardexForSkus(Array.from(uniqueSkus));
 
       toast.success("✅ ¡Migración y Kardex completados con éxito!");
@@ -400,19 +416,19 @@ export function BulkUploadSales() {
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full p-6 md:p-8 pt-12 md:pt-14">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <div>
+        <div className="pr-8 md:pr-0">
           <h2 className="text-xl font-black text-gray-800 flex items-center gap-2">
             <Database className="text-green-600" size={24} /> Migración
             Inteligente
           </h2>
           <p className="text-sm text-gray-500 font-medium">
             Sube tus ventas y el sistema reconstruirá el Kardex matemático
-            automáticamente.
+            automáticamente. Se guardarán los T.C. de las ventas en USD.
           </p>
         </div>
-        <label className="cursor-pointer bg-green-50 text-green-700 hover:bg-green-100 transition px-6 py-3 rounded-xl font-black flex items-center gap-2 border border-green-200">
+        <label className="cursor-pointer bg-green-50 text-green-700 hover:bg-green-100 transition px-6 py-3 rounded-xl font-black flex items-center gap-2 border border-green-200 shrink-0">
           {loading ? (
             <Loader2 size={18} className="animate-spin" />
           ) : (
@@ -454,18 +470,19 @@ export function BulkUploadSales() {
           </div>
           <div className="max-h-60 overflow-y-auto bg-white border border-gray-100 rounded-xl">
             <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase sticky top-0">
+              <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase sticky top-0 z-10">
                 <tr>
                   <th className="p-3">Documento</th>
                   <th className="p-3">Cliente</th>
                   <th className="p-3 text-center">Hora Asignada</th>
                   <th className="p-3 text-right">Peso Total</th>
-                  <th className="p-3 text-right">Total (S/)</th>
+                  <th className="p-3 text-right">Total Contable</th>
+                  <th className="p-3 text-center">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {parsedSales.slice(0, 50).map((s, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
+                {parsedSales.map((s, i) => (
+                  <tr key={s.documentNumber} className="hover:bg-gray-50">
                     <td className="p-3 font-bold text-gray-800">
                       {s.documentNumber}
                     </td>
@@ -478,11 +495,31 @@ export function BulkUploadSales() {
                     <td className="p-3 text-right font-medium text-orange-600">
                       {(s as any).totalWeight.toLocaleString("es-PE")} kg
                     </td>
-                    <td className="p-3 text-right font-black text-emerald-600">
-                      S/{" "}
-                      {s.totalAmount.toLocaleString("es-PE", {
-                        minimumFractionDigits: 2,
-                      })}
+                    <td className="p-3 text-right">
+                      <p className="font-black text-emerald-600">
+                        S/{" "}
+                        {s.totalAmount.toLocaleString("es-PE", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </p>
+                      {s.currency === "USD" && (
+                        <div className="text-[9px] text-slate-400 font-bold uppercase mt-0.5">
+                          ${" "}
+                          {s.originalCurrencyAmount.toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                          })}{" "}
+                          (TC: {s.exchangeRateApplied})
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => handleDeleteParsedSale(i)}
+                        className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded transition"
+                        title="Borrar de la lista"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))}

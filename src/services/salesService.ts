@@ -7,6 +7,7 @@ import {
   endBefore,
   getCountFromServer,
   getDocs,
+  increment,
   limit,
   limitToLast,
   orderBy,
@@ -419,4 +420,213 @@ export const fetchSales = async (params: FetchSalesParams) => {
       snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null,
     totalCount,
   };
+};
+
+/**
+ * ANULAR UNA VENTA Y RE-HABILITAR COTIZACIÓN DE ORIGEN (VERSIÓN TRANSACCIONAL ESCALABLE)
+ */
+export interface AnnulSaleParams {
+  saleId: string;
+  userEmail: string;
+}
+
+export const annulSale = async ({ saleId, userEmail }: AnnulSaleParams) => {
+  const saleRef = doc(db, "sales", saleId);
+  const auditRef = doc(collection(db, "audit_logs"));
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      // ==========================================
+      // FASE 1: TODAS LAS LECTURAS (READS) PRIMERO
+      // ==========================================
+      const saleDoc = await transaction.get(saleRef);
+      if (!saleDoc.exists()) throw new Error("La venta no existe.");
+
+      const saleData = saleDoc.data();
+      if (saleData.status === "VOIDED")
+        throw new Error("Esta venta ya ha sido anulada.");
+
+      // Leemos el stock de TODOS los items antes de modificar nada
+      const stockSnapshots: Record<string, any> = {};
+      for (const item of saleData.items) {
+        if (!item.sku || item.sku === "GENERIC") continue;
+        const stockRef = doc(db, "inventory_stock", item.sku);
+        const stockSnap = await transaction.get(stockRef);
+        stockSnapshots[item.sku] = stockSnap;
+      }
+
+      // Leemos la cotización de origen si existe
+      let quoteSnap = null;
+      let quoteRef = null;
+      if (saleData.originQuoteId) {
+        quoteRef = doc(db, "sales", saleData.originQuoteId);
+        quoteSnap = await transaction.get(quoteRef);
+      }
+
+      // ==========================================
+      // FASE 2: TODAS LAS ESCRITURAS (WRITES) AL FINAL
+      // ==========================================
+      for (const item of saleData.items) {
+        if (!item.sku || item.sku === "GENERIC") continue;
+
+        const stockRef = doc(db, "inventory_stock", item.sku);
+        const stockSnap = stockSnapshots[item.sku];
+
+        // Calculamos el saldo para el Kardex
+        const currentQty =
+          stockSnap && stockSnap.exists() ? stockSnap.data().totalQuantity : 0;
+        const newQty = currentQty + item.quantity;
+
+        // A. Devolver stock físico
+        transaction.update(stockRef, {
+          totalQuantity: increment(item.quantity),
+          lastUpdate: serverTimestamp(),
+        });
+
+        // B. Registro en Kardex
+        const kardexRef = doc(collection(db, "kardex_movements"));
+        transaction.set(kardexRef, {
+          sku: item.sku,
+          date: serverTimestamp(),
+          type: "IN",
+          quantity: item.quantity,
+          balance: newQty,
+          reference: saleId,
+          description: `Anulación de Venta: ${saleData.customerName}`,
+          user: userEmail,
+        });
+      }
+
+      // C. Re-habilitar cotización si existe
+      if (quoteRef && quoteSnap && quoteSnap.exists()) {
+        transaction.update(quoteRef, {
+          status: "QUOTATION",
+          updatedAt: serverTimestamp(),
+          annulledSaleRef: saleId,
+        });
+      }
+
+      // D. Marcar venta como anulada
+      transaction.update(saleRef, {
+        status: "VOIDED",
+        voidedAt: serverTimestamp(),
+        voidedBy: userEmail,
+      });
+
+      // E. Registrar en Auditoría
+      transaction.set(auditRef, {
+        action: "VOID_SALE",
+        entityId: saleId,
+        userEmail: userEmail,
+        details: `Se anuló la venta ${saleId}. El stock fue devuelto.`,
+        timestamp: serverTimestamp(),
+      });
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error en anulación:", error);
+    throw new Error(error.message || "No se pudo anular la venta.");
+  }
+};
+
+/**
+ * EDITAR UNA COTIZACIÓN (QUOTATION)
+ * Solo se pueden editar documentos que sigan en estado QUOTATION.
+ */
+export const updateQuotation = async (
+  quotationId: string,
+  customerName: string,
+  documentNumber: string,
+  cart: CartItem[],
+  customerAddress: string = "",
+  contactName: string = "",
+  contactPhone: string = "",
+) => {
+  const quoteRef = doc(db, "sales", quotationId);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const quoteDoc = await transaction.get(quoteRef);
+      if (!quoteDoc.exists()) throw new Error("La cotización no existe.");
+
+      const quoteData = quoteDoc.data();
+      if (quoteData.status !== "QUOTATION") {
+        throw new Error(
+          "Solo puedes editar documentos que estén en estado COTIZACIÓN.",
+        );
+      }
+
+      let totalAmount = 0;
+      let totalCost = 0;
+      let totalWeight = 0;
+
+      cart.forEach((item) => {
+        totalAmount += item.quantity * item.unitPrice;
+        totalCost += item.quantity * item.baseCost;
+        totalWeight += item.quantity * (item.unitWeight || 0);
+      });
+
+      const totalProfit = totalAmount - totalCost;
+
+      // Actualizamos el índice de búsqueda rápida
+      const skusArray = Array.from(new Set(cart.map((item) => item.sku)));
+
+      transaction.update(quoteRef, {
+        customerName,
+        documentNumber,
+        customerAddress,
+        contactName,
+        contactPhone,
+        items: cart,
+        skus: skusArray,
+        totalAmount,
+        totalCost,
+        totalProfit,
+        totalWeight,
+        updatedAt: serverTimestamp(),
+      });
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    throw new Error(error.message || "Error al actualizar la cotización.");
+  }
+};
+
+/**
+ * CANCELAR UNA COTIZACIÓN (Rechazada por el cliente)
+ */
+export const cancelQuotation = async (
+  quotationId: string,
+  userEmail: string,
+) => {
+  const quoteRef = doc(db, "sales", quotationId);
+  const auditRef = doc(collection(db, "audit_logs"));
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const quoteDoc = await transaction.get(quoteRef);
+      if (!quoteDoc.exists()) throw new Error("La cotización no existe.");
+      if (quoteDoc.data().status !== "QUOTATION")
+        throw new Error("Solo puedes cancelar Cotizaciones.");
+
+      transaction.update(quoteRef, {
+        status: "CANCELLED",
+        cancelledAt: serverTimestamp(),
+        cancelledBy: userEmail,
+      });
+
+      transaction.set(auditRef, {
+        action: "CANCEL_QUOTATION",
+        entityId: quotationId,
+        userEmail: userEmail,
+        details: `El cliente rechazó/canceló la cotización ${quotationId}.`,
+        timestamp: serverTimestamp(),
+      });
+    });
+    return { success: true };
+  } catch (error: any) {
+    throw new Error(error.message || "Error al cancelar la cotización.");
+  }
 };

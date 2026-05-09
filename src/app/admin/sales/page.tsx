@@ -22,7 +22,11 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { fetchSales, approveQuotation } from "@/services/salesService";
+import {
+  fetchSales,
+  approveQuotation,
+  cancelQuotation,
+} from "@/services/salesService";
 import { useAuth } from "@/context/AuthContext";
 import { SalesMetrics } from "@/components/sales/SalesMetrics";
 import { SalesFilters } from "@/components/sales/SalesFilters";
@@ -189,6 +193,25 @@ export default function SalesPage() {
     }
   };
 
+  const handleCancel = async (saleId: string) => {
+    if (
+      !confirm(
+        `¿Deseas cancelar la cotización ${saleId}? Esto la marcará como rechazada.`,
+      )
+    )
+      return;
+    setIsProcessing(true);
+    try {
+      await cancelQuotation(saleId, user?.email || "usuario");
+      toast.success("Cotización cancelada");
+      loadData("first");
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Cálculos de métricas
   const totalRevenue = sales.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
   const totalProfit = sales.reduce((sum, s) => sum + (s.totalProfit || 0), 0);
@@ -214,7 +237,11 @@ export default function SalesPage() {
             onExport={() => toast.success("Generando Excel...")}
             onOpenExcel={() => setShowExcelModal(true)}
           />
-          <button className="bg-blue-600 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition active:scale-95 shadow-md shadow-blue-200 font-black flex-1 md:flex-none">
+          {/* FÍJATE EN EL onClick DE AQUÍ ABAJO 👇 */}
+          <button
+            onClick={() => (window.location.href = "/admin/sales/new")}
+            className="bg-blue-600 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition active:scale-95 shadow-md shadow-blue-200 font-black flex-1 md:flex-none"
+          >
             <Plus size={20} /> Nueva Venta
           </button>
         </div>
@@ -249,9 +276,13 @@ export default function SalesPage() {
           currentPage={currentPage}
           pageSize={pageSize}
           onPrint={(sale) => window.print()}
-          onDuplicate={(id) => toast.success(`Duplicando ${id}`)}
+          onDuplicate={(id) => toast.success(`Duplicando ${id}`)} // O router.push(...)
           onApprove={handleApprove}
           onViewDetails={setViewingSale}
+          onEdit={(id) =>
+            (window.location.href = `/admin/sales/new?editId=${id}`)
+          } // <-- AQUÍ SE ENVÍA A EDITAR
+          onCancel={handleCancel} // <-- AQUÍ SE CONECTA CANCELAR
         />
 
         {isLoading && (
@@ -321,6 +352,7 @@ export default function SalesPage() {
         <SaleDetailsModal
           sale={viewingSale}
           onClose={() => setViewingSale(null)}
+          onSuccess={() => loadData("first")} // <--- ESTO RECARGARÁ LA TABLA
         />
       )}
 

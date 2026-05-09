@@ -79,7 +79,7 @@ export interface Sale {
   totalAmount: number;
   totalCost: number;
   totalProfit?: number;
-  status: "QUOTATION" | "COMPLETED" | "CANCELLED" | "CONVERTED";
+  status: "QUOTATION" | "COMPLETED" | "CANCELLED" | "CONVERTED" | "VOIDED";
   validUntil?: any;
   sellerId: string;
   timestamp: any;
