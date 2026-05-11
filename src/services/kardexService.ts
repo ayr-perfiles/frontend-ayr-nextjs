@@ -1,91 +1,127 @@
 import { db } from "@/lib/firebase/clientApp";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  limit,
+  startAfter,
+  endBefore,
+  limitToLast,
+  getAggregateFromServer,
+  count,
+} from "firebase/firestore";
 
 export interface KardexMovement {
   id: string;
+  sku: string;
   date: Date;
   type: "IN" | "OUT";
   quantity: number;
   balance: number;
-  reference: string; // Ej: V-00001 o PD03-08
+  reference: string;
   description: string;
   user: string;
 }
 
-export const getKardexHistory = async (
-  sku: string,
-): Promise<KardexMovement[]> => {
+export interface FetchKardexParams {
+  sku: string;
+  pageSize: number;
+  startDate: string;
+  endDate: string;
+  direction?: "first" | "next" | "prev";
+  cursorDoc?: any;
+}
+
+export const fetchKardexPaginated = async (params: FetchKardexParams) => {
+  const {
+    sku,
+    pageSize,
+    startDate,
+    endDate,
+    direction = "first",
+    cursorDoc,
+  } = params;
+
   try {
-    // 1. OBTENER ENTRADAS (Producción)
-    const qProd = query(
-      collection(db, "production_logs"),
-      where("sku", "==", sku),
-    );
-    const prodSnap = await getDocs(qProd);
+    const collRef = collection(db, "kardex_movements");
+    let baseConstraints: any[] = [where("sku", "==", sku)];
 
-    const prodMovements = prodSnap.docs
-      .map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          date: data.timestamp?.toDate() || new Date(),
-          type: "IN" as const,
-          quantity: data.piecesProduced || 0,
-          reference: data.parentCoilId || "Desconocido",
-          description: "Producción de Bobina",
-          user: data.operatorId || "Sistema",
-          status: data.status,
-        };
-      })
-      .filter((m) => m.status !== "VOIDED"); // Ignoramos producciones anuladas
+    if (startDate)
+      baseConstraints.push(
+        where("date", ">=", new Date(`${startDate}T00:00:00`)),
+      );
+    if (endDate)
+      baseConstraints.push(
+        where("date", "<=", new Date(`${endDate}T23:59:59`)),
+      );
 
-    // 2. OBTENER SALIDAS (Ventas)
-    // Como los items están dentro de un array, traemos las ventas completadas y filtramos en memoria
-    const qSales = query(
-      collection(db, "sales"),
-      where("status", "==", "COMPLETED"),
-    );
-    const salesSnap = await getDocs(qSales);
+    // CONTAR TOTALES (Agregación de Servidor, cuesta 1 sola lectura)
+    const countQuery = query(collRef, ...baseConstraints);
+    const aggregateSnapshot = await getAggregateFromServer(countQuery, {
+      total: count(),
+    });
+    const totalCount = aggregateSnapshot.data().total;
 
-    const salesMovements: any[] = [];
-    salesSnap.docs.forEach((doc) => {
+    // PAGINACIÓN LIMITADA
+    baseConstraints.push(orderBy("date", "desc"));
+    let paginationConstraints = [...baseConstraints];
+
+    if (direction === "next" && cursorDoc) {
+      paginationConstraints.push(startAfter(cursorDoc));
+      paginationConstraints.push(limit(pageSize));
+    } else if (direction === "prev" && cursorDoc) {
+      paginationConstraints.push(endBefore(cursorDoc));
+      paginationConstraints.push(limitToLast(pageSize));
+    } else {
+      paginationConstraints.push(limit(pageSize));
+    }
+
+    const tableQuery = query(collRef, ...paginationConstraints);
+    const snap = await getDocs(tableQuery);
+
+    const movements = snap.docs.map((doc) => {
       const data = doc.data();
-      // Buscamos si en esta venta se vendió el SKU que estamos consultando
-      const item = data.items?.find((i: any) => i.sku === sku);
-
-      if (item) {
-        salesMovements.push({
-          id: doc.id,
-          date: data.timestamp?.toDate() || new Date(),
-          type: "OUT" as const,
-          quantity: item.quantity || 0,
-          reference: doc.id,
-          description: `Venta a ${data.customerName}`,
-          user: data.sellerId || "Sistema",
-        });
-      }
+      return {
+        id: doc.id,
+        ...data,
+        date: data.date?.toDate() || new Date(),
+      } as KardexMovement;
     });
 
-    // 3. FUSIONAR Y ORDENAR CRONOLÓGICAMENTE (Del más antiguo al más nuevo)
-    const allMovements = [...prodMovements, ...salesMovements].sort(
-      (a, b) => a.date.getTime() - b.date.getTime(),
-    );
-
-    // 4. CALCULAR SALDO CORRIENTE (Running Balance)
-    let currentBalance = 0;
-    const calculatedMovements = allMovements.map((m) => {
-      if (m.type === "IN") {
-        currentBalance += m.quantity;
-      } else {
-        currentBalance -= m.quantity;
-      }
-      return { ...m, balance: currentBalance };
-    });
-
-    // Devolvemos el array invertido para que el movimiento más reciente salga arriba
-    return calculatedMovements.reverse();
+    return {
+      movements,
+      totalCount,
+      firstDoc: snap.docs.length > 0 ? snap.docs[0] : null,
+      lastDoc: snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null,
+    };
   } catch (error) {
-    console.error("Error obteniendo Kardex:", error);
-    return [];
+    console.error("Error cargando Kardex Unificado:", error);
+    throw new Error("No se pudo cargar el historial.");
   }
+};
+
+// Función exclusiva para descargar Excel masivo (Sin paginación)
+export const fetchAllKardexForExport = async (
+  sku: string,
+  startDate: string,
+  endDate: string,
+) => {
+  const collRef = collection(db, "kardex_movements");
+  let constraints: any[] = [where("sku", "==", sku)];
+  if (startDate)
+    constraints.push(where("date", ">=", new Date(`${startDate}T00:00:00`)));
+  if (endDate)
+    constraints.push(where("date", "<=", new Date(`${endDate}T23:59:59`)));
+  constraints.push(orderBy("date", "desc"));
+
+  const snap = await getDocs(query(collRef, ...constraints));
+  return snap.docs.map((doc) => {
+    const data = doc.data();
+    return {
+      ...data,
+      date: data.date?.toDate() || new Date(),
+    } as KardexMovement;
+  });
 };

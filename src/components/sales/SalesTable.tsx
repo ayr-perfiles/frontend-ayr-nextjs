@@ -12,6 +12,8 @@ import {
   Loader2,
   Link as LinkIcon,
   Eye,
+  Edit,
+  XCircle,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 
@@ -27,6 +29,8 @@ interface SalesTableProps {
   onDuplicate: (saleId: string) => void;
   onApprove: (sale: Sale) => void;
   onViewDetails: (sale: Sale) => void;
+  onEdit: (saleId: string) => void; // <-- NUEVA ACCIÓN
+  onCancel: (saleId: string) => void; // <-- NUEVA ACCIÓN
 }
 
 export function SalesTable({
@@ -40,6 +44,8 @@ export function SalesTable({
   onDuplicate,
   onApprove,
   onViewDetails,
+  onEdit,
+  onCancel,
 }: SalesTableProps) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -142,6 +148,16 @@ export function SalesTable({
                           <CheckCircle2 size={12} /> Cot. Aprobada
                         </span>
                       )}
+                      {sale.status === "CANCELLED" && (
+                        <span className="inline-flex items-center gap-1 bg-red-50 text-red-600 px-2.5 py-1 rounded-full text-[10px] font-black border border-red-100 uppercase tracking-widest">
+                          <XCircle size={12} /> Rechazada
+                        </span>
+                      )}
+                      {sale.status === "VOIDED" && (
+                        <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 px-2.5 py-1 rounded-full text-[10px] font-black border border-red-200 uppercase tracking-widest">
+                          <AlertCircle size={12} /> Anulada
+                        </span>
+                      )}
                     </td>
 
                     <td className="p-4 text-right">
@@ -180,6 +196,12 @@ export function SalesTable({
                           <LinkIcon size={10} /> {(sale as any).convertedToId}
                         </span>
                       )}
+                      {(sale.status === "CANCELLED" ||
+                        sale.status === "VOIDED") && (
+                        <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest">
+                          Sin efecto
+                        </span>
+                      )}
                     </td>
 
                     <td className="p-4 pr-6 relative">
@@ -199,6 +221,8 @@ export function SalesTable({
                           onPrint={() => onPrint(sale)}
                           onDuplicate={() => onDuplicate(sale.id!)}
                           onApprove={() => onApprove(sale)}
+                          onEdit={() => onEdit(sale.id!)}
+                          onCancel={() => onCancel(sale.id!)}
                         />
                       </div>
                     </td>
@@ -221,6 +245,8 @@ function ActionMenu({
   onPrint,
   onDuplicate,
   onApprove,
+  onEdit,
+  onCancel,
 }: {
   sale: Sale;
   role?: string | null | undefined;
@@ -228,6 +254,8 @@ function ActionMenu({
   onPrint: () => void;
   onDuplicate: () => void;
   onApprove: () => void;
+  onEdit: () => void;
+  onCancel: () => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, right: 0 });
@@ -275,31 +303,42 @@ function ActionMenu({
         isOpen &&
         createPortal(
           <div
-            className="absolute w-48 bg-white border border-slate-100 rounded-xl shadow-2xl z-[9999] py-1 animate-in fade-in zoom-in-95"
+            className="absolute w-52 bg-white border border-slate-100 rounded-xl shadow-2xl z-[9999] py-2 animate-in fade-in zoom-in-95"
             style={{ top: coords.top, right: coords.right }}
           >
             <button
               onClick={onPrint}
-              className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 font-semibold flex items-center gap-2 transition"
+              className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 font-semibold flex items-center gap-2 transition"
             >
               <FileDown size={16} /> Imprimir Ticket
             </button>
 
             <button
               onClick={onDuplicate}
-              className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 font-semibold flex items-center gap-2 transition"
+              className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 font-semibold flex items-center gap-2 transition"
             >
               <Copy size={16} /> Duplicar Operación
             </button>
 
-            {sale.status === "QUOTATION" &&
-              (role === "ADMIN" || role === "SUPERVISOR") && (
-                <>
-                  <div className="h-px bg-slate-100 my-1 mx-2" />
+            {/* SECCIÓN EXCLUSIVA PARA COTIZACIONES */}
+            {sale.status === "QUOTATION" && (
+              <>
+                <div className="h-px bg-slate-100 my-1 mx-2" />
+
+                {/* EDITAR COTIZACIÓN */}
+                <button
+                  onClick={onEdit}
+                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-orange-50 hover:text-orange-700 font-semibold flex items-center gap-2 transition"
+                >
+                  <Edit size={16} /> Editar Cotización
+                </button>
+
+                {/* APROBAR COTIZACIÓN */}
+                {(role === "ADMIN" || role === "SUPERVISOR") && (
                   <button
                     onClick={onApprove}
                     disabled={isProcessing}
-                    className="w-full text-left px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-600 hover:text-white font-bold flex items-center gap-2 transition disabled:opacity-50"
+                    className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-600 hover:text-white font-bold flex items-center gap-2 transition disabled:opacity-50"
                   >
                     {isProcessing ? (
                       <Loader2 size={16} className="animate-spin" />
@@ -308,8 +347,17 @@ function ActionMenu({
                     )}{" "}
                     Aprobar Venta
                   </button>
-                </>
-              )}
+                )}
+
+                {/* RECHAZAR / CANCELAR COTIZACIÓN */}
+                <button
+                  onClick={onCancel}
+                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 font-semibold flex items-center gap-2 transition mt-1"
+                >
+                  <XCircle size={16} /> Rechazar / Cancelar
+                </button>
+              </>
+            )}
           </div>,
           document.body,
         )}

@@ -20,7 +20,6 @@ import {
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
 import { CatalogSettings } from "@/components/settings/CatalogSettings";
 import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
-import { UsersSettings } from "@/components/settings/UsersSettings";
 import { useAuth } from "@/context/AuthContext"; // <-- Necessário para o log de auditoria
 import toast from "react-hot-toast";
 import { fixAllHistoricalCosts } from "@/services/seedService";
@@ -142,13 +141,6 @@ export default function SettingsPage() {
             <Plug size={18} /> Integraciones API
           </button>
 
-          <button
-            onClick={() => setActiveTab("users")}
-            className={`w-full text-left p-4 rounded-xl font-bold flex items-center gap-3 transition ${activeTab === "users" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-          >
-            <Users size={18} /> Usuarios y Roles
-          </button>
-
           {/* NOVO: Aba de Manutenção (Apenas em Dev) */}
           {isDev && (
             <button
@@ -187,8 +179,6 @@ export default function SettingsPage() {
                   isSaving={isSaving}
                 />
               )}
-
-              {activeTab === "users" && <UsersSettings />}
 
               {/* Conteúdo da Zona de Peligro */}
               {activeTab === "danger" && isDev && (

@@ -6,7 +6,8 @@ import {
   FileSpreadsheet,
   Loader2,
   Database,
-  AlertCircle,
+  RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { db } from "@/lib/firebase/clientApp";
 import {
@@ -16,6 +17,8 @@ import {
   getDocs,
   serverTimestamp,
   increment,
+  query,
+  where,
 } from "firebase/firestore";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
@@ -24,25 +27,22 @@ import { StockSummary } from "@/types";
 export function BulkUploadSales() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
   const [parsedSales, setParsedSales] = useState<any[]>([]);
   const [parsedCustomers, setParsedCustomers] = useState<any[]>([]);
   const [exchangeRatesCache, setExchangeRatesCache] = useState<
     Record<string, number>
   >({});
 
-  // REFERENCIAS PARA EL VOLUMEN Y COSTO REAL
   const [catalogRef, setCatalogRef] = useState<any[]>([]);
   const [stockRef, setStockRef] = useState<StockSummary[]>([]);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Cargamos el catálogo y los costos actuales en memoria antes de leer el Excel
   useEffect(() => {
     const fetchReferences = async () => {
       try {
         const prodSnap = await getDocs(collection(db, "products"));
         const stockSnap = await getDocs(collection(db, "inventory_stock"));
-
         setCatalogRef(prodSnap.docs.map((d) => ({ sku: d.id, ...d.data() })));
         setStockRef(
           stockSnap.docs.map(
@@ -70,12 +70,16 @@ export function BulkUploadSales() {
     return new Date().toISOString().split("T")[0];
   };
 
+  const parseNum = (val: any) =>
+    typeof val === "string"
+      ? parseFloat(val.replace(/,/g, ""))
+      : parseFloat(val) || 0;
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     if (catalogRef.length === 0) {
-      toast.error("El catálogo aún está cargando, intenta en unos segundos.");
+      toast.error("El catálogo aún está cargando...");
       return;
     }
 
@@ -86,13 +90,11 @@ export function BulkUploadSales() {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-      // --- 1. OBTENCIÓN DE TIPOS DE CAMBIO ---
       const usdDates = new Set<string>();
       jsonData.forEach((row: any) => {
         const moneda = String(row["MONEDA"] || "").toLowerCase();
-        if (moneda.includes("dólar") || moneda.includes("usd")) {
+        if (moneda.includes("dólar") || moneda.includes("usd"))
           usdDates.add(formatDateForApi(row["F. EMISIÓN"]));
-        }
       });
 
       const newRates = { ...exchangeRatesCache };
@@ -109,27 +111,21 @@ export function BulkUploadSales() {
       }
       setExchangeRatesCache(newRates);
 
-      // --- 2. MAPEO Y AGRUPACIÓN DE VENTAS ---
       const salesMap = new Map<string, any>();
       const customersMap = new Map<string, any>();
-      let anuladosCount = 0;
 
       jsonData.forEach((row: any) => {
         const serieNumero = row["SERIE - NÚMERO"];
         if (!serieNumero) return;
 
-        // FILTRO ESTRICTO: IGNORAR ANULADOS
         const estadoStr = String(row["ESTADO COMPROBANTE"] || "").toUpperCase();
         if (
           !estadoStr.includes("DECLARADO") ||
           estadoStr.includes("ANULAD") ||
           estadoStr.includes("BAJA")
-        ) {
-          anuladosCount++;
-          return; // Saltamos esta fila completamente
-        }
+        )
+          return;
 
-        // LÓGICA DE SEPARACIÓN DE RUC Y RAZÓN SOCIAL
         const rawCustomer = String(row["CLIENTE"] || "");
         let rucStr = "00000000000";
         let nameStr = "Consumidor Final";
@@ -150,42 +146,32 @@ export function BulkUploadSales() {
           });
         }
 
-        // CONVERSIÓN DE MONEDA
         const moneda = String(row["MONEDA"] || "").toLowerCase();
         const isUSD = moneda.includes("dólar") || moneda.includes("usd");
         const apiDate = formatDateForApi(row["F. EMISIÓN"]);
         const exchangeRate = isUSD ? newRates[apiDate] || 3.75 : 1;
-        const parseNum = (val: any) =>
-          typeof val === "string"
-            ? parseFloat(val.replace(/,/g, ""))
-            : parseFloat(val) || 0;
 
+        const rawValorVenta = parseNum(row["VALOR DE VENTA"]);
+        const rawPrecioVenta = parseNum(row["PRECIO DE VENTA"]);
+
+        const valorVentaSoles = rawValorVenta * exchangeRate;
+        const precioVentaSoles = rawPrecioVenta * exchangeRate;
         const cantidad = parseNum(row["CANTIDAD"]);
-        const valorVentaSoles = parseNum(row["VALOR DE VENTA"]) * exchangeRate; // Sin IGV (Total)
-        const precioVentaSoles =
-          parseNum(row["PRECIO DE VENTA"]) * exchangeRate; // Con IGV (Total)
 
-        // CÁLCULOS CRUZADOS CON EL CATÁLOGO (Peso y Costo real)
         const sku = row["CÓDIGO PRODUCTO"] || "GENERIC";
         const productInfo = catalogRef.find((p) => p.sku === sku);
         const stockInfo = stockRef.find((s) => s.sku === sku);
-
         const unitWeight = productInfo?.standardWeight || 0;
-        const baseCost = stockInfo?.lastCostPerPiece || 0; // Costo de producción base (Sin IGV)
-
-        // Adaptación a tu nueva interfaz financiera
-        const unitValueWithoutIGV =
-          cantidad > 0 ? valorVentaSoles / cantidad : 0;
-        const unitPriceWithIGV = cantidad > 0 ? precioVentaSoles / cantidad : 0;
+        const baseCost = stockInfo?.lastCostPerPiece || 0;
 
         const saleItem = {
           sku: sku,
           productName: row["NOMBRE PRODUCTO"] || "Sin nombre",
           quantity: cantidad,
-          unitPrice: unitPriceWithIGV, // Precio Final Unitario (Con IGV)
-          unitValue: unitValueWithoutIGV, // Valor Real Unitario (Sin IGV)
-          baseCost: baseCost, // Costo Base Unitario (Sin IGV)
-          unitWeight: unitWeight, // Peso traído del catálogo automáticamente
+          unitPrice: cantidad > 0 ? precioVentaSoles / cantidad : 0,
+          unitValue: cantidad > 0 ? valorVentaSoles / cantidad : 0,
+          baseCost: baseCost,
+          unitWeight: unitWeight,
         };
 
         if (!salesMap.has(serieNumero)) {
@@ -193,27 +179,15 @@ export function BulkUploadSales() {
             customerName: nameStr,
             customerDocument: rucStr,
             documentNumber: serieNumero,
-            status: "COMPLETED", // Solo llegan aquí las declaradas
+            status: "COMPLETED",
             sellerId: row["VENDEDOR"] || "SISTEMA",
             currency: isUSD ? "USD" : "PEN",
             exchangeRateApplied: exchangeRate,
-
-            // TRUCO DEL MEDIODÍA PARA EVITAR EL DESFASE DE FECHA
-            timestamp: (() => {
-              if (row["F. EMISIÓN"] instanceof Date) {
-                return new Date(
-                  row["F. EMISIÓN"].getUTCFullYear(),
-                  row["F. EMISIÓN"].getUTCMonth(),
-                  row["F. EMISIÓN"].getUTCDate(),
-                  12,
-                  0,
-                  0,
-                );
-              } else {
-                return new Date(`${apiDate}T12:00:00`);
-              }
-            })(),
-
+            originalCurrencyAmount: 0, // Inicia en 0 y se suma abajo
+            timestamp:
+              row["F. EMISIÓN"] instanceof Date
+                ? new Date(row["F. EMISIÓN"].setHours(12, 0, 0))
+                : new Date(`${apiDate}T12:00:00`),
             items: [],
             totalAmount: 0,
             totalCost: 0,
@@ -225,83 +199,194 @@ export function BulkUploadSales() {
 
         const sale = salesMap.get(serieNumero);
         sale.items.push(saleItem);
-        sale.totalAmount += precioVentaSoles; // Acumula Factura Con IGV
-        sale.totalCost += cantidad * baseCost; // Acumula Costo de Producción Puro
-        sale.totalProfit += valorVentaSoles - cantidad * baseCost; // Ganancia = (Venta Sin IGV) - Costos
-        sale.totalWeight += cantidad * unitWeight; // Volumen Despachado Automático
+        sale.totalAmount += precioVentaSoles;
+        sale.totalCost += cantidad * baseCost;
+        sale.totalProfit += valorVentaSoles - cantidad * baseCost;
+        sale.totalWeight += cantidad * unitWeight;
+
+        if (isUSD) {
+          sale.originalCurrencyAmount += rawPrecioVenta;
+        }
       });
 
-      setParsedSales(Array.from(salesMap.values()));
-      setParsedCustomers(Array.from(customersMap.values()));
+      let sortedSales = Array.from(salesMap.values()).sort((a, b) => {
+        const d = a.timestamp.getTime() - b.timestamp.getTime();
+        return d === 0
+          ? a.documentNumber.localeCompare(b.documentNumber, undefined, {
+              numeric: true,
+            })
+          : d;
+      });
 
-      toast.success(
-        `Procesado: ${salesMap.size} facturas y ${customersMap.size} clientes nuevos identificados.`,
-      );
-      if (anuladosCount > 0) {
-        toast.success(
-          `Se filtraron y descartaron ${anuladosCount} filas de facturas anuladas o no declaradas.`,
-          { icon: "🧹" },
-        );
-      }
+      let lastTime = 0;
+      sortedSales.forEach((s) => {
+        if (s.timestamp.getTime() <= lastTime)
+          s.timestamp = new Date(lastTime + 1000);
+        lastTime = s.timestamp.getTime();
+      });
+
+      setParsedSales(sortedSales);
+      setParsedCustomers(Array.from(customersMap.values()));
+      toast.success(`Excel procesado listos para cargar.`);
     } catch (error) {
-      console.error(error);
-      toast.error("Error al analizar el Excel. Verifica el formato.");
+      toast.error("Error al analizar el Excel.");
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  const handleUploadToFirebase = async () => {
-    if (parsedSales.length === 0) return;
-    setLoading(true);
+  const handleDeleteParsedSale = (indexToRemove: number) => {
+    setParsedSales((prev) =>
+      prev.filter((_, index) => index !== indexToRemove),
+    );
+    toast.success("Factura removida de la lista de subida.");
+  };
 
-    try {
+  const syncKardexForSkus = async (skus: string[]) => {
+    setStatusMessage("Sincronizando Kardex de forma escalable...");
+    for (const sku of skus) {
+      if (!sku || sku === "GENERIC") continue;
+
+      const prodSnap = await getDocs(
+        query(collection(db, "production_logs"), where("sku", "==", sku)),
+      );
+      const salesSnap = await getDocs(
+        query(collection(db, "sales"), where("skus", "array-contains", sku)),
+      );
+
+      const allMovements: any[] = [];
+
+      prodSnap.docs.forEach((d) => {
+        const data = d.data();
+        if (data.status !== "VOIDED")
+          allMovements.push({
+            sku,
+            type: "IN",
+            quantity: data.piecesProduced,
+            date: data.timestamp.toDate(),
+            reference: data.parentCoilId,
+            description: "Ingreso por Producción",
+            user: data.operatorId,
+          });
+      });
+
+      salesSnap.docs.forEach((d) => {
+        const data = d.data();
+        if (data.status === "COMPLETED") {
+          const item = data.items?.find((i: any) => i.sku === sku);
+          if (item)
+            allMovements.push({
+              sku,
+              type: "OUT",
+              quantity: item.quantity,
+              date: data.timestamp.toDate(),
+              reference: d.id,
+              description: `Venta a ${data.customerName}`,
+              user: data.sellerId,
+            });
+        }
+      });
+
+      allMovements.sort((a, b) => a.date.getTime() - b.date.getTime());
+      let balance = 0;
+      let lastT = 0;
+
+      const finalKardex = allMovements.map((m) => {
+        if (m.date.getTime() <= lastT) m.date = new Date(lastT + 1);
+        lastT = m.date.getTime();
+        balance = m.type === "IN" ? balance + m.quantity : balance - m.quantity;
+        return { ...m, balance };
+      });
+
+      const oldKardex = await getDocs(
+        query(collection(db, "kardex_movements"), where("sku", "==", sku)),
+      );
       const batches = [];
       let currentBatch = writeBatch(db);
       let opCount = 0;
 
-      const checkBatchLimit = (neededOps: number) => {
-        if (opCount + neededOps > 480) {
+      const checkLimit = () => {
+        if (opCount >= 450) {
           batches.push(currentBatch);
           currentBatch = writeBatch(db);
           opCount = 0;
         }
       };
 
-      // 1. PRIMERO CREAMOS LOS CLIENTES
+      oldKardex.docs.forEach((d) => {
+        checkLimit();
+        currentBatch.delete(d.ref);
+        opCount++;
+      });
+      finalKardex.forEach((m) => {
+        checkLimit();
+        currentBatch.set(doc(collection(db, "kardex_movements")), m);
+        opCount++;
+      });
+
+      if (opCount > 0) batches.push(currentBatch);
+      await Promise.all(batches.map((b) => b.commit()));
+    }
+  };
+
+  const handleUploadToFirebase = async () => {
+    if (parsedSales.length === 0) return;
+    setLoading(true);
+    setStatusMessage("Guardando ventas y actualizando stock...");
+
+    try {
+      const uniqueSkus = new Set<string>();
+      const batches = [];
+      let currentBatch = writeBatch(db);
+      let opCount = 0;
+
+      const checkLimit = (n: number) => {
+        if (opCount + n > 480) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          opCount = 0;
+        }
+      };
+
       for (const customer of parsedCustomers) {
-        checkBatchLimit(1);
-        const customerRef = doc(db, "customers", customer.documentNumber);
+        checkLimit(1);
         currentBatch.set(
-          customerRef,
+          doc(db, "customers", customer.documentNumber),
           { ...customer, lastUpdated: serverTimestamp() },
           { merge: true },
         );
         opCount++;
       }
 
-      // 2. LUEGO CREAMOS LAS VENTAS Y DESCONTAMOS EL STOCK
       for (const sale of parsedSales) {
-        const opsNeeded = 1 + sale.items.length;
-        checkBatchLimit(opsNeeded);
+        checkLimit(1 + sale.items.length);
 
-        // A. Guardar la Venta con su ID basado en la serie (Ej: F001-234)
-        const saleRef = doc(db, "sales", sale.documentNumber);
-        const saleData = {
+        const skusArray = Array.from(
+          new Set(sale.items.map((i: any) => i.sku)),
+        );
+
+        currentBatch.set(doc(db, "sales", sale.documentNumber), {
           ...sale,
+          skus: skusArray,
           uploadedAt: serverTimestamp(),
-          metadata: { isHistoricalMigration: true },
-        };
-        currentBatch.set(saleRef, saleData);
+          metadata: {
+            isHistorical: true,
+            currency: sale.currency,
+            exchangeRate: sale.exchangeRateApplied,
+            originalCurrencyAmount:
+              sale.currency === "USD"
+                ? Number(sale.originalCurrencyAmount.toFixed(2))
+                : null,
+          },
+        });
         opCount++;
 
-        // B. Descontar el Stock
         for (const item of sale.items) {
           if (item.sku && item.sku !== "GENERIC") {
-            const stockRef = doc(db, "inventory_stock", item.sku);
+            uniqueSkus.add(item.sku);
             currentBatch.set(
-              stockRef,
+              doc(db, "inventory_stock", item.sku),
               {
                 sku: item.sku,
                 totalQuantity: increment(-item.quantity),
@@ -317,39 +402,38 @@ export function BulkUploadSales() {
       if (opCount > 0) batches.push(currentBatch);
       await Promise.all(batches.map((b) => b.commit()));
 
-      toast.success(
-        `${parsedSales.length} ventas y ${parsedCustomers.length} clientes procesados con éxito.`,
-      );
+      await syncKardexForSkus(Array.from(uniqueSkus));
+
+      toast.success("✅ ¡Migración y Kardex completados con éxito!");
       setParsedSales([]);
       setParsedCustomers([]);
     } catch (error) {
-      console.error("Error en subida masiva:", error);
-      toast.error("Hubo un error subiendo los datos a Firebase.");
+      toast.error("Error en la subida masiva.");
     } finally {
       setLoading(false);
+      setStatusMessage("");
     }
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full p-6 md:p-8 pt-12 md:pt-14">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <div>
+        <div className="pr-8 md:pr-0">
           <h2 className="text-xl font-black text-gray-800 flex items-center gap-2">
-            <Database className="text-green-600" size={24} />
-            Migración de Ventas Históricas
+            <Database className="text-green-600" size={24} /> Migración
+            Inteligente
           </h2>
-          <p className="text-sm text-gray-500 font-medium mt-1">
-            Sube tu reporte en Excel. El sistema filtrará anulados, extraerá el
-            Peso del catálogo automáticamente y cruzará el TC.
+          <p className="text-sm text-gray-500 font-medium">
+            Sube tus ventas y el sistema reconstruirá el Kardex matemático
+            automáticamente. Se guardarán los T.C. de las ventas en USD.
           </p>
         </div>
-
-        <label className="cursor-pointer bg-green-50 text-green-700 hover:bg-green-100 transition px-6 py-3 rounded-xl font-black flex items-center gap-2 border border-green-200">
+        <label className="cursor-pointer bg-green-50 text-green-700 hover:bg-green-100 transition px-6 py-3 rounded-xl font-black flex items-center gap-2 border border-green-200 shrink-0">
           {loading ? (
             <Loader2 size={18} className="animate-spin" />
           ) : (
             <FileSpreadsheet size={18} />
-          )}
+          )}{" "}
           Seleccionar Reporte
           <input
             type="file"
@@ -362,60 +446,43 @@ export function BulkUploadSales() {
         </label>
       </div>
 
-      <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex items-start gap-3 mb-6">
-        <AlertCircle size={20} className="text-blue-500 shrink-0 mt-0.5" />
-        <div className="text-sm font-medium text-blue-800">
-          <p className="font-bold mb-1">Cálculos Automatizados:</p>
-          <p>
-            Las filas con ESTADO COMPROBANTE en "Anulado" o vacío se ignorarán.
-            El sistema calculará el peso buscando el CÓDIGO PRODUCTO en tu base
-            de datos actual.
-          </p>
-        </div>
-      </div>
-
       {parsedSales.length > 0 && (
         <div className="bg-emerald-50/50 rounded-2xl p-6 border border-emerald-100 animate-in fade-in">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-emerald-100 pb-4 mb-4">
-            <div>
-              <p className="font-bold text-gray-800 text-sm uppercase tracking-widest mb-1">
-                Validación completada:
-              </p>
-              <p className="text-emerald-700 font-black text-2xl">
-                {parsedSales.length}{" "}
-                <span className="text-sm font-bold text-emerald-600/70">
-                  Facturas Válidas
-                </span>{" "}
-                | {parsedCustomers.length}{" "}
-                <span className="text-sm font-bold text-emerald-600/70">
-                  Clientes
-                </span>
-              </p>
-            </div>
+            <p className="text-emerald-700 font-black text-2xl">
+              {parsedSales.length} Facturas | {parsedCustomers.length} Clientes
+            </p>
             <button
               onClick={handleUploadToFirebase}
               disabled={loading}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-xl font-black flex items-center gap-2 transition disabled:opacity-50 shadow-lg shadow-emerald-200 active:scale-95"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-xl font-black flex items-center gap-2 transition disabled:opacity-50 shadow-lg active:scale-95"
             >
-              {loading ? <Loader2 className="animate-spin" /> : <Upload />}
-              Poblar Base de Datos
+              {loading ? (
+                <>
+                  <RefreshCw className="animate-spin" /> {statusMessage}
+                </>
+              ) : (
+                <>
+                  <Upload /> Procesar Todo
+                </>
+              )}
             </button>
           </div>
-
           <div className="max-h-60 overflow-y-auto bg-white border border-gray-100 rounded-xl">
             <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase sticky top-0">
+              <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase sticky top-0 z-10">
                 <tr>
                   <th className="p-3">Documento</th>
                   <th className="p-3">Cliente</th>
-                  <th className="p-3 text-center">Items</th>
+                  <th className="p-3 text-center">Hora Asignada</th>
                   <th className="p-3 text-right">Peso Total</th>
-                  <th className="p-3 text-right">Total (S/)</th>
+                  <th className="p-3 text-right">Total Contable</th>
+                  <th className="p-3 text-center">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {parsedSales.slice(0, 50).map((s, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
+                {parsedSales.map((s, i) => (
+                  <tr key={s.documentNumber} className="hover:bg-gray-50">
                     <td className="p-3 font-bold text-gray-800">
                       {s.documentNumber}
                     </td>
@@ -423,31 +490,41 @@ export function BulkUploadSales() {
                       {s.customerName}
                     </td>
                     <td className="p-3 text-center font-bold text-blue-600">
-                      {s.items.length}
+                      {s.timestamp.toLocaleTimeString("es-PE")}
                     </td>
                     <td className="p-3 text-right font-medium text-orange-600">
                       {(s as any).totalWeight.toLocaleString("es-PE")} kg
                     </td>
-                    <td className="p-3 text-right font-black text-emerald-600">
-                      S/{" "}
-                      {s.totalAmount.toLocaleString("es-PE", {
-                        minimumFractionDigits: 2,
-                      })}
+                    <td className="p-3 text-right">
+                      <p className="font-black text-emerald-600">
+                        S/{" "}
+                        {s.totalAmount.toLocaleString("es-PE", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </p>
                       {s.currency === "USD" && (
-                        <div className="text-[9px] text-gray-400 font-bold uppercase mt-0.5">
-                          TC: {s.exchangeRateApplied}
+                        <div className="text-[9px] text-slate-400 font-bold uppercase mt-0.5">
+                          ${" "}
+                          {s.originalCurrencyAmount.toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                          })}{" "}
+                          (TC: {s.exchangeRateApplied})
                         </div>
                       )}
+                    </td>
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => handleDeleteParsedSale(i)}
+                        className="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded transition"
+                        title="Borrar de la lista"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {parsedSales.length > 50 && (
-              <p className="p-3 text-center text-xs font-bold text-gray-400 bg-gray-50">
-                Mostrando los primeros 50 registros de {parsedSales.length}...
-              </p>
-            )}
           </div>
         </div>
       )}
