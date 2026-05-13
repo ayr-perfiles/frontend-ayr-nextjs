@@ -13,6 +13,7 @@ export interface ProductConfig {
   name: string;
   stripWidth: number; // Ancho de banda (mm)
   standardWeight: number; // Peso logístico/estándar (kg)
+  lengthMeters?: number; // 🚀 NUEVO: Largo del producto (ej: 3.00, 2.44)
   isActive: boolean; // Para poder desactivar productos viejos sin borrarlos
 }
 
@@ -43,6 +44,7 @@ export const saveProduct = async (product: ProductConfig) => {
         name: product.name,
         stripWidth: product.stripWidth,
         standardWeight: product.standardWeight,
+        lengthMeters: product.lengthMeters || 3.0, // 🚀 Guardamos el largo (3m por defecto)
         isActive: product.isActive,
         updatedAt: serverTimestamp(),
       },

@@ -18,16 +18,21 @@ import {
   where,
 } from "firebase/firestore";
 
-interface CartItem {
+// 🚀 NUEVO: Agregamos isCoil para soportar Venta de Materia Prima
+export interface CartItem {
   sku: string;
   quantity: number;
   unitPrice: number;
   baseCost: number;
   unitWeight: number;
+  isCoil?: boolean;
 }
 
 const SETTINGS_DOC_ID = "general_settings";
 
+/**
+ * PROCESAR VENTA DIRECTA (SOPORTA PERFILES Y BOBINAS)
+ */
 export const processSale = async (
   customerName: string,
   documentNumber: string,
@@ -41,9 +46,28 @@ export const processSale = async (
 
   try {
     await runTransaction(db, async (transaction) => {
+      // ==========================================
+      // FASE 1: TODAS LAS LECTURAS (READS) PRIMERO
+      // ==========================================
       const settingsRef = doc(db, "settings", SETTINGS_DOC_ID);
       const settingsDoc = await transaction.get(settingsRef);
 
+      const stockSnapshots: Record<string, any> = {};
+      const coilSnapshots: Record<string, any> = {};
+
+      for (const item of cart) {
+        if (item.isCoil) {
+          const coilRef = doc(db, "coils", item.sku);
+          coilSnapshots[item.sku] = await transaction.get(coilRef);
+        } else if (item.sku !== "GENERIC") {
+          const stockRef = doc(db, "inventory_stock", item.sku);
+          stockSnapshots[item.sku] = await transaction.get(stockRef);
+        }
+      }
+
+      // ==========================================
+      // FASE 2: VALIDACIONES Y ESCRITURAS (WRITES)
+      // ==========================================
       let nextSaleNumber = 1;
       if (settingsDoc.exists() && settingsDoc.data().nextSaleNumber) {
         nextSaleNumber = settingsDoc.data().nextSaleNumber;
@@ -56,46 +80,6 @@ export const processSale = async (
       let totalAmount = 0;
       let totalCost = 0;
       let totalWeight = 0;
-      const stockUpdates = [];
-
-      for (const item of cart) {
-        const stockRef = doc(db, "inventory_stock", item.sku);
-        const stockDoc = await transaction.get(stockRef);
-
-        if (!stockDoc.exists()) {
-          throw new Error(
-            `El producto ${item.sku} no existe en el inventario.`,
-          );
-        }
-
-        const currentStock = stockDoc.data().totalQuantity;
-        if (currentStock < item.quantity) {
-          throw new Error(
-            `Stock insuficiente para ${item.sku}. Quedan ${currentStock} unidades.`,
-          );
-        }
-
-        const newStock = currentStock - item.quantity;
-        stockUpdates.push({ ref: stockRef, newQuantity: newStock });
-
-        totalAmount += item.quantity * item.unitPrice;
-        totalCost += item.quantity * item.baseCost;
-        totalWeight += item.quantity * (item.unitWeight || 0);
-
-        const kardexRef = doc(collection(db, "kardex_movements"));
-        transaction.set(kardexRef, {
-          sku: item.sku,
-          date: serverTimestamp(),
-          type: "OUT",
-          quantity: item.quantity,
-          balance: newStock,
-          reference: saleId,
-          description: `Venta a ${customerName}`,
-          user: sellerId,
-        });
-      }
-
-      const totalProfit = totalAmount - totalCost;
 
       transaction.set(
         settingsRef,
@@ -103,14 +87,79 @@ export const processSale = async (
         { merge: true },
       );
 
-      for (const update of stockUpdates) {
-        transaction.update(update.ref, {
-          totalQuantity: update.newQuantity,
-          lastUpdate: serverTimestamp(),
-        });
+      for (const item of cart) {
+        totalAmount += item.quantity * item.unitPrice;
+        totalCost += item.quantity * item.baseCost;
+        totalWeight += item.quantity * (item.unitWeight || 0);
+
+        if (item.isCoil) {
+          // Lógica para venta de BOBINAS (Materia Prima)
+          const coilDoc = coilSnapshots[item.sku];
+          if (!coilDoc || !coilDoc.exists())
+            throw new Error(`La bobina ${item.sku} no existe.`);
+          if (coilDoc.data().status !== "AVAILABLE")
+            throw new Error(
+              `La bobina ${item.sku} no está disponible para venta.`,
+            );
+
+          const coilRef = doc(db, "coils", item.sku);
+          transaction.update(coilRef, {
+            status: "SOLD",
+            soldAt: serverTimestamp(),
+            soldBy: sellerId,
+            saleReference: saleId,
+          });
+
+          const kardexRef = doc(collection(db, "kardex_movements"));
+          transaction.set(kardexRef, {
+            sku: item.sku,
+            date: serverTimestamp(),
+            type: "OUT",
+            quantity: 1, // Se vende 1 unidad entera de bobina
+            balance: 0, // Ya no está en almacén
+            reference: saleId,
+            description: `Venta de Materia Prima a ${customerName}`,
+            user: sellerId,
+          });
+        } else if (item.sku !== "GENERIC") {
+          // Lógica tradicional para PERFILES
+          const stockDoc = stockSnapshots[item.sku];
+          if (!stockDoc || !stockDoc.exists()) {
+            throw new Error(
+              `El producto ${item.sku} no existe en el inventario.`,
+            );
+          }
+
+          const currentStock = stockDoc.data().totalQuantity;
+          if (currentStock < item.quantity) {
+            throw new Error(
+              `Stock insuficiente para ${item.sku}. Quedan ${currentStock} unidades.`,
+            );
+          }
+
+          const newStock = currentStock - item.quantity;
+          const stockRef = doc(db, "inventory_stock", item.sku);
+
+          transaction.update(stockRef, {
+            totalQuantity: newStock,
+            lastUpdate: serverTimestamp(),
+          });
+
+          const kardexRef = doc(collection(db, "kardex_movements"));
+          transaction.set(kardexRef, {
+            sku: item.sku,
+            date: serverTimestamp(),
+            type: "OUT",
+            quantity: item.quantity,
+            balance: newStock,
+            reference: saleId,
+            description: `Venta a ${customerName}`,
+            user: sellerId,
+          });
+        }
       }
 
-      // 🔥 ÍNDICE PLANO DE BÚSQUEDA
+      const totalProfit = totalAmount - totalCost;
       const skusArray = Array.from(new Set(cart.map((item) => item.sku)));
 
       transaction.set(saleRef, {
@@ -120,7 +169,7 @@ export const processSale = async (
         contactName,
         contactPhone,
         items: cart,
-        skus: skusArray, // <-- Magia
+        skus: skusArray,
         totalAmount,
         totalCost,
         totalProfit,
@@ -137,6 +186,9 @@ export const processSale = async (
   }
 };
 
+/**
+ * CREAR COTIZACIÓN
+ */
 export const createQuotation = async (
   customerName: string,
   documentNumber: string,
@@ -185,7 +237,7 @@ export const createQuotation = async (
         contactName,
         contactPhone,
         items: cart,
-        skus: skusArray, // <-- Magia
+        skus: skusArray,
         totalAmount,
         totalCost,
         totalProfit,
@@ -201,10 +253,16 @@ export const createQuotation = async (
   }
 };
 
+/**
+ * APROBAR COTIZACIÓN (SOPORTA PERFILES Y BOBINAS)
+ */
 export const approveQuotation = async (quotationId: string) => {
   const quoteRef = doc(db, "sales", quotationId);
   try {
     await runTransaction(db, async (transaction) => {
+      // ==========================================
+      // FASE 1: LECTURAS
+      // ==========================================
       const quoteDoc = await transaction.get(quoteRef);
       if (!quoteDoc.exists()) throw new Error("La cotización no existe.");
 
@@ -215,6 +273,22 @@ export const approveQuotation = async (quotationId: string) => {
       const settingsRef = doc(db, "settings", SETTINGS_DOC_ID);
       const settingsDoc = await transaction.get(settingsRef);
 
+      const stockSnapshots: Record<string, any> = {};
+      const coilSnapshots: Record<string, any> = {};
+
+      for (const item of quoteData.items) {
+        if (item.isCoil) {
+          const coilRef = doc(db, "coils", item.sku);
+          coilSnapshots[item.sku] = await transaction.get(coilRef);
+        } else if (item.sku !== "GENERIC") {
+          const stockRef = doc(db, "inventory_stock", item.sku);
+          stockSnapshots[item.sku] = await transaction.get(stockRef);
+        }
+      }
+
+      // ==========================================
+      // FASE 2: ESCRITURAS
+      // ==========================================
       let nextSaleNumber = 1;
       if (settingsDoc.exists() && settingsDoc.data().nextSaleNumber) {
         nextSaleNumber = settingsDoc.data().nextSaleNumber;
@@ -223,45 +297,68 @@ export const approveQuotation = async (quotationId: string) => {
       const newSaleId = `V-${String(nextSaleNumber).padStart(6, "0")}`;
       const newSaleRef = doc(db, "sales", newSaleId);
 
-      const stockUpdates = [];
-
-      for (const item of quoteData.items) {
-        const stockRef = doc(db, "inventory_stock", item.sku);
-        const stockDoc = await transaction.get(stockRef);
-
-        if (!stockDoc.exists())
-          throw new Error(`El producto ${item.sku} no existe.`);
-        const currentStock = stockDoc.data().totalQuantity;
-        if (currentStock < item.quantity)
-          throw new Error(`Stock insuficiente para ${item.sku}.`);
-
-        const newStock = currentStock - item.quantity;
-        stockUpdates.push({ ref: stockRef, newQuantity: newStock });
-
-        const kardexRef = doc(collection(db, "kardex_movements"));
-        transaction.set(kardexRef, {
-          sku: item.sku,
-          date: serverTimestamp(),
-          type: "OUT",
-          quantity: item.quantity,
-          balance: newStock,
-          reference: newSaleId,
-          description: `Conversión de Cot. ${quotationId}`,
-          user: quoteData.sellerId || "Sistema",
-        });
-      }
-
       transaction.set(
         settingsRef,
         { nextSaleNumber: nextSaleNumber + 1 },
         { merge: true },
       );
 
-      for (const update of stockUpdates) {
-        transaction.update(update.ref, {
-          totalQuantity: update.newQuantity,
-          lastUpdate: serverTimestamp(),
-        });
+      for (const item of quoteData.items) {
+        if (item.isCoil) {
+          const coilDoc = coilSnapshots[item.sku];
+          if (!coilDoc || !coilDoc.exists())
+            throw new Error(`La bobina ${item.sku} no existe.`);
+          if (coilDoc.data().status !== "AVAILABLE")
+            throw new Error(`La bobina ${item.sku} no está disponible.`);
+
+          const coilRef = doc(db, "coils", item.sku);
+          transaction.update(coilRef, {
+            status: "SOLD",
+            soldAt: serverTimestamp(),
+            soldBy: quoteData.sellerId || "Sistema",
+            saleReference: newSaleId,
+          });
+
+          const kardexRef = doc(collection(db, "kardex_movements"));
+          transaction.set(kardexRef, {
+            sku: item.sku,
+            date: serverTimestamp(),
+            type: "OUT",
+            quantity: 1,
+            balance: 0,
+            reference: newSaleId,
+            description: `Conversión Cot. ${quotationId} (Materia Prima)`,
+            user: quoteData.sellerId || "Sistema",
+          });
+        } else if (item.sku !== "GENERIC") {
+          const stockDoc = stockSnapshots[item.sku];
+          if (!stockDoc || !stockDoc.exists())
+            throw new Error(`El producto ${item.sku} no existe.`);
+
+          const currentStock = stockDoc.data().totalQuantity;
+          if (currentStock < item.quantity)
+            throw new Error(`Stock insuficiente para ${item.sku}.`);
+
+          const newStock = currentStock - item.quantity;
+          const stockRef = doc(db, "inventory_stock", item.sku);
+
+          transaction.update(stockRef, {
+            totalQuantity: newStock,
+            lastUpdate: serverTimestamp(),
+          });
+
+          const kardexRef = doc(collection(db, "kardex_movements"));
+          transaction.set(kardexRef, {
+            sku: item.sku,
+            date: serverTimestamp(),
+            type: "OUT",
+            quantity: item.quantity,
+            balance: newStock,
+            reference: newSaleId,
+            description: `Conversión de Cot. ${quotationId}`,
+            user: quoteData.sellerId || "Sistema",
+          });
+        }
       }
 
       const skusArray = Array.from(
@@ -270,7 +367,7 @@ export const approveQuotation = async (quotationId: string) => {
 
       transaction.set(newSaleRef, {
         ...quoteData,
-        skus: skusArray, // <-- Magia
+        skus: skusArray,
         status: "COMPLETED",
         approvedAt: serverTimestamp(),
         originQuoteId: quotationId,
@@ -288,6 +385,9 @@ export const approveQuotation = async (quotationId: string) => {
   }
 };
 
+/**
+ * FETCH SALES
+ */
 export interface FetchSalesParams {
   pageSize: number;
   statusFilter: string;
@@ -423,7 +523,7 @@ export const fetchSales = async (params: FetchSalesParams) => {
 };
 
 /**
- * ANULAR UNA VENTA Y RE-HABILITAR COTIZACIÓN DE ORIGEN (VERSIÓN TRANSACCIONAL ESCALABLE)
+ * ANULAR UNA VENTA (SOPORTA DEVOLUCIÓN DE PERFILES Y BOBINAS)
  */
 export interface AnnulSaleParams {
   saleId: string;
@@ -436,9 +536,7 @@ export const annulSale = async ({ saleId, userEmail }: AnnulSaleParams) => {
 
   try {
     await runTransaction(db, async (transaction) => {
-      // ==========================================
-      // FASE 1: TODAS LAS LECTURAS (READS) PRIMERO
-      // ==========================================
+      // FASE 1: LECTURAS
       const saleDoc = await transaction.get(saleRef);
       if (!saleDoc.exists()) throw new Error("La venta no existe.");
 
@@ -446,16 +544,19 @@ export const annulSale = async ({ saleId, userEmail }: AnnulSaleParams) => {
       if (saleData.status === "VOIDED")
         throw new Error("Esta venta ya ha sido anulada.");
 
-      // Leemos el stock de TODOS los items antes de modificar nada
       const stockSnapshots: Record<string, any> = {};
+      const coilSnapshots: Record<string, any> = {};
+
       for (const item of saleData.items) {
-        if (!item.sku || item.sku === "GENERIC") continue;
-        const stockRef = doc(db, "inventory_stock", item.sku);
-        const stockSnap = await transaction.get(stockRef);
-        stockSnapshots[item.sku] = stockSnap;
+        if (item.isCoil) {
+          const coilRef = doc(db, "coils", item.sku);
+          coilSnapshots[item.sku] = await transaction.get(coilRef);
+        } else if (item.sku && item.sku !== "GENERIC") {
+          const stockRef = doc(db, "inventory_stock", item.sku);
+          stockSnapshots[item.sku] = await transaction.get(stockRef);
+        }
       }
 
-      // Leemos la cotización de origen si existe
       let quoteSnap = null;
       let quoteRef = null;
       if (saleData.originQuoteId) {
@@ -463,41 +564,58 @@ export const annulSale = async ({ saleId, userEmail }: AnnulSaleParams) => {
         quoteSnap = await transaction.get(quoteRef);
       }
 
-      // ==========================================
-      // FASE 2: TODAS LAS ESCRITURAS (WRITES) AL FINAL
-      // ==========================================
+      // FASE 2: ESCRITURAS
       for (const item of saleData.items) {
-        if (!item.sku || item.sku === "GENERIC") continue;
+        if (item.isCoil) {
+          const coilRef = doc(db, "coils", item.sku);
+          transaction.update(coilRef, {
+            status: "AVAILABLE",
+            soldAt: null,
+            soldBy: null,
+            saleReference: null,
+            updatedAt: serverTimestamp(),
+          });
 
-        const stockRef = doc(db, "inventory_stock", item.sku);
-        const stockSnap = stockSnapshots[item.sku];
+          const kardexRef = doc(collection(db, "kardex_movements"));
+          transaction.set(kardexRef, {
+            sku: item.sku,
+            date: serverTimestamp(),
+            type: "IN",
+            quantity: 1,
+            balance: 1, // La bobina vuelve a estar disponible
+            reference: saleId,
+            description: `Anulación Venta MP: ${saleData.customerName}`,
+            user: userEmail,
+          });
+        } else if (item.sku && item.sku !== "GENERIC") {
+          const stockRef = doc(db, "inventory_stock", item.sku);
+          const stockSnap = stockSnapshots[item.sku];
 
-        // Calculamos el saldo para el Kardex
-        const currentQty =
-          stockSnap && stockSnap.exists() ? stockSnap.data().totalQuantity : 0;
-        const newQty = currentQty + item.quantity;
+          const currentQty =
+            stockSnap && stockSnap.exists()
+              ? stockSnap.data().totalQuantity
+              : 0;
+          const newQty = currentQty + item.quantity;
 
-        // A. Devolver stock físico
-        transaction.update(stockRef, {
-          totalQuantity: increment(item.quantity),
-          lastUpdate: serverTimestamp(),
-        });
+          transaction.update(stockRef, {
+            totalQuantity: increment(item.quantity),
+            lastUpdate: serverTimestamp(),
+          });
 
-        // B. Registro en Kardex
-        const kardexRef = doc(collection(db, "kardex_movements"));
-        transaction.set(kardexRef, {
-          sku: item.sku,
-          date: serverTimestamp(),
-          type: "IN",
-          quantity: item.quantity,
-          balance: newQty,
-          reference: saleId,
-          description: `Anulación de Venta: ${saleData.customerName}`,
-          user: userEmail,
-        });
+          const kardexRef = doc(collection(db, "kardex_movements"));
+          transaction.set(kardexRef, {
+            sku: item.sku,
+            date: serverTimestamp(),
+            type: "IN",
+            quantity: item.quantity,
+            balance: newQty,
+            reference: saleId,
+            description: `Anulación de Venta: ${saleData.customerName}`,
+            user: userEmail,
+          });
+        }
       }
 
-      // C. Re-habilitar cotización si existe
       if (quoteRef && quoteSnap && quoteSnap.exists()) {
         transaction.update(quoteRef, {
           status: "QUOTATION",
@@ -506,19 +624,17 @@ export const annulSale = async ({ saleId, userEmail }: AnnulSaleParams) => {
         });
       }
 
-      // D. Marcar venta como anulada
       transaction.update(saleRef, {
         status: "VOIDED",
         voidedAt: serverTimestamp(),
         voidedBy: userEmail,
       });
 
-      // E. Registrar en Auditoría
       transaction.set(auditRef, {
         action: "VOID_SALE",
         entityId: saleId,
         userEmail: userEmail,
-        details: `Se anuló la venta ${saleId}. El stock fue devuelto.`,
+        details: `Se anuló la venta ${saleId}. El stock/bobinas fueron devueltos.`,
         timestamp: serverTimestamp(),
       });
     });
@@ -532,7 +648,6 @@ export const annulSale = async ({ saleId, userEmail }: AnnulSaleParams) => {
 
 /**
  * EDITAR UNA COTIZACIÓN (QUOTATION)
- * Solo se pueden editar documentos que sigan en estado QUOTATION.
  */
 export const updateQuotation = async (
   quotationId: string,
@@ -568,8 +683,6 @@ export const updateQuotation = async (
       });
 
       const totalProfit = totalAmount - totalCost;
-
-      // Actualizamos el índice de búsqueda rápida
       const skusArray = Array.from(new Set(cart.map((item) => item.sku)));
 
       transaction.update(quoteRef, {

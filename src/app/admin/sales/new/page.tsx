@@ -33,14 +33,16 @@ import {
   Users,
   Info,
   Loader2,
-  AlertTriangle,
   Scale,
   Percent,
+  Package,
+  Factory,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
 const IGV_RATE = 0.18;
 
+// 🚀 NUEVO: Soporte para flag isCoil
 interface CartItem {
   sku: string;
   quantity: number;
@@ -48,6 +50,7 @@ interface CartItem {
   unitValue: number;
   baseCost: number;
   unitWeight: number;
+  isCoil?: boolean;
 }
 
 interface Contact {
@@ -72,8 +75,6 @@ export default function NewSalePage() {
   const [customerAddress, setCustomerAddress] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContactId, setSelectedContactId] = useState<string>("");
-
-  // NUEVO: Lista global de contactos para autocompletar
   const [globalContacts, setGlobalContacts] = useState<Contact[]>([]);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -86,11 +87,18 @@ export default function NewSalePage() {
   const [availableStock, setAvailableStock] = useState<StockSummary[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // 🚀 NUEVO: Estado Híbrido
+  const [productMode, setProductMode] = useState<"PROFILES" | "COILS">(
+    "PROFILES",
+  );
+  const [availableCoils, setAvailableCoils] = useState<any[]>([]);
+
   const [selectedSku, setSelectedSku] = useState("");
   const [addQuantity, setAddQuantity] = useState<number | "">("");
   const [addPrice, setAddPrice] = useState<number | "">("");
   const [baseCost, setBaseCost] = useState<number>(0);
 
+  // 1. CARGA INICIAL
   useEffect(() => {
     const fetchGlobals = async () => {
       const dataSettings = await getSystemSettings();
@@ -100,11 +108,10 @@ export default function NewSalePage() {
       const activeProducts = dataCatalog.filter((p) => p.isActive);
       setCatalog(activeProducts);
 
-      if (activeProducts.length > 0 && !selectedSku) {
+      if (activeProducts.length > 0 && productMode === "PROFILES") {
         setSelectedSku(activeProducts[0].sku);
       }
 
-      // Cargamos todos los contactos de la base de datos para el autocompletado
       const contactsSnap = await getDocs(collection(db, "contacts"));
       setGlobalContacts(
         contactsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Contact),
@@ -113,6 +120,88 @@ export default function NewSalePage() {
     fetchGlobals();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 2. ESCUCHAS EN TIEMPO REAL (STOCK Y BOBINAS DISPONIBLES)
+  useEffect(() => {
+    const qStock = query(collection(db, "inventory_stock"));
+    const unsubStock = onSnapshot(qStock, (snapshot) => {
+      setAvailableStock(
+        snapshot.docs.map((doc) => ({
+          sku: doc.id,
+          ...doc.data(),
+        })) as StockSummary[],
+      );
+    });
+
+    const qCoils = query(
+      collection(db, "coils"),
+      where("status", "==", "AVAILABLE"),
+    );
+    const unsubCoils = onSnapshot(qCoils, (snapshot) => {
+      setAvailableCoils(
+        snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+      );
+    });
+
+    return () => {
+      unsubStock();
+      unsubCoils();
+    };
+  }, []);
+
+  // 3. EFECTO DE CAMBIO DE MODO
+  useEffect(() => {
+    if (productMode === "PROFILES") {
+      setSelectedSku(catalog[0]?.sku || "");
+      setAddQuantity("");
+    } else {
+      setSelectedSku(availableCoils[0]?.id || "");
+    }
+    setAddPrice("");
+    setBaseCost(0);
+  }, [productMode, catalog, availableCoils]);
+
+  // 4. EFECTO DE CÁLCULO DE COSTO Y PRECIO SUGERIDO
+  useEffect(() => {
+    if (!selectedSku) return;
+
+    if (productMode === "PROFILES") {
+      const stockItem = availableStock.find((s) => s.sku === selectedSku);
+      if (stockItem && stockItem.lastCostPerPiece) {
+        const cost = Number(stockItem.lastCostPerPiece.toFixed(2));
+        setBaseCost(cost);
+
+        const targetMargin = (settings?.minMarginPercent || 20) / 100;
+        const suggestedValueWithoutIGV = cost / (1 - targetMargin);
+        const suggestedPriceWithIGV = suggestedValueWithoutIGV * (1 + IGV_RATE);
+
+        setAddPrice(Number(suggestedPriceWithIGV.toFixed(2)));
+      } else {
+        setBaseCost(0);
+        setAddPrice("");
+      }
+    } else {
+      const coil = availableCoils.find((c) => c.id === selectedSku);
+      if (coil && coil.pricePerKg) {
+        const cost = Number(coil.pricePerKg.toFixed(2));
+        setBaseCost(cost);
+
+        // Auto-rellenar cantidad con el peso total de la bobina
+        setAddQuantity(coil.currentWeight || coil.initialWeight || 0);
+
+        const targetMargin = (settings?.minMarginPercent || 20) / 100;
+        const suggestedValueWithoutIGV = cost / (1 - targetMargin);
+        const suggestedPriceWithIGV = suggestedValueWithoutIGV * (1 + IGV_RATE);
+
+        setAddPrice(Number(suggestedPriceWithIGV.toFixed(2)));
+      } else {
+        setBaseCost(0);
+        setAddPrice("");
+        setAddQuantity("");
+      }
+    }
+  }, [selectedSku, availableStock, availableCoils, productMode, settings]);
+
+  // ... (TODA LA LÓGICA DE CLIENTES SE MANTIENE INTACTA) ...
   const fetchClientData = async (docNum: string) => {
     const clientRef = doc(db, "customers", docNum);
     const clientSnap = await getDoc(clientRef);
@@ -179,36 +268,6 @@ export default function NewSalePage() {
   }, [duplicateId, catalog]);
 
   useEffect(() => {
-    const q = query(collection(db, "inventory_stock"));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const stockData = snapshot.docs.map((doc) => ({
-        sku: doc.id,
-        ...doc.data(),
-      })) as StockSummary[];
-      setAvailableStock(stockData);
-    });
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    if (!selectedSku) return;
-    const stockItem = availableStock.find((s) => s.sku === selectedSku);
-    if (stockItem && stockItem.lastCostPerPiece) {
-      const cost = Number(stockItem.lastCostPerPiece.toFixed(2));
-      setBaseCost(cost);
-
-      const targetMargin = (settings?.minMarginPercent || 20) / 100;
-      const suggestedValueWithoutIGV = cost / (1 - targetMargin);
-      const suggestedPriceWithIGV = suggestedValueWithoutIGV * (1 + IGV_RATE);
-
-      setAddPrice(Number(suggestedPriceWithIGV.toFixed(2)));
-    } else {
-      setBaseCost(0);
-      setAddPrice("");
-    }
-  }, [selectedSku, availableStock, settings]);
-
-  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
         searchInputRef.current &&
@@ -255,9 +314,7 @@ export default function NewSalePage() {
   const handleDeepSearchClient = async () => {
     const targetDoc = searchTerm || documentNumber;
     if (targetDoc.length !== 8 && targetDoc.length !== 11) {
-      return toast.success(
-        "Ingresa un DNI (8) o RUC (11) válido para buscar en SUNAT.",
-      );
+      return toast.error("Ingresa un DNI (8) o RUC (11) válido para buscar.");
     }
     setIsSearchingClient(true);
     setShowSuggestions(false);
@@ -294,18 +351,15 @@ export default function NewSalePage() {
     if (!selectedContactId) setSelectedContactId(tempId);
   };
 
-  // Función inteligente que autocompleta si detecta un nombre existente en la BD Global
   const handleContactNameChange = (index: number, newName: string) => {
     const newContacts = [...contacts];
     newContacts[index].name = newName;
-
-    // Buscamos si ese nombre existe exactamente en la BD
     const existingContact = globalContacts.find(
       (c) => c.name.toLowerCase() === newName.toLowerCase(),
     );
 
     if (existingContact) {
-      newContacts[index].id = existingContact.id; // Reciclamos su ID para no duplicarlo
+      newContacts[index].id = existingContact.id;
       newContacts[index].phone = existingContact.phone || "";
       newContacts[index].email = existingContact.email || "";
       toast.success(`Contacto "${existingContact.name}" autocompletado.`);
@@ -313,10 +367,8 @@ export default function NewSalePage() {
       newContacts[index].id &&
       !newContacts[index].id?.startsWith("temp_")
     ) {
-      // Si antes era un contacto existente pero le cambió el nombre, lo volvemos temporal
       newContacts[index].id = `temp_${Date.now()}`;
     }
-
     setContacts(newContacts);
   };
 
@@ -330,6 +382,7 @@ export default function NewSalePage() {
     setContacts(newContacts);
   };
 
+  // 🚀 LÓGICA DE AÑADIR AL CARRITO HÍBRIDA
   const handleAddToCart = () => {
     if (!selectedSku || !addQuantity || !addPrice) return;
 
@@ -339,50 +392,76 @@ export default function NewSalePage() {
     if (unitValueWithoutIGV < baseCost) {
       if (
         !confirm(
-          `⚠️ ALERTA DE PÉRDIDA: El valor real del producto sin IGV (S/ ${unitValueWithoutIGV.toFixed(2)}) es MENOR que su costo de producción (S/ ${baseCost.toFixed(2)}). ¿Deseas vender a pérdida?`,
+          `⚠️ ALERTA DE PÉRDIDA: El valor sin IGV (S/ ${unitValueWithoutIGV.toFixed(2)}) es MENOR que su costo (S/ ${baseCost.toFixed(2)}). ¿Deseas vender a pérdida?`,
         )
       )
         return;
     }
 
-    const stockItem = availableStock.find((s) => s.sku === selectedSku);
-    const currentQtyInCart =
-      cart.find((c) => c.sku === selectedSku)?.quantity || 0;
-    const requestedTotal = currentQtyInCart + Number(addQuantity);
+    if (productMode === "PROFILES") {
+      const stockItem = availableStock.find((s) => s.sku === selectedSku);
+      const currentQtyInCart =
+        cart.find((c) => c.sku === selectedSku)?.quantity || 0;
+      const requestedTotal = currentQtyInCart + Number(addQuantity);
 
-    if (!stockItem || stockItem.totalQuantity < requestedTotal) {
-      toast.error(
-        `⚠️ Stock insuficiente. Solo tienes ${stockItem?.totalQuantity || 0} unidades.`,
+      if (!stockItem || stockItem.totalQuantity < requestedTotal) {
+        toast.error(
+          `⚠️ Stock insuficiente. Solo tienes ${stockItem?.totalQuantity || 0} unidades.`,
+        );
+        return;
+      }
+
+      const productInfo = catalog.find((p) => p.sku === selectedSku);
+      const unitWeight = productInfo?.standardWeight || 0;
+      const existingItemIndex = cart.findIndex(
+        (item) => item.sku === selectedSku,
       );
-      return;
-    }
 
-    const productInfo = catalog.find((p) => p.sku === selectedSku);
-    const unitWeight = productInfo?.standardWeight || 0;
-    const existingItemIndex = cart.findIndex(
-      (item) => item.sku === selectedSku,
-    );
-
-    if (existingItemIndex >= 0) {
-      const newCart = [...cart];
-      newCart[existingItemIndex].quantity += Number(addQuantity);
-      newCart[existingItemIndex].unitPrice = inputPrice;
-      newCart[existingItemIndex].unitValue = unitValueWithoutIGV;
-      setCart(newCart);
+      if (existingItemIndex >= 0) {
+        const newCart = [...cart];
+        newCart[existingItemIndex].quantity += Number(addQuantity);
+        newCart[existingItemIndex].unitPrice = inputPrice;
+        newCart[existingItemIndex].unitValue = unitValueWithoutIGV;
+        setCart(newCart);
+      } else {
+        setCart([
+          ...cart,
+          {
+            sku: selectedSku,
+            quantity: Number(addQuantity),
+            unitPrice: inputPrice,
+            unitValue: unitValueWithoutIGV,
+            baseCost,
+            unitWeight,
+            isCoil: false,
+          },
+        ]);
+      }
+      setAddQuantity(""); // Reseteamos cantidad en perfiles
     } else {
+      // MODO BOBINAS
+      const existingItemIndex = cart.findIndex(
+        (item) => item.sku === selectedSku,
+      );
+      if (existingItemIndex >= 0) {
+        toast.error("Esta bobina ya está en el carrito.");
+        return;
+      }
+
       setCart([
         ...cart,
         {
           sku: selectedSku,
-          quantity: Number(addQuantity),
-          unitPrice: inputPrice,
+          quantity: Number(addQuantity), // En bobinas, el "Quantity" es el peso
+          unitPrice: inputPrice, // En bobinas, el "UnitPrice" es Precio x Kg
           unitValue: unitValueWithoutIGV,
           baseCost,
-          unitWeight,
+          unitWeight: 1, // unitWeight es 1 para que totalWeight = quantity * 1 = peso
+          isCoil: true,
         },
       ]);
+      // En bobinas no reseteamos la cantidad porque es auto-completada.
     }
-    setAddQuantity("");
   };
 
   const removeFromCart = (index: number) =>
@@ -499,7 +578,9 @@ export default function NewSalePage() {
           contactNameFinal,
           contactPhoneFinal,
         );
-        toast.success("✅ Venta procesada. El stock ha sido descontado.");
+        toast.success(
+          "✅ Venta procesada. El stock/bobinas han sido descontados.",
+        );
       }
       router.push("/admin/sales");
     } catch (error: any) {
@@ -511,7 +592,6 @@ export default function NewSalePage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20">
-      {/* Carga del datalist oculto para autocompletar contactos */}
       <datalist id="global-contacts-list">
         {globalContacts.map((c) => (
           <option key={c.id} value={c.name} />
@@ -524,7 +604,7 @@ export default function NewSalePage() {
             <ShoppingCart className="text-blue-600" /> Nuevo Documento
           </h1>
           <p className="text-gray-500 text-sm font-medium">
-            Cotización o Venta Directa con cálculo contable real (IGV separado).
+            Cotización o Venta Directa Híbrida (Perfiles o Bobinas Madre).
           </p>
         </div>
         <button
@@ -650,7 +730,6 @@ export default function NewSalePage() {
                         className="w-4 h-4 text-blue-600 cursor-pointer"
                       />
                     </div>
-                    {/* AUTOCOMPLETADO DE CONTACTO */}
                     <input
                       type="text"
                       list="global-contacts-list"
@@ -685,52 +764,85 @@ export default function NewSalePage() {
             </div>
           </div>
 
-          {/* SECCIÓN PRODUCTOS CON ALINEACIÓN PERFECTA */}
+          {/* 🚀 SECCIÓN PRODUCTOS CON TABS HÍBRIDOS */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-            <h2 className="text-lg font-black text-gray-800 mb-6 flex items-center gap-2 border-b border-gray-50 pb-4">
-              <Plus size={20} className="text-blue-500" /> Agregar Productos
-            </h2>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-gray-50 pb-4">
+              <h2 className="text-lg font-black text-gray-800 flex items-center gap-2">
+                <Plus size={20} className="text-blue-500" /> Agregar a la lista
+              </h2>
 
-            {/* AGREGAMOS pb-6 AL CONTENEDOR PARA DARLE ESPACIO AL TEXTO ABSOLUTO DE ABAJO */}
+              {/* SELECTOR DE MODO */}
+              <div className="flex gap-2 mt-4 md:mt-0 bg-gray-50 p-1 rounded-xl border border-gray-200">
+                <button
+                  onClick={() => setProductMode("PROFILES")}
+                  className={`flex items-center gap-2 px-5 py-2 rounded-lg font-black text-xs uppercase tracking-widest transition ${productMode === "PROFILES" ? "bg-white text-blue-600 shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
+                >
+                  <Package size={14} /> Perfiles
+                </button>
+                <button
+                  onClick={() => setProductMode("COILS")}
+                  className={`flex items-center gap-2 px-5 py-2 rounded-lg font-black text-xs uppercase tracking-widest transition ${productMode === "COILS" ? "bg-white text-orange-600 shadow-sm border border-orange-100" : "text-gray-400 hover:text-gray-600"}`}
+                >
+                  <Factory size={14} /> Bobinas M.P.
+                </button>
+              </div>
+            </div>
+
             <div className="flex flex-col md:flex-row items-end gap-4 pb-6">
               <div className="flex-1 w-full">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                  Seleccionar Producto
+                  {productMode === "PROFILES"
+                    ? "Seleccionar Perfil"
+                    : "Bobinas Disponibles (No cortadas)"}
                 </label>
                 <select
-                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 h-[56px]"
+                  className={`w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none h-[56px] ${productMode === "COILS" && "border-orange-200 bg-orange-50 focus:ring-orange-500"}`}
                   value={selectedSku}
                   onChange={(e) => setSelectedSku(e.target.value)}
                 >
-                  {catalog
-                    .filter((p) => p.isActive)
-                    .map((prod) => {
-                      const stockItem = availableStock.find(
-                        (s) => s.sku === prod.sku,
-                      );
-                      const stock = stockItem?.totalQuantity || 0;
-                      return (
-                        <option
-                          key={prod.sku}
-                          value={prod.sku}
-                          disabled={stock === 0}
-                        >
-                          {prod.sku} - {prod.name} | Disp: {stock}{" "}
-                          {stock > 0 && stock <= LOW_STOCK_ALERT ? "⚠️" : ""}
-                        </option>
-                      );
-                    })}
+                  {productMode === "PROFILES" ? (
+                    catalog
+                      .filter((p) => p.isActive)
+                      .map((prod) => {
+                        const stockItem = availableStock.find(
+                          (s) => s.sku === prod.sku,
+                        );
+                        const stock = stockItem?.totalQuantity || 0;
+                        return (
+                          <option
+                            key={prod.sku}
+                            value={prod.sku}
+                            disabled={stock === 0}
+                          >
+                            {prod.sku} - {prod.name} | Disp: {stock}{" "}
+                            {stock > 0 && stock <= LOW_STOCK_ALERT ? "⚠️" : ""}
+                          </option>
+                        );
+                      })
+                  ) : availableCoils.length === 0 ? (
+                    <option disabled value="">
+                      No hay bobinas libres en planta
+                    </option>
+                  ) : (
+                    availableCoils.map((coil) => (
+                      <option key={coil.id} value={coil.id}>
+                        {coil.id} | {coil.currentWeight} kg | S/{" "}
+                        {coil.pricePerKg.toFixed(2)}/kg
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
               <div className="w-full md:w-32">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                  Cantidad
+                  {productMode === "PROFILES" ? "Cant. (Pzas)" : "Peso (kg)"}
                 </label>
                 <input
                   type="number"
                   min="1"
-                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-blue-500 text-center h-[56px]"
+                  disabled={productMode === "COILS"} // Bloqueado en bobinas para venta entera
+                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-blue-500 text-center h-[56px] disabled:bg-gray-100 disabled:text-gray-400"
                   value={addQuantity}
                   onChange={(e) =>
                     setAddQuantity(e.target.value ? Number(e.target.value) : "")
@@ -740,7 +852,7 @@ export default function NewSalePage() {
 
               <div className="w-full md:w-48 relative group">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                  Precio Venta (Con IGV)
+                  Precio Venta {productMode === "COILS" && "x Kg"} (C/ IGV)
                 </label>
                 <div className="absolute -top-12 left-0 bg-gray-900 text-white text-[10px] font-bold p-2 rounded-lg opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none z-10">
                   Costo Base Empresa: S/ {baseCost.toFixed(2)}
@@ -760,8 +872,6 @@ export default function NewSalePage() {
                     }
                   />
                 </div>
-
-                {/* SOLUCIÓN DE ALINEACIÓN: Position absolute saca el texto del flujo normal */}
                 {addPrice && (
                   <p className="absolute -bottom-5 left-1 text-[10px] text-gray-500 font-bold whitespace-nowrap">
                     Valor S/IGV: S/ {(Number(addPrice) / 1.18).toFixed(2)}
@@ -769,11 +879,14 @@ export default function NewSalePage() {
                 )}
               </div>
 
-              {/* Botón con altura fija para alinearse perfecto con los inputs */}
               <button
                 onClick={handleAddToCart}
-                disabled={!addQuantity || !addPrice}
-                className="w-full md:w-auto bg-gray-900 text-white px-8 rounded-xl font-black hover:bg-black disabled:opacity-50 transition active:scale-95 h-[56px] flex items-center justify-center"
+                disabled={
+                  !addQuantity ||
+                  !addPrice ||
+                  (productMode === "COILS" && availableCoils.length === 0)
+                }
+                className={`w-full md:w-auto text-white px-8 rounded-xl font-black transition active:scale-95 h-[56px] flex items-center justify-center disabled:opacity-50 ${productMode === "COILS" ? "bg-orange-600 hover:bg-orange-700" : "bg-gray-900 hover:bg-black"}`}
               >
                 Añadir
               </button>
@@ -781,14 +894,19 @@ export default function NewSalePage() {
           </div>
         </div>
 
-        {/* COLUMNA DERECHA (RESUMEN FINANCIERO) INTACTA */}
+        {/* COLUMNA DERECHA (RESUMEN FINANCIERO) */}
         <div className="lg:col-span-4 flex flex-col gap-6">
           <div className="bg-white p-6 rounded-3xl shadow-xl shadow-blue-100/50 border border-blue-100 flex flex-col h-full sticky top-6">
             <h2 className="text-xl font-black text-gray-800 mb-4 border-b border-gray-100 pb-4 flex justify-between items-center">
               <span>Resumen</span>
               {totalWeight > 0 && (
                 <span className="text-xs font-bold bg-orange-100 text-orange-700 px-3 py-1 rounded-full flex items-center gap-1">
-                  <Scale size={14} /> {totalWeight.toLocaleString("es-PE")} kg
+                  <Scale size={14} />{" "}
+                  {totalWeight.toLocaleString("es-PE", {
+                    minimumFractionDigits: 3,
+                    maximumFractionDigits: 3,
+                  })}{" "}
+                  kg{" "}
                 </span>
               )}
             </h2>
@@ -815,11 +933,17 @@ export default function NewSalePage() {
                       className={`flex justify-between items-center p-4 rounded-2xl border ${isLoss || isLowMargin ? "bg-red-50 border-red-100" : "bg-gray-50 border-gray-100"}`}
                     >
                       <div>
-                        <p className="font-black text-gray-800 text-lg leading-none">
+                        <p className="font-black text-gray-800 text-lg leading-none flex items-center gap-2">
                           {item.sku}
+                          {item.isCoil && (
+                            <span className="text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-md uppercase">
+                              M. Prima
+                            </span>
+                          )}
                         </p>
                         <p className="text-xs text-gray-500 font-medium mt-1">
-                          {item.quantity} pzas x S/ {item.unitPrice.toFixed(2)}
+                          {item.quantity} {item.isCoil ? "kg" : "pzas"} x S/{" "}
+                          {item.unitPrice.toFixed(2)} {item.isCoil && "/kg"}
                         </p>
                         <div className="flex items-center gap-2 mt-2">
                           <p

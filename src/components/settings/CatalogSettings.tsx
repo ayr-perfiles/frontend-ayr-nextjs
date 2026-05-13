@@ -54,6 +54,7 @@ export function CatalogSettings() {
           stripWidth: (data as any).stripWidth || 0,
           standardWeight:
             (data as any).standardWeight || (data as any).weight || 0,
+          lengthMeters: 3.0,
           isActive: true,
         });
       }
@@ -68,10 +69,16 @@ export function CatalogSettings() {
     e.preventDefault();
     if (!editingProduct) return;
 
-    // --- VALIDACIÓN DE SEGURIDAD FÍSICA ---
     if (editingProduct.standardWeight <= 0) {
       toast.error(
-        "¡ALERTA! El Peso Estándar debe ser mayor a 0. Es obligatorio para calcular mermas y límites físicos en la máquina.",
+        "¡ALERTA! El Peso Estándar debe ser mayor a 0. Es obligatorio para calcular mermas.",
+      );
+      return;
+    }
+
+    if (!editingProduct.lengthMeters || editingProduct.lengthMeters <= 0) {
+      toast.error(
+        "¡ALERTA! El Largo del producto debe ser mayor a 0 para el cálculo matemático de densidad.",
       );
       return;
     }
@@ -107,6 +114,7 @@ export function CatalogSettings() {
       name: "",
       stripWidth: 0,
       standardWeight: 0,
+      lengthMeters: 3.0,
       isActive: true,
     });
 
@@ -118,7 +126,7 @@ export function CatalogSettings() {
             <BookOpen className="text-blue-500" size={24} /> Gestión de Catálogo
           </h2>
           <p className="text-gray-500 text-sm font-medium">
-            Controla los perfiles, pesos logísticos y anchos de banda.
+            Controla los perfiles, largos de corte y pesos logísticos.
           </p>
         </div>
         <div className="flex gap-3">
@@ -159,7 +167,7 @@ export function CatalogSettings() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
             <div>
               <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-1">
                 SKU *
@@ -199,7 +207,7 @@ export function CatalogSettings() {
             </div>
             <div>
               <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-1">
-                Ancho Banda (mm)
+                Ancho (mm)
               </label>
               <input
                 type="number"
@@ -215,15 +223,36 @@ export function CatalogSettings() {
                 className="w-full p-2.5 rounded-lg border border-blue-200 outline-none focus:border-blue-500 font-bold font-mono"
               />
             </div>
+
             <div>
-              <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest block mb-1">
-                Peso Estándar (kg) *
+              <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block mb-1">
+                Largo (mts) *
               </label>
               <input
                 type="number"
                 step="0.01"
                 required
-                min="0.01"
+                min="0.1"
+                value={editingProduct.lengthMeters || ""}
+                onChange={(e) =>
+                  setEditingProduct({
+                    ...editingProduct,
+                    lengthMeters: Number(e.target.value),
+                  })
+                }
+                className="w-full p-2.5 rounded-lg border border-emerald-200 bg-emerald-50 outline-none focus:border-emerald-500 font-bold font-mono text-emerald-700"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest block mb-1">
+                Peso (kg) *
+              </label>
+              <input
+                type="number"
+                step="0.001" // 🚀 PERMITIR 3 DECIMALES
+                required
+                min="0.001" // 🚀 MÍNIMO 3 DECIMALES
                 value={editingProduct.standardWeight}
                 onChange={(e) =>
                   setEditingProduct({
@@ -269,7 +298,7 @@ export function CatalogSettings() {
         </form>
       )}
 
-      {/* TABLA DE PRODUCTOS (se mantiene igual) */}
+      {/* TABLA DE PRODUCTOS */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         {isLoading ? (
           <div className="p-12 flex justify-center">
@@ -286,8 +315,8 @@ export function CatalogSettings() {
                   <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
                     Descripción
                   </th>
-                  <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">
-                    Ancho Banda
+                  <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">
+                    Dimensiones (A x L)
                   </th>
                   <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">
                     Peso (kg)
@@ -322,11 +351,12 @@ export function CatalogSettings() {
                       <td className="p-4 font-bold text-gray-600 uppercase">
                         {p.name}
                       </td>
-                      <td className="p-4 text-right font-mono font-bold text-gray-500">
-                        {p.stripWidth} mm
+                      <td className="p-4 text-center font-mono font-bold text-gray-500">
+                        {p.stripWidth} mm x {(p.lengthMeters || 3).toFixed(2)} m
                       </td>
+                      {/* 🚀 TABLA MUESTRA 3 DECIMALES */}
                       <td className="p-4 text-right font-mono font-bold text-gray-500">
-                        {p.standardWeight.toFixed(2)} kg
+                        {p.standardWeight.toFixed(3)} kg
                       </td>
                       <td className="p-4 text-center">
                         <span

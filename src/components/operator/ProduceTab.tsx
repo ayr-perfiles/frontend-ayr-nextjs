@@ -23,6 +23,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { calculateExpectedPiecesByDensity } from "@/utils/calculations";
 
 export function ProduceTab() {
   const { user } = useAuth();
@@ -106,25 +107,33 @@ export function ProduceTab() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // 🚀 CÁLCULO POR DESARROLLO LINEAL (USANDO EL UTIL)
   const expectedPieces = useMemo(() => {
     if (
       !selectedStripSku ||
       !catalog.length ||
       !selectedCoil ||
       !selectedCoil.initialWeight ||
-      !selectedCoil.masterWidth
+      !selectedCoil.masterWidth ||
+      !selectedCoil.thickness
     )
       return 0;
+
     const product = catalog.find((p) => p.sku === selectedStripSku);
-    if (!product || !product.standardWeight) return 0;
     const activeStrip = selectedCoil.plannedStrips?.find(
       (s) => s.sku === selectedStripSku,
     );
-    if (!activeStrip) return 0;
+    if (!product || !activeStrip) return 0;
 
     const weightPerMm = selectedCoil.initialWeight / selectedCoil.masterWidth;
     const stripWeight = activeStrip.width * weightPerMm;
-    return Math.floor(stripWeight / product.standardWeight);
+
+    return calculateExpectedPiecesByDensity(
+      stripWeight,
+      activeStrip.width,
+      selectedCoil.thickness,
+      (product as any).lengthMeters || 3.0,
+    );
   }, [selectedStripSku, catalog, selectedCoil]);
 
   const numericPieces = typeof pieces === "number" ? pieces : Number(pieces);

@@ -493,7 +493,11 @@ export function BulkUploadSales() {
                       {s.timestamp.toLocaleTimeString("es-PE")}
                     </td>
                     <td className="p-3 text-right font-medium text-orange-600">
-                      {(s as any).totalWeight.toLocaleString("es-PE")} kg
+                      {(s as any).totalWeight.toLocaleString("es-PE", {
+                        minimumFractionDigits: 3,
+                        maximumFractionDigits: 3,
+                      })}{" "}
+                      kg{" "}
                     </td>
                     <td className="p-3 text-right">
                       <p className="font-black text-emerald-600">
