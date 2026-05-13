@@ -163,3 +163,25 @@ export const fetchInventory = async (params: FetchParams) => {
     totalCount,
   };
 };
+
+// NÓTESE: Agrega esto al final de tu archivo src/services/inventoryService.ts
+
+export const fetchAvailableCoilsForExport = async (): Promise<Coil[]> => {
+  try {
+    const collRef = collection(db, "coils");
+    const exportQuery = query(
+      collRef,
+      where("status", "==", "AVAILABLE"),
+      orderBy("createdAt", "desc"),
+    );
+
+    const snapshot = await getDocs(exportQuery);
+    return snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Coil[];
+  } catch (error) {
+    console.error("Error obteniendo bobinas para exportar:", error);
+    throw new Error("No se pudo generar la data para el Excel.");
+  }
+};

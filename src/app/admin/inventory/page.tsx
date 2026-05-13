@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { db } from "@/lib/firebase/clientApp";
+import * as XLSX from "xlsx"; // <-- NUEVA IMPORTACIÓN
 import {
   collection,
   query,
@@ -37,7 +38,10 @@ import {
   updateCoil,
   cancelCuttingPlan,
 } from "@/services/productionService";
-import { fetchInventory } from "@/services/inventoryService";
+import {
+  fetchAvailableCoilsForExport,
+  fetchInventory,
+} from "@/services/inventoryService";
 import { useAuth } from "@/context/AuthContext";
 
 // Componentes
@@ -374,8 +378,74 @@ export default function InventoryPage() {
     setStatusFilter("ALL");
   };
 
-  const exportToExcel = () => {
-    // Exportación
+  const exportToExcel = async () => {
+    toast.loading("Descargando data y generando Excel...", { id: "excel" });
+    try {
+      // 1. Traemos solo las bobinas disponibles desde Firebase
+      const availableCoils = await fetchAvailableCoilsForExport();
+
+      if (availableCoils.length === 0) {
+        toast.error("No hay bobinas disponibles para exportar.", {
+          id: "excel",
+        });
+        return;
+      }
+
+      // 2. Mapeamos la data para que las columnas del Excel queden hermosas
+      const dataForExcel = availableCoils.map((coil) => {
+        const invoiceDate = coil.metadata?.invoiceDate?.toDate
+          ? coil.metadata.invoiceDate.toDate().toLocaleDateString("es-PE")
+          : "Sin fecha";
+
+        return {
+          "ID Bobina": coil.id,
+          Proveedor: coil.metadata?.provider || "N/A",
+          "Factura N°": coil.metadata?.invoiceNumber || "S/N",
+          "Fecha de Compra": invoiceDate,
+          "Espesor (mm)": coil.thickness,
+          "Ancho Maestro (mm)": coil.masterWidth,
+          "Peso Compra (Kg)": coil.initialWeight,
+          "Stock Actual (Kg)": coil.currentWeight,
+          "Costo Unitario (S/ por Kg)": coil.pricePerKg,
+          "Valorización Total (S/)": Number(
+            ((coil.currentWeight || 0) * (coil.pricePerKg || 0)).toFixed(2),
+          ),
+          "Moneda Original": coil.metadata?.currency || "PEN",
+          "Tipo de Cambio": coil.metadata?.exchangeRate || 1,
+        };
+      });
+
+      // 3. Generamos el archivo usando la librería XLSX
+      const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
+      const workbook = XLSX.utils.book_new();
+
+      // Auto-ajustar el ancho de las columnas para que se vea profesional
+      const columnWidths = [
+        { wch: 20 },
+        { wch: 35 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 15 },
+        { wch: 20 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 25 },
+        { wch: 25 },
+        { wch: 18 },
+        { wch: 15 },
+      ];
+      worksheet["!cols"] = columnWidths;
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Stock Disponible");
+
+      // 4. Descargamos el archivo
+      const fileName = `Inventario_Bobinas_Disponibles_${new Date().toLocaleDateString("es-PE").replace(/\//g, "-")}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+
+      toast.success("Excel descargado correctamente", { id: "excel" });
+    } catch (error: any) {
+      toast.error(error.message, { id: "excel" });
+    }
   };
 
   return (

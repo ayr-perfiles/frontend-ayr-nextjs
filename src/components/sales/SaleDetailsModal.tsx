@@ -259,7 +259,11 @@ export function SaleDetailsModal({
                 <p className="text-xs font-bold text-gray-500 flex items-center gap-1 justify-end">
                   <Scale size={14} /> Peso Total Estimado:{" "}
                   <span className="text-gray-800">
-                    {totalWeight.toLocaleString("es-PE")} kg
+                    {totalWeight.toLocaleString("es-PE", {
+                      minimumFractionDigits: 3,
+                      maximumFractionDigits: 3,
+                    })}{" "}
+                    kg{" "}
                   </span>
                 </p>
               )}

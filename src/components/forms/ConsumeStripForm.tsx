@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Coil } from "@/types";
 import { processSingleStrip } from "@/services/productionService";
 import { getCatalog, ProductConfig } from "@/services/catalogService";
-import { useAuth } from "@/context/AuthContext"; // <-- Importamos el contexto de autenticación
+import { useAuth } from "@/context/AuthContext";
 import {
   CheckCircle2,
   Factory,
@@ -14,6 +14,7 @@ import {
   Loader2,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { calculateExpectedPiecesByDensity } from "@/utils/calculations";
 
 export function ConsumeStripForm({
   coil,
@@ -22,7 +23,7 @@ export function ConsumeStripForm({
   coil: Coil;
   onClose: () => void;
 }) {
-  const { user } = useAuth(); // <-- Extraemos el usuario autenticado actual
+  const { user } = useAuth();
 
   const availableStrips =
     coil.plannedStrips?.filter((s) => s.pendingCount > 0) || [];
@@ -32,7 +33,6 @@ export function ConsumeStripForm({
   const [pieces, setPieces] = useState<number | "">("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- NUEVO ESTADO: CATÁLOGO PARA CÁLCULO DE RENDIMIENTO ---
   const [catalog, setCatalog] = useState<ProductConfig[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
 
@@ -45,30 +45,33 @@ export function ConsumeStripForm({
     fetchCatalog();
   }, []);
 
-  // --- CÁLCULO DE PIEZAS ESPERADAS (MÁXIMO TEÓRICO) ---
+  // 🚀 CÁLCULO DE PIEZAS ESPERADAS (USANDO EL UTIL)
   const expectedPieces = useMemo(() => {
     if (
       !selectedSku ||
       !catalog.length ||
       !coil.initialWeight ||
-      !coil.masterWidth
+      !coil.masterWidth ||
+      !coil.thickness
     )
       return 0;
 
     const product = catalog.find((p) => p.sku === selectedSku);
-    if (!product || !product.standardWeight) return 0;
-
     const activeStrip = availableStrips.find((s) => s.sku === selectedSku);
-    if (!activeStrip) return 0;
+    if (!product || !activeStrip) return 0;
 
-    // Fórmula: Peso del fleje exacto dividido entre lo que pesa 1 pieza
     const weightPerMm = coil.initialWeight / coil.masterWidth;
     const stripWeight = activeStrip.width * weightPerMm;
 
-    return Math.floor(stripWeight / product.standardWeight);
+    return calculateExpectedPiecesByDensity(
+      stripWeight,
+      activeStrip.width,
+      coil.thickness,
+      (product as any).lengthMeters || 3.0,
+    );
   }, [selectedSku, catalog, coil, availableStrips]);
 
-  // Frontend validation (5% de tolerancia igual que en el backend)
+  // Frontend validation (5% de tolerancia)
   const isExceeding =
     typeof pieces === "number" && pieces > Math.ceil(expectedPieces * 1.05);
 
@@ -80,7 +83,7 @@ export function ConsumeStripForm({
       coil.id,
       selectedSku,
       Number(pieces),
-      user?.email || "Operador", // <-- Usamos el email del usuario real aquí
+      user?.email || "Operador",
     );
 
     toast
@@ -123,7 +126,6 @@ export function ConsumeStripForm({
 
   return (
     <div className="flex flex-col h-full bg-white">
-      {/* CABECERA */}
       <div className="flex justify-between items-center bg-orange-50 p-6 border-b border-orange-200">
         <div>
           <h3 className="font-black text-orange-900 flex items-center gap-2">
@@ -143,7 +145,6 @@ export function ConsumeStripForm({
 
       <div className="p-6 space-y-6">
         <div className="space-y-4">
-          {/* SELECCIÓN DE FLEJE */}
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-2">
               Selecciona el fleje a procesar
@@ -173,7 +174,6 @@ export function ConsumeStripForm({
             </div>
           </div>
 
-          {/* INPUT DE PIEZAS CON GUÍA VISUAL */}
           <div>
             <div className="flex justify-between items-end mb-2">
               <label className="block text-xs font-bold text-gray-500 uppercase">
@@ -200,7 +200,6 @@ export function ConsumeStripForm({
               }
             />
 
-            {/* ALERTA DE EXCESO DE MERMA INVERSA (MAGIA/FRAUDE) */}
             {isExceeding && (
               <p className="mt-2 text-xs font-bold text-red-600 flex items-center gap-1">
                 <AlertTriangle size={14} />
@@ -210,7 +209,6 @@ export function ConsumeStripForm({
               </p>
             )}
 
-            {/* MENSAJE DE EFICIENCIA NORMAL */}
             {typeof pieces === "number" &&
               !isExceeding &&
               expectedPieces > 0 && (

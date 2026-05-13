@@ -17,6 +17,7 @@ import {
 } from "firebase/firestore";
 import { Coil, ProductionLog } from "@/types";
 import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
+import { calculateExpectedPiecesByDensity } from "@/utils/calculations";
 
 // FASE 1: GUARDAR PLAN DE CORTE (SLITTER)
 export const saveCuttingPlan = async (
@@ -46,8 +47,6 @@ export const saveCuttingPlan = async (
         productsData[item.sku] = prodDoc.data();
       }
 
-      // --- NUEVA LÓGICA DE COSTO ABSORBIDO (MERMA DE REFILADO) ---
-      // 1. Calculamos el Ancho Total que realmente se va a convertir en flejes
       const totalPlannedWidth = items.reduce((sum, item) => {
         const product = productsData[item.sku];
         return sum + (product.stripWidth || 0) * item.quantity;
@@ -59,15 +58,10 @@ export const saveCuttingPlan = async (
         );
       }
 
-      // 2. Costo Total de la Bobina Madre
       const totalCoilCost = coil.initialWeight * coil.pricePerKg;
-
-      // 3. Calculamos el costo por milímetro (absorbiendo merma si aplica)
-      let effectiveCostPerMm = totalCoilCost / coil.masterWidth; // Costo estándar
-
+      let effectiveCostPerMm = totalCoilCost / coil.masterWidth;
       const leftoverWidth = coil.masterWidth - totalPlannedWidth;
 
-      // Si sobra algo, pero es 40mm o menos, asumimos que es chatarra de bordes (refile) y la absorbemos
       if (leftoverWidth > 0 && leftoverWidth <= 40) {
         effectiveCostPerMm = totalCoilCost / totalPlannedWidth;
       }
@@ -87,7 +81,6 @@ export const saveCuttingPlan = async (
           initialCount: qty,
           pendingCount: qty,
           width: width,
-          // Aquí usamos el nuevo costo efectivo que ya incluye la merma de los bordes
           costPerStrip: Number((width * effectiveCostPerMm).toFixed(2)),
         };
       });
@@ -105,7 +98,7 @@ export const saveCuttingPlan = async (
   }
 };
 
-// FASE 2: PROCESAR UN FLEJE (CONFORMADORA) CON COSTO PROMEDIO PONDERADO
+// FASE 2: PROCESAR UN FLEJE (CONFORMADORA)
 export const processSingleStrip = async (
   coilId: string,
   sku: string,
@@ -138,30 +131,42 @@ export const processSingleStrip = async (
 
       const activeStrip = coil.plannedStrips![stripIndex];
 
-      // --- 1. CAPA DE SEGURIDAD: VALIDACIÓN FÍSICA ---
-      if (!coil.masterWidth || !coil.initialWeight) {
+      if (!coil.masterWidth || !coil.initialWeight || !coil.thickness) {
         throw new Error(
-          "Data corrupta: La bobina seleccionada no tiene un ancho maestro o peso inicial registrado.",
+          "Data corrupta: La bobina seleccionada no tiene ancho, peso o espesor.",
         );
       }
 
       const weightPerMm = coil.initialWeight / coil.masterWidth;
       const theoreticalStripWeight = activeStrip.width * weightPerMm;
 
-      const standardWeight = product.standardWeight || 0;
-      if (standardWeight === 0)
-        throw new Error(
-          `El SKU ${sku} no tiene Peso Estándar configurado en el catálogo.`,
-        );
+      // 🚀 NUEVA VALIDACIÓN BACKEND (FÓRMULA DE DENSIDAD SIDERÚRGICA)
+      const thickness = coil.thickness;
+      const pieceLength = product.lengthMeters || 3.0;
+      const density = 7.85;
 
-      const reportedProductionWeight = pieces * standardWeight;
+      const totalMeters =
+        theoreticalStripWeight /
+        (thickness * activeStrip.width * (density / 1000));
+      const expectedPieces = calculateExpectedPiecesByDensity(
+        theoreticalStripWeight,
+        activeStrip.width,
+        coil.thickness,
+        pieceLength,
+      );
+      ``;
+      const maxAllowedPieces = Math.ceil(expectedPieces * 1.05); // 5% Tolerancia
 
-      if (reportedProductionWeight > theoreticalStripWeight * 1.05) {
+      if (pieces > maxAllowedPieces) {
         throw new Error(
           `¡Límite Físico Excedido! Es imposible sacar ${pieces} piezas. ` +
-            `El fleje pesa ${theoreticalStripWeight.toFixed(2)}kg y reportaste ${reportedProductionWeight.toFixed(2)}kg.`,
+            `Según la fórmula de densidad, lo máximo permitido (con tolerancia) son ${maxAllowedPieces} piezas.`,
         );
       }
+
+      // Mantenemos el peso estándar para la valorización del Kardex
+      const standardWeight = product.standardWeight || 0;
+      const reportedProductionWeight = pieces * standardWeight;
 
       const currentQty = stockDoc.exists()
         ? stockDoc.data().totalQuantity || 0
@@ -173,7 +178,6 @@ export const processSingleStrip = async (
         ? stockDoc.data().lastCostPerPiece || 0
         : 0;
 
-      // --- 2. CÁLCULO DE COSTO PROMEDIO PONDERADO ---
       const costOfThisBatch = activeStrip.costPerStrip / pieces;
       let newAverageCost = costOfThisBatch;
 
@@ -197,7 +201,6 @@ export const processSingleStrip = async (
         (coil.currentWeight || coil.initialWeight) - theoreticalStripWeight,
       );
 
-      // --- 3. ACTUALIZACIÓN DE ESTADOS ---
       const updatedStrips = [...coil.plannedStrips!];
       updatedStrips[stripIndex].pendingCount -= 1;
       const totalPending = updatedStrips.reduce(
@@ -242,7 +245,6 @@ export const processSingleStrip = async (
         timestamp: serverTimestamp(),
       });
 
-      // 🚀 NUEVO: REGISTRO UNIFICADO DE KARDEX (ENTRADA)
       const kardexRef = doc(collection(db, "kardex_movements"));
       transaction.set(kardexRef, {
         sku: sku,
@@ -262,7 +264,7 @@ export const processSingleStrip = async (
   }
 };
 
-// FASE 3: REVERTIR REGISTRO (POR ERROR DEL OPERADOR)
+// FASE 3: REVERTIR REGISTRO
 export const revertProductionLog = async (logId: string, userEmail: string) => {
   const logRef = doc(db, "production_logs", logId);
   const auditRef = doc(collection(db, "audit_logs"));
@@ -316,7 +318,6 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
         logData.reportedWeight || logData.piecesProduced * standardWeight;
       let newQuantity = 0;
 
-      // REVERTIR INVENTARIO
       if (stockDoc.exists()) {
         const stockData = stockDoc.data();
         newQuantity = stockData.totalQuantity - logData.piecesProduced;
@@ -337,7 +338,6 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
         transaction.update(stockRef, stockUpdatePayload);
       }
 
-      // 🚀 NUEVO: REGISTRO COMPENSATORIO DE KARDEX (SALIDA)
       const kardexRef = doc(collection(db, "kardex_movements"));
       transaction.set(kardexRef, {
         sku: logData.sku,
@@ -350,7 +350,6 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
         user: userEmail,
       });
 
-      // REVERTIR BOBINA
       if (coilDoc.exists()) {
         const coilData = coilDoc.data() as Coil;
 
