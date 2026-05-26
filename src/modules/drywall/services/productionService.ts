@@ -14,16 +14,30 @@ import {
   limitToLast,
   startAfter,
   documentId,
+  QueryConstraint,
+  QueryDocumentSnapshot,
+  DocumentData,
+  FieldValue,
 } from "firebase/firestore";
 import { Coil, ProductionLog } from "@/types";
 import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
-import { calculateExpectedPiecesByDensity } from "@/utils/calculations";
-import {
-  STEEL_DENSITY_G_CM3,
-  PRODUCTION_TOLERANCE_FACTOR,
-  LEFTOVER_THRESHOLD_MM,
-  DEFAULT_PIECE_LENGTH_M,
-} from "@/domain/steel/constants";
+import { DEFAULT_PIECE_LENGTH_M } from "@/domain/steel/constants";
+import { calculateCuttingPlan, calculateScrapPerStrip, type PlanItem } from "../domain/slitter";
+import { calculateWeightedAverageCost } from "../domain/costing";
+import { validateCoilData, validateProductionInput } from "../domain/validation";
+
+export interface CoilUpdates {
+  initialWeight: number;
+  currentWeight: number;
+  masterWidth: number;
+  thickness: number;
+  pricePerKg: number;
+  providerDocType: "LOCAL" | "TAX_ID";
+  providerDoc: string;
+  providerName: string;
+  invoiceNumber: string;
+  invoiceDate?: string;
+}
 
 // FASE 1: GUARDAR PLAN DE CORTE (SLITTER)
 export const saveCuttingPlan = async (
@@ -39,56 +53,29 @@ export const saveCuttingPlan = async (
 
       const coil = coilDoc.data() as Coil;
 
-      if (!coil.initialWeight || !coil.masterWidth || !coil.pricePerKg) {
-        throw new Error("Datos de bobina incompletos (Peso, Ancho o Precio).");
-      }
+      validateCoilData(coil);
 
-      const productsData: Record<string, any> = {};
+      const productsData: Record<string, { stripWidth?: number }> = {};
       for (const item of items) {
         const prodRef = doc(db, "products", item.sku);
         const prodDoc = await transaction.get(prodRef);
 
         if (!prodDoc.exists())
           throw new Error(`El producto ${item.sku} no existe en el catálogo.`);
-        productsData[item.sku] = prodDoc.data();
+        productsData[item.sku] = prodDoc.data() as { stripWidth?: number };
       }
 
-      const totalPlannedWidth = items.reduce((sum, item) => {
-        const product = productsData[item.sku];
-        return sum + (product.stripWidth || 0) * item.quantity;
-      }, 0);
-
-      if (totalPlannedWidth > coil.masterWidth) {
-        throw new Error(
-          "El ancho total de los flejes supera el ancho de la bobina.",
-        );
-      }
+      const planItems: PlanItem[] = items.map((item) => ({
+        sku: item.sku,
+        quantity: item.quantity,
+        stripWidth: productsData[item.sku].stripWidth ?? 0,
+      }));
 
       const totalCoilCost = coil.initialWeight * coil.pricePerKg;
-      let effectiveCostPerMm = totalCoilCost / coil.masterWidth;
-      const leftoverWidth = coil.masterWidth - totalPlannedWidth;
-
-      if (leftoverWidth > 0 && leftoverWidth <= LEFTOVER_THRESHOLD_MM) {
-        effectiveCostPerMm = totalCoilCost / totalPlannedWidth;
-      }
-
-      const plannedStrips = items.map((item) => {
-        const product = productsData[item.sku];
-        const width = product.stripWidth;
-
-        if (!width)
-          throw new Error(`El producto ${item.sku} no tiene 'stripWidth'.`);
-        const qty = Number(item.quantity) || 0;
-        if (qty <= 0)
-          throw new Error(`La cantidad para ${item.sku} debe ser mayor a 0.`);
-
-        return {
-          sku: item.sku,
-          initialCount: qty,
-          pendingCount: qty,
-          width: width,
-          costPerStrip: Number((width * effectiveCostPerMm).toFixed(2)),
-        };
+      const { plannedStrips } = calculateCuttingPlan({
+        totalCoilCost,
+        masterWidth: coil.masterWidth!,
+        items: planItems,
       });
 
       transaction.update(coilRef, {
@@ -98,9 +85,9 @@ export const saveCuttingPlan = async (
       });
     });
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error en saveCuttingPlan:", error);
-    throw new Error(error.message || "Error al guardar plan de corte");
+    throw new Error(error instanceof Error ? error.message : "Error al guardar plan de corte");
   }
 };
 
@@ -137,38 +124,26 @@ export const processSingleStrip = async (
 
       const activeStrip = coil.plannedStrips![stripIndex];
 
-      if (!coil.masterWidth || !coil.initialWeight || !coil.thickness) {
+      validateCoilData(coil);
+
+      if (!coil.thickness) {
         throw new Error(
-          "Data corrupta: La bobina seleccionada no tiene ancho, peso o espesor.",
+          "Data corrupta: La bobina seleccionada no tiene espesor.",
         );
       }
 
-      const weightPerMm = coil.initialWeight / coil.masterWidth;
+      const weightPerMm = coil.initialWeight / coil.masterWidth!;
       const theoreticalStripWeight = activeStrip.width * weightPerMm;
 
-      // 🚀 NUEVA VALIDACIÓN BACKEND (FÓRMULA DE DENSIDAD SIDERÚRGICA)
-      const thickness = coil.thickness;
       const pieceLength = product.lengthMeters || DEFAULT_PIECE_LENGTH_M;
-      const density = STEEL_DENSITY_G_CM3;
 
-      const totalMeters =
-        theoreticalStripWeight /
-        (thickness * activeStrip.width * (density / 1000));
-      const expectedPieces = calculateExpectedPiecesByDensity(
-        theoreticalStripWeight,
-        activeStrip.width,
-        coil.thickness,
+      validateProductionInput({
+        requestedPieces: pieces,
+        stripWeight: theoreticalStripWeight,
+        stripWidth: activeStrip.width,
+        thickness: coil.thickness,
         pieceLength,
-      );
-      ``;
-      const maxAllowedPieces = Math.ceil(expectedPieces * 1.05); // 5% Tolerancia
-
-      if (pieces > maxAllowedPieces) {
-        throw new Error(
-          `¡Límite Físico Excedido! Es imposible sacar ${pieces} piezas. ` +
-            `Según la fórmula de densidad, lo máximo permitido (con tolerancia) son ${maxAllowedPieces} piezas.`,
-        );
-      }
+      });
 
       // Mantenemos el peso estándar para la valorización del Kardex
       const standardWeight = product.standardWeight || 0;
@@ -185,22 +160,17 @@ export const processSingleStrip = async (
         : 0;
 
       const costOfThisBatch = activeStrip.costPerStrip / pieces;
-      let newAverageCost = costOfThisBatch;
+      const newAverageCost = calculateWeightedAverageCost({
+        currentQty,
+        currentAverageCost,
+        batchTotalCost: activeStrip.costPerStrip,
+        newPieces: pieces,
+      });
 
-      if (currentQty > 0) {
-        const inventoryValueBefore = currentQty * currentAverageCost;
-        const newBatchValue = activeStrip.costPerStrip;
-        newAverageCost =
-          (inventoryValueBefore + newBatchValue) / (currentQty + pieces);
-      }
-
-      const totalPlannedWidth = coil.plannedStrips!.reduce(
-        (sum, s) => sum + s.width * s.initialCount,
-        0,
+      const scrapPerStrip = calculateScrapPerStrip(
+        coil.masterWidth!,
+        coil.plannedStrips!,
       );
-      const scrapPerStrip =
-        (coil.masterWidth - totalPlannedWidth) /
-        coil.plannedStrips!.reduce((sum, s) => sum + s.initialCount, 0);
 
       const newCurrentWeight = Math.max(
         0,
@@ -264,9 +234,9 @@ export const processSingleStrip = async (
       });
     });
     return { success: true };
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("Error en Fase 2:", e);
-    throw new Error(e.message || "Error al procesar el fleje.");
+    throw new Error(e instanceof Error ? e.message : "Error al procesar el fleje.");
   }
 };
 
@@ -329,7 +299,12 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
         newQuantity = stockData.totalQuantity - logData.piecesProduced;
         const newWeight = stockData.totalWeight - weightToSubtract;
 
-        const stockUpdatePayload: any = {
+        const stockUpdatePayload: {
+          totalQuantity: number;
+          totalWeight: number;
+          lastUpdate: FieldValue;
+          lastCostPerPiece?: number;
+        } = {
           totalQuantity: newQuantity,
           totalWeight: newWeight,
           lastUpdate: serverTimestamp(),
@@ -359,11 +334,7 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
       if (coilDoc.exists()) {
         const coilData = coilDoc.data() as Coil;
 
-        if (!coilData.masterWidth || !coilData.initialWeight) {
-          throw new Error(
-            "Data corrupta: La bobina madre no tiene ancho o peso inicial.",
-          );
-        }
+        validateCoilData(coilData);
 
         const updatedStrips = coilData.plannedStrips?.map((strip) => {
           if (strip.sku === logData.sku) {
@@ -372,7 +343,7 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
           return strip;
         });
 
-        const weightPerMm = coilData.initialWeight / coilData.masterWidth;
+        const weightPerMm = coilData.initialWeight / coilData.masterWidth!;
         const restoredStripWeight = logData.totalUsedWidth * weightPerMm;
         const newCurrentWeight = Math.min(
           coilData.initialWeight,
@@ -403,9 +374,9 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
     });
 
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error revirtiendo registro:", error);
-    throw new Error(error.message || "Error al anular el registro.");
+    throw new Error(error instanceof Error ? error.message : "Error al anular el registro.");
   }
 };
 
@@ -440,15 +411,15 @@ export const voidCoil = async (coilId: string, userEmail: string) => {
       });
     });
     return { success: true };
-  } catch (error: any) {
-    throw new Error(error.message || "Error desconocido al anular.");
+  } catch (error: unknown) {
+    throw new Error(error instanceof Error ? error.message : "Error desconocido al anular.");
   }
 };
 
 // EDITAR BOBINA MADRE
 export const updateCoil = async (
   coilId: string,
-  updates: any,
+  updates: CoilUpdates,
   userEmail: string,
 ) => {
   const coilRef = doc(db, "coils", coilId);
@@ -469,7 +440,7 @@ export const updateCoil = async (
         ? new Date(`${updates.invoiceDate}T12:00:00`)
         : null;
 
-      const updatePayload: any = {
+      const updatePayload: Record<string, unknown> = {
         initialWeight: updates.initialWeight,
         currentWeight: updates.currentWeight,
         masterWidth: updates.masterWidth,
@@ -498,8 +469,8 @@ export const updateCoil = async (
       });
     });
     return { success: true };
-  } catch (error: any) {
-    throw new Error(error.message || "Error al editar.");
+  } catch (error: unknown) {
+    throw new Error(error instanceof Error ? error.message : "Error al editar.");
   }
 };
 
@@ -546,8 +517,8 @@ export const cancelCuttingPlan = async (coilId: string, userEmail: string) => {
       });
     });
     return { success: true };
-  } catch (error: any) {
-    throw new Error(error.message || "Error al cancelar el plan.");
+  } catch (error: unknown) {
+    throw new Error(error instanceof Error ? error.message : "Error al cancelar el plan.");
   }
 };
 
@@ -558,7 +529,7 @@ export interface FetchProductionParams {
   startDate: string;
   endDate: string;
   direction?: "first" | "next" | "prev";
-  cursorDoc?: any;
+  cursorDoc?: QueryDocumentSnapshot<DocumentData> | null;
   page?: number;
 }
 
@@ -587,7 +558,7 @@ export const fetchProductionLogs = async (params: FetchProductionParams) => {
       searchParams: { query: searchTerm, filters, hitsPerPage: pageSize, page },
     });
 
-    const hitIds = hits.map((h: any) => h.objectID);
+    const hitIds = (hits as Array<{ objectID: string }>).map((h) => h.objectID);
     let logs: ProductionLog[] = [];
 
     if (hitIds.length > 0) {
@@ -617,7 +588,7 @@ export const fetchProductionLogs = async (params: FetchProductionParams) => {
   }
 
   const collRef = collection(db, "production_logs");
-  let baseConstraints: any[] = [];
+  let baseConstraints: QueryConstraint[] = [];
   const hasDateFilter = !!startDate && !!endDate;
 
   if (skuFilter !== "ALL") {

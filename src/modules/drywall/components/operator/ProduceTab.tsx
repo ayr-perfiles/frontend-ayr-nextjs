@@ -84,7 +84,9 @@ export function ProduceTab() {
           },
         });
         setSuggestions(
-          hits.map((hit: any) => ({ ...hit, id: hit.objectID })) as Coil[],
+          ((hits as Array<{ objectID: string } & Record<string, unknown>>).map(
+            (hit) => ({ ...hit, id: hit.objectID }),
+          ) as unknown) as Coil[],
         );
         setShowSuggestions(true);
       } catch (error) {
@@ -135,7 +137,7 @@ export function ProduceTab() {
       stripWeight,
       activeStrip.width,
       selectedCoil.thickness,
-      (product as any).lengthMeters || 3.0,
+      product.lengthMeters || 3.0,
     );
   }, [selectedStripSku, catalog, selectedCoil]);
 

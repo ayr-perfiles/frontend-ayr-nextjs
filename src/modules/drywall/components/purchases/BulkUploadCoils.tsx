@@ -18,17 +18,35 @@ import {
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 
+interface ParsedCoil {
+  id: string;
+  initialWeight: number;
+  currentWeight: number;
+  masterWidth: number;
+  thickness: number;
+  pricePerKg: number;
+  status: "AVAILABLE";
+  provider: string;
+  providerDoc: string;
+  invoiceNumber: string;
+  invoiceDate: Date;
+  originalDescription: string;
+  currency: "USD" | "PEN";
+  exchangeRate: number;
+  originalCurrencyValue: number;
+}
+
 export function BulkUploadCoils() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [parsedCoils, setParsedCoils] = useState<any[]>([]);
+  const [parsedCoils, setParsedCoils] = useState<ParsedCoil[]>([]);
   const [exchangeRatesCache, setExchangeRatesCache] = useState<
     Record<string, number>
   >({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Función inteligente para leer números con cualquier formato
-  const parseNum = (val: any) => {
+  const parseNum = (val: unknown): number => {
     if (typeof val === "number") return val;
     if (!val) return 0;
     let str = String(val).trim();
@@ -45,7 +63,7 @@ export function BulkUploadCoils() {
   };
 
   // Función para formatear fechas para la API del Tipo de Cambio
-  const formatDateForApi = (dateVal: any) => {
+  const formatDateForApi = (dateVal: unknown): string => {
     if (!dateVal) return new Date().toISOString().split("T")[0];
     let d = dateVal;
     if (typeof dateVal === "string") {
@@ -73,9 +91,9 @@ export function BulkUploadCoils() {
 
       workbook.SheetNames.forEach((sheetName) => {
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: "" });
 
-        jsonData.forEach((row: any) => {
+        jsonData.forEach((row) => {
           const moneda = String(row["MONEDA"] || "").toLowerCase();
           if (moneda.includes("dólar") || moneda.includes("usd")) {
             const rawDate =
@@ -101,13 +119,13 @@ export function BulkUploadCoils() {
       setExchangeRatesCache(newRates);
 
       // 3. SEGUNDA PASADA: PROCESAMIENTO REAL DE BOBINAS
-      let allCoils: any[] = [];
+      let allCoils: ParsedCoil[] = [];
 
       workbook.SheetNames.forEach((sheetName) => {
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: "" });
 
-        jsonData.forEach((row: any, index: number) => {
+        jsonData.forEach((row, index) => {
           const itemDescription = String(row["ITEM"] || "").toUpperCase();
           const serie = row["Serie del CDP"] || row["SERIE"];
           const nroDoc =
@@ -193,7 +211,7 @@ export function BulkUploadCoils() {
             thickness: thickness,
             pricePerKg: Number(costPerKg.toFixed(6)),
             status: "AVAILABLE",
-            provider: row["PROVEEDOR"] || row["RAZON SOCIAL"] || "SISTEMA",
+            provider: String(row["PROVEEDOR"] || row["RAZON SOCIAL"] || "SISTEMA"),
             providerDoc: rawRuc,
             invoiceNumber: `${serie}-${nroDoc}`,
             invoiceDate: finalDate,

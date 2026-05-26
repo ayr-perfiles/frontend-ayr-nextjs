@@ -1,6 +1,7 @@
 "use client";
 import React from "react";
 import { Search, Eye } from "lucide-react";
+import { Timestamp } from "firebase/firestore";
 import { Coil } from "@/types";
 import { WeightIndicator } from "./WeightIndicator";
 import InventoryActions from "./InventoryActions";
@@ -40,11 +41,11 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // --- NUEVA FUNCIÓN PARA FORMATEAR FECHAS ---
-const formatDate = (dateValue: any) => {
+const formatDate = (dateValue: Timestamp | Date | string | null | undefined) => {
   if (!dateValue) return "Sin fecha";
 
   // Si viene como Timestamp de Firebase
-  if (typeof dateValue.toDate === "function") {
+  if (dateValue instanceof Timestamp) {
     return dateValue.toDate().toLocaleDateString("es-PE", {
       day: "2-digit",
       month: "2-digit",

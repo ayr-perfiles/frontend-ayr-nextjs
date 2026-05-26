@@ -9,6 +9,8 @@ import {
   onSnapshot,
   orderBy,
   limit,
+  QueryConstraint,
+  Timestamp,
 } from "firebase/firestore";
 import { revertProductionLog } from "@/modules/drywall/services/productionService";
 import { useAuth } from "@/context/AuthContext";
@@ -37,7 +39,7 @@ export function HistoryTab() {
     const logsRef = collection(db, "production_logs");
 
     // Filtros base: Orden y Límite (Paginación)
-    const queryConstraints: any[] = [
+    const queryConstraints: QueryConstraint[] = [
       orderBy("timestamp", "desc"),
       limit(limitCount),
     ];
@@ -94,14 +96,14 @@ export function HistoryTab() {
       try {
         await revertProductionLog(log.id, user?.email || "Admin");
         toast.success("✅ Registro anulado y fleje restaurado.");
-      } catch (e: any) {
-        toast.error(`❌ Error: ${e.message}`);
+      } catch (e: unknown) {
+        toast.error(`❌ Error: ${e instanceof Error ? e.message : "Error al anular."}`);
       }
     }
   };
 
-  const formatCompleteDate = (timestamp: any) => {
-    if (!timestamp?.toDate) return "Fecha desconocida";
+  const formatCompleteDate = (timestamp: Timestamp | null | undefined) => {
+    if (!timestamp) return "Fecha desconocida";
     const date = timestamp.toDate();
     return new Intl.DateTimeFormat("es-PE", {
       day: "2-digit",

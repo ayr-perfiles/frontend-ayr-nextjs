@@ -193,7 +193,7 @@ export function PurchaseCoilFromXml() {
     setCoils(coils.filter((c) => c.uid !== uid));
   };
 
-  const updateCoil = (uid: string, field: keyof CoilEntry, val: any) => {
+  const updateCoil = (uid: string, field: keyof CoilEntry, val: CoilEntry[keyof CoilEntry]) => {
     setCoils(coils.map((c) => (c.uid === uid ? { ...c, [field]: val } : c)));
   };
 
@@ -281,8 +281,8 @@ export function PurchaseCoilFromXml() {
           : `Se registraron ${coils.length} bobinas correctamente.`,
       );
       setCoils([]); // Limpiar tras el guardado
-    } catch (error: any) {
-      toast.error("Error al guardar: " + error.message);
+    } catch (error: unknown) {
+      toast.error("Error al guardar: " + (error instanceof Error ? error.message : "Error desconocido"));
     } finally {
       setLoading(false);
     }
@@ -392,7 +392,7 @@ export function PurchaseCoilFromXml() {
                 </label>
                 <select
                   value={currency}
-                  onChange={(e) => setCurrency(e.target.value as any)}
+                  onChange={(e) => setCurrency(e.target.value as "PEN" | "USD")}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none"
                 >
                   <option value="PEN">Soles (S/)</option>

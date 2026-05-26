@@ -12,6 +12,7 @@ import {
   Hash,
   Scissors, // <-- Agregado para el ícono del plan de corte
 } from "lucide-react";
+import { Timestamp } from "firebase/firestore";
 import { Coil } from "@/types";
 
 interface CoilDetailsModalProps {
@@ -20,12 +21,12 @@ interface CoilDetailsModalProps {
 }
 
 // Función auxiliar para fechas
-const formatDate = (dateValue: any) => {
+const formatDate = (dateValue: Timestamp | Date | string | null | undefined) => {
   if (!dateValue) return "Sin fecha";
   const date =
-    typeof dateValue.toDate === "function"
+    dateValue instanceof Timestamp
       ? dateValue.toDate()
-      : new Date(dateValue);
+      : new Date(dateValue as string | number | Date);
   if (isNaN(date.getTime())) return "Sin fecha";
   return new Intl.DateTimeFormat("es-PE", {
     day: "2-digit",

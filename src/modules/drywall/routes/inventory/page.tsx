@@ -30,6 +30,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useCoils } from "@/modules/drywall/hooks/useCoils";
 
 // Módulos Internos
 import { seedFiftyAvailableCoils } from "@/modules/drywall/services/seedService";
@@ -40,7 +41,6 @@ import {
 } from "@/modules/drywall/services/productionService";
 import {
   fetchAvailableCoilsForExport,
-  fetchInventory,
 } from "@/modules/drywall/services/inventoryService";
 import { useAuth } from "@/context/AuthContext";
 
@@ -49,11 +49,19 @@ import { AddCoilForm } from "@/modules/drywall/components/forms/AddCoilForm";
 import { ProductionForm } from "@/modules/drywall/components/forms/ProductionForm";
 import { ConsumeStripForm } from "@/modules/drywall/components/forms/ConsumeStripForm";
 import { InventoryFilters } from "@/modules/drywall/components/inventory/InventoryFilters";
-import { EditCoilModal } from "@/modules/drywall/components/inventory/EditCoilModal";
+import { EditCoilModal, EditData } from "@/modules/drywall/components/inventory/EditCoilModal";
 import InventoryTable from "@/modules/drywall/components/inventory/InventoryTable";
 import { PurchaseCoilFromXml } from "@/modules/drywall/components/purchases/PurchaseCoilFromXml";
 import { BulkUploadCoils } from "@/modules/drywall/components/purchases/BulkUploadCoils";
 import { CoilDetailsModal } from "@/modules/drywall/components/inventory/CoilDetailsModal";
+
+interface HeaderOptionsProps {
+  role: string | null | undefined;
+  onExport: () => void;
+  onOpenXml: () => void;
+  onOpenExcel: () => void;
+  onSeed: () => void;
+}
 
 // --- SUB-COMPONENTE: MENÚ DESPLEGABLE DE OPCIONES ---
 function HeaderOptions({
@@ -62,7 +70,7 @@ function HeaderOptions({
   onOpenXml,
   onOpenExcel,
   onSeed,
-}: any) {
+}: HeaderOptionsProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -144,39 +152,54 @@ function HeaderOptions({
 export default function InventoryPage() {
   const { user, role } = useAuth();
 
-  // --- ESTADOS DE DATOS ---
-  const [coils, setCoils] = useState<Coil[]>([]);
-  const [filteredTotal, setFilteredTotal] = useState(0); // 👈 Nuevo: Total dinámico
-  const [pageSize, setPageSize] = useState(10); // 👈 Nuevo: Iniciamos en 10 por defecto
+  // --- ESTADOS DE MÉTRICAS (independientes del hook) ---
   const [metrics, setMetrics] = useState({
     available: 0,
     inProgress: 0,
     totalWeight: 0,
   });
-  const [isLoading, setIsLoading] = useState(true);
 
-  // --- ESTADOS DE FILTROS Y BÚSQUEDA ---
+  // --- FILTROS ---
   const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [pageSize, setPageSize] = useState(10);
 
-  // --- ESTADOS DE PAGINACIÓN ---
-  const [currentPage, setCurrentPage] = useState(1);
-  const [isAlgoliaMode, setIsAlgoliaMode] = useState(false);
+  const {
+    coils,
+    loading,
+    error,
+    currentPage,
+    filteredTotal,
+    isAlgoliaMode,
+    algoliaTotalPages,
+    hasNextPage,
+    nextPage,
+    prevPage,
+    refresh,
+  } = useCoils({ searchTerm, statusFilter, startDate, endDate, pageSize });
 
-  const [firstDoc, setFirstDoc] = useState<any>(null);
-  const [lastDoc, setLastDoc] = useState<any>(null);
-
-  const [algoliaPage, setAlgoliaPage] = useState(0);
-  const [algoliaTotalPages, setAlgoliaTotalPages] = useState(0);
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
 
   // --- ESTADOS DE MODALES ---
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedCoil, setSelectedCoil] = useState<Coil | null>(null);
   const [editingCoil, setEditingCoil] = useState<Coil | null>(null);
-  const [editData, setEditData] = useState<any>({});
+  const [editData, setEditData] = useState<EditData>({
+    initialWeight: 0,
+    currentWeight: 0,
+    masterWidth: 1200,
+    thickness: 0.45,
+    pricePerKg: 0,
+    providerDocType: "LOCAL",
+    providerDoc: "",
+    providerName: "",
+    invoiceNumber: "",
+    invoiceDate: "",
+  });
   const [viewingCoil, setViewingCoil] = useState<Coil | null>(null);
   const [showXmlModal, setShowXmlModal] = useState(false);
   const [showExcelModal, setShowExcelModal] = useState(false);
@@ -208,94 +231,6 @@ export default function InventoryPage() {
     fetchMetrics();
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
-
-  const loadData = async (
-    direction: "first" | "next" | "prev" = "first",
-    targetAlgoliaPage = 0,
-  ) => {
-    setIsLoading(true);
-    try {
-      const res = await fetchInventory({
-        pageSize: pageSize,
-        statusFilter,
-        searchTerm: debouncedSearchTerm,
-        startDate,
-        endDate,
-        direction,
-        cursorDoc:
-          direction === "next"
-            ? lastDoc
-            : direction === "prev"
-              ? firstDoc
-              : null,
-        page: targetAlgoliaPage,
-      });
-
-      setCoils(res.coils);
-      setIsAlgoliaMode(res.isAlgolia);
-
-      // 💡 CAPTURAR EL TOTAL SEGÚN EL MODO
-      if (res.isAlgolia) {
-        setAlgoliaTotalPages(res.algoliaData?.totalPages || 0);
-        setAlgoliaPage(res.algoliaData?.currentPage || 0);
-
-        // Usamos (res as any) para silenciar a TypeScript si nbHits no está tipado
-        setFilteredTotal((res as any).algoliaData?.nbHits || 0);
-      } else {
-        setFirstDoc(res.firstDoc);
-        setLastDoc(res.lastDoc);
-
-        // Silenciamos el error de totalCount. Si el backend no lo envía, el fallback es coils.length
-        setFilteredTotal((res as any).totalCount || res.coils.length);
-      }
-    } catch (error) {
-      console.error("ERROR:", error);
-      toast.error("Error al cargar datos");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if ((startDate && !endDate) || (!startDate && endDate)) {
-      return;
-    }
-
-    setCurrentPage(1);
-    loadData("first", 0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearchTerm, statusFilter, startDate, endDate, pageSize]);
-
-  const hasNextPage = isAlgoliaMode
-    ? algoliaPage + 1 < algoliaTotalPages
-    : coils.length === pageSize;
-
-  const handleNextPage = () => {
-    if (!hasNextPage) return;
-    setCurrentPage((prev) => prev + 1);
-    if (isAlgoliaMode) {
-      loadData("first", algoliaPage + 1);
-    } else {
-      loadData("next");
-    }
-  };
-
-  const handlePrevPage = () => {
-    if (currentPage <= 1) return;
-    setCurrentPage((prev) => prev - 1);
-    if (isAlgoliaMode) {
-      loadData("first", algoliaPage - 1);
-    } else {
-      loadData("prev");
-    }
-  };
-
   const handleOpenProduction = async (coil: Coil) => {
     try {
       const docSnap = await getDoc(doc(db, "coils", coil.id));
@@ -312,6 +247,15 @@ export default function InventoryPage() {
       if (docSnap.exists()) {
         const fullCoil = { id: docSnap.id, ...docSnap.data() } as Coil;
         setEditingCoil(fullCoil);
+        const rawInvoiceDate = fullCoil.metadata?.invoiceDate;
+        const invoiceDate = (() => {
+          if (!rawInvoiceDate) return "";
+          const d =
+            typeof (rawInvoiceDate as { toDate?: () => Date }).toDate === "function"
+              ? (rawInvoiceDate as { toDate: () => Date }).toDate()
+              : new Date(rawInvoiceDate as string | number);
+          return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
+        })();
         setEditData({
           initialWeight: fullCoil.initialWeight || 0,
           currentWeight: fullCoil.currentWeight || 0,
@@ -322,6 +266,7 @@ export default function InventoryPage() {
           providerDoc: fullCoil.metadata?.providerDoc || "",
           providerName: fullCoil.metadata?.provider || "",
           invoiceNumber: fullCoil.metadata?.invoiceNumber || "",
+          invoiceDate,
         });
       }
     } catch {
@@ -337,7 +282,7 @@ export default function InventoryPage() {
           success: "Bobina anulada.",
           error: (err) => err.message,
         })
-        .then(() => loadData("first", 0));
+        .then(() => refresh());
     }
   };
 
@@ -351,9 +296,9 @@ export default function InventoryPage() {
         .promise(cancelCuttingPlan(coilId, user?.email || "Admin"), {
           loading: "Cancelando plan...",
           success: "Plan cancelado. Bobina disponible nuevamente.",
-          error: (err) => err.message, // Si ya tiene cortes, el toast mostrará el error ⛔ IMPOSIBLE CANCELAR
+          error: (err) => err.message,
         })
-        .then(() => loadData("first", 0));
+        .then(() => refresh());
     }
   };
 
@@ -367,7 +312,7 @@ export default function InventoryPage() {
       })
       .then(() => {
         setEditingCoil(null);
-        loadData("first", 0);
+        refresh();
       });
   };
 
@@ -443,8 +388,8 @@ export default function InventoryPage() {
       XLSX.writeFile(workbook, fileName);
 
       toast.success("Excel descargado correctamente", { id: "excel" });
-    } catch (error: any) {
-      toast.error(error.message, { id: "excel" });
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Error al generar Excel.", { id: "excel" });
     }
   };
 
@@ -468,7 +413,7 @@ export default function InventoryPage() {
             onOpenExcel={() => setShowExcelModal(true)}
             onSeed={async () => {
               await seedFiftyAvailableCoils();
-              loadData("first", 0);
+              refresh();
             }}
           />
           <button
@@ -532,7 +477,7 @@ export default function InventoryPage() {
       <InventoryFilters
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
-        isSearching={isLoading && searchTerm !== ""}
+        isSearching={loading && searchTerm !== ""}
         statusFilter={statusFilter}
         setStatusFilter={setStatusFilter}
         startDate={startDate}
@@ -556,7 +501,7 @@ export default function InventoryPage() {
         />
 
         {/* Loader de opacidad si está refrescando la tabla */}
-        {isLoading && (
+        {loading && (
           <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-xl">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
           </div>
@@ -580,8 +525,8 @@ export default function InventoryPage() {
         {/* 2. CENTRO: Controles de Paginación */}
         <div className="w-full sm:w-1/3 flex items-center justify-center gap-3">
           <button
-            onClick={handlePrevPage}
-            disabled={currentPage === 1 || isLoading}
+            onClick={prevPage}
+            disabled={currentPage === 1 || loading}
             className="flex items-center justify-center w-10 h-10 bg-white text-slate-600 rounded-xl hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm border border-slate-200"
             title="Página anterior"
           >
@@ -599,8 +544,8 @@ export default function InventoryPage() {
           </div>
 
           <button
-            onClick={handleNextPage}
-            disabled={!hasNextPage || isLoading}
+            onClick={nextPage}
+            disabled={!hasNextPage || loading}
             className="flex items-center justify-center w-10 h-10 bg-white text-slate-600 rounded-xl hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm border border-slate-200"
             title="Página siguiente"
           >
@@ -617,7 +562,6 @@ export default function InventoryPage() {
             value={pageSize}
             onChange={(e) => {
               setPageSize(Number(e.target.value));
-              setCurrentPage(1); // Resetear a la página 1 al cambiar el tamaño
             }}
             className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-2 py-1.5 outline-none focus:border-blue-500 transition shadow-sm"
           >
@@ -647,7 +591,7 @@ export default function InventoryPage() {
             <AddCoilForm
               onOpenChange={(isOpen) => {
                 setIsAddModalOpen(isOpen);
-                if (!isOpen) loadData("first", 0); // ¡Esto refresca la tabla al cerrar!
+                if (!isOpen) refresh();
               }}
             />
           </div>
@@ -662,7 +606,7 @@ export default function InventoryPage() {
                 coil={selectedCoil}
                 onClose={() => {
                   setSelectedCoil(null);
-                  loadData("first", 0); // <-- ¡ESTO ARREGLA EL REFRESH AL CREAR PLAN!
+                  refresh();
                 }}
               />
             ) : (
@@ -670,7 +614,7 @@ export default function InventoryPage() {
                 coil={selectedCoil}
                 onClose={() => {
                   setSelectedCoil(null);
-                  loadData("first", 0);
+                  refresh();
                 }}
               />
             )}
@@ -693,7 +637,7 @@ export default function InventoryPage() {
             <button
               onClick={() => {
                 setShowXmlModal(false);
-                loadData("first", 0);
+                refresh();
               }}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 z-10 bg-white rounded-full p-1 shadow-sm border border-gray-100 transition"
             >
@@ -709,7 +653,7 @@ export default function InventoryPage() {
             <button
               onClick={() => {
                 setShowExcelModal(false);
-                loadData("first", 0);
+                refresh();
               }}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 z-10 bg-white rounded-full p-1 shadow-sm border border-gray-100 transition"
             >

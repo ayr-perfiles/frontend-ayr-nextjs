@@ -15,10 +15,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import {
-  revertProductionLog,
-  fetchProductionLogs,
-} from "@/modules/drywall/services/productionService";
+import { revertProductionLog } from "@/modules/drywall/services/productionService";
+import { useProductionLogs } from "@/modules/drywall/hooks/useProductionLogs";
 import toast from "react-hot-toast";
 
 import { ProductionFilters } from "@/modules/drywall/components/production/ProductionFilters";
@@ -27,23 +25,31 @@ import { ProductionTable } from "@/modules/drywall/components/production/Product
 export default function ProductionPage() {
   const { user, role } = useAuth();
 
-  // ESTADOS DE STOCK Y LOGS
+  // ESTADO DE STOCK (tiempo real, independiente del hook de logs)
   const [stock, setStock] = useState<StockSummary[]>([]);
-  const [logs, setLogs] = useState<ProductionLog[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
 
-  // PAGINACIÓN Y FILTROS
-  const [filteredTotal, setFilteredTotal] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [firstDoc, setFirstDoc] = useState<any>(null);
-  const [lastDoc, setLastDoc] = useState<any>(null);
-
+  // FILTROS DE PRODUCCIÓN
   const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [filterSku, setFilterSku] = useState("ALL");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [pageSize, setPageSize] = useState(10);
+
+  const {
+    logs,
+    loading,
+    error,
+    currentPage,
+    filteredTotal,
+    hasNextPage,
+    nextPage,
+    prevPage,
+    refresh,
+  } = useProductionLogs({ searchTerm, skuFilter: filterSku, startDate, endDate, pageSize });
+
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
 
   // 1. CARGA DE STOCK GLOBAL (En tiempo real)
   useEffect(() => {
@@ -59,69 +65,7 @@ export default function ProductionPage() {
     return () => unsubStock();
   }, []);
 
-  // 2. DEBOUNCE PARA BÚSQUEDA DE BOBINAS
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
-
-  // 3. CARGAR DATOS DE PRODUCCIÓN
-  const loadData = async (direction: "first" | "next" | "prev" = "first") => {
-    setIsLoading(true);
-    try {
-      const res = await fetchProductionLogs({
-        pageSize,
-        skuFilter: filterSku,
-        searchTerm: debouncedSearchTerm,
-        startDate,
-        endDate,
-        direction,
-        cursorDoc:
-          direction === "next"
-            ? lastDoc
-            : direction === "prev"
-              ? firstDoc
-              : null,
-      });
-
-      setLogs(res.logs);
-      setFirstDoc(res.firstDoc);
-      setLastDoc(res.lastDoc);
-      setFilteredTotal(res.totalCount || 0);
-    } catch (error) {
-      console.error("Error:", error);
-      toast.error("Error al cargar historial");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // 4. VIGILANTE DE FILTROS
-  useEffect(() => {
-    if ((startDate && !endDate) || (!startDate && endDate)) return;
-    setCurrentPage(1);
-    loadData("first");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterSku, startDate, endDate, pageSize, debouncedSearchTerm]);
-
-  // 5. NAVEGACIÓN
-  const hasNextPage = logs.length === pageSize;
-  const handleNextPage = () => {
-    if (hasNextPage) {
-      setCurrentPage((prev) => prev + 1);
-      loadData("next");
-    }
-  };
-  const handlePrevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage((prev) => prev - 1);
-      loadData("prev");
-    }
-  };
-
-  // 6. ACCIONES
+  // ACCIONES
   const handleVoidLog = async (logId: string, pieces: number) => {
     if (
       confirm(
@@ -131,9 +75,9 @@ export default function ProductionPage() {
       try {
         await revertProductionLog(logId, user?.email || "Admin");
         toast.success("✅ Producción anulada y costos revertidos.");
-        loadData("first"); // Refrescamos la tabla tras anular
-      } catch (error: any) {
-        toast.error(error.message);
+        refresh();
+      } catch (error: unknown) {
+        toast.error(error instanceof Error ? error.message : "Error al anular el registro.");
       }
     }
   };
@@ -196,7 +140,7 @@ export default function ProductionPage() {
           <Package size={16} /> Stock Disponible para Venta
         </h2>
 
-        {stock.length === 0 && !isLoading ? (
+        {stock.length === 0 && !loading ? (
           <div className="p-6 bg-white rounded-xl border border-dashed border-slate-300 text-center text-slate-500">
             Aún no hay productos procesados.
           </div>
@@ -270,20 +214,20 @@ export default function ProductionPage() {
             endDate={endDate}
             setEndDate={setEndDate}
             stock={stock}
-            isSearching={isLoading && searchTerm !== ""}
+            isSearching={loading && searchTerm !== ""}
           />
         </div>
 
         <div className="relative">
           <ProductionTable
             logs={logs}
-            isLoading={isLoading}
+            isLoading={loading}
             role={role}
             currentPage={currentPage}
             pageSize={pageSize}
             onVoidLog={handleVoidLog}
           />
-          {isLoading && (
+          {loading && (
             <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-xl">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
@@ -304,8 +248,8 @@ export default function ProductionPage() {
 
           <div className="w-full sm:w-1/3 flex items-center justify-center gap-3">
             <button
-              onClick={handlePrevPage}
-              disabled={currentPage === 1 || isLoading}
+              onClick={prevPage}
+              disabled={currentPage === 1 || loading}
               className="flex items-center justify-center w-10 h-10 bg-white text-slate-600 rounded-xl hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm border border-slate-200"
             >
               <ChevronLeft size={20} />
@@ -317,8 +261,8 @@ export default function ProductionPage() {
               </span>
             </div>
             <button
-              onClick={handleNextPage}
-              disabled={!hasNextPage || isLoading}
+              onClick={nextPage}
+              disabled={!hasNextPage || loading}
               className="flex items-center justify-center w-10 h-10 bg-white text-slate-600 rounded-xl hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm border border-slate-200"
             >
               <ChevronRight size={20} />
@@ -333,7 +277,6 @@ export default function ProductionPage() {
               value={pageSize}
               onChange={(e) => {
                 setPageSize(Number(e.target.value));
-                setCurrentPage(1);
               }}
               className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-2 py-1.5 outline-none focus:border-blue-500 transition shadow-sm"
             >

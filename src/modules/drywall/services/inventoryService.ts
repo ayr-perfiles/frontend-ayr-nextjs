@@ -11,6 +11,9 @@ import {
   limitToLast,
   documentId,
   getCountFromServer,
+  QueryConstraint,
+  QueryDocumentSnapshot,
+  DocumentData,
 } from "firebase/firestore";
 import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
 import { Coil } from "@/types";
@@ -21,7 +24,7 @@ interface FetchParams {
   searchTerm: string;
   startDate?: string;
   endDate?: string;
-  cursorDoc?: any;
+  cursorDoc?: QueryDocumentSnapshot<DocumentData> | null;
   direction?: "next" | "prev" | "first";
   page?: number;
 }
@@ -55,7 +58,7 @@ export const fetchInventory = async (params: FetchParams) => {
       searchParams: { query: searchTerm, filters, hitsPerPage: pageSize, page },
     });
 
-    const hitIds = hits.map((h: any) => h.objectID);
+    const hitIds = (hits as Array<{ objectID: string }>).map((h) => h.objectID);
     let coils: Coil[] = [];
 
     // HIPER-TRUCO: Usamos los IDs de Algolia para traer los datos puros y reales de Firebase
@@ -92,7 +95,7 @@ export const fetchInventory = async (params: FetchParams) => {
   const collRef = collection(db, "coils");
 
   // 1. ARMAMOS LOS FILTROS BASE
-  let baseConstraints: any[] = [];
+  let baseConstraints: QueryConstraint[] = [];
   const hasDateFilter = !!startDate && !!endDate; // Solo aplica si ambas existen
 
   if (statusFilter === "ALL") {

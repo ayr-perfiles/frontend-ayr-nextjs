@@ -114,8 +114,8 @@ export function ProductionForm({ coil, onClose }: ProductionFormProps) {
         "✅ Plan de corte registrado. La bobina ahora está EN PROCESO.",
       );
       onClose();
-    } catch (error: any) {
-      toast.error(error.message || "Error al guardar el plan.");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Error al guardar el plan.");
     } finally {
       setIsSubmitting(false);
     }

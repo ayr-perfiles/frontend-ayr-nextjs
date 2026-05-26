@@ -70,7 +70,7 @@ export function ConsumeStripForm({
       stripWeight,
       activeStrip.width,
       coil.thickness,
-      (product as any).lengthMeters || 3.0,
+      product.lengthMeters || 3.0,
     );
   }, [selectedSku, catalog, coil, availableStrips]);
 
