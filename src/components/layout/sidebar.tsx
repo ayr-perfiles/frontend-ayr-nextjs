@@ -5,6 +5,9 @@ import { usePathname } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase/clientApp";
 import { useAuth, UserRole } from "@/context/AuthContext";
+import { useBusinessLine } from "@/context/BusinessLineContext";
+import { BusinessLineSelector } from "./BusinessLineSelector";
+import type { MenuItem } from "@/core/contracts";
 import {
   LayoutDashboard,
   Database,
@@ -20,13 +23,39 @@ import {
   Contact2,
   ShieldAlert,
   Smartphone,
+  Package,
+  Layers,
 } from "lucide-react";
+import type { LucideProps } from "lucide-react";
+import type { ComponentType } from "react";
+
+// Resuelve el nombre de ícono (string) a componente Lucide
+function resolveIcon(name: string): ComponentType<LucideProps> {
+  const map: Record<string, ComponentType<LucideProps>> = {
+    Database,
+    Factory,
+    Smartphone,
+    Package,
+    Layers,
+  };
+  return map[name] ?? Layers;
+}
+
+// Convierte MenuItem del módulo al shape que espera el renderizador del sidebar
+function moduleItemToNavItem(item: MenuItem) {
+  return {
+    name: item.label,
+    href: item.href,
+    icon: resolveIcon(item.icon),
+    allowedRoles: (item.roles ?? ["ADMIN", "SUPERVISOR", "OPERATOR"]) as UserRole[],
+  };
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { user, role } = useAuth();
+  const { activeModule } = useBusinessLine();
 
-  // AGRUPAMOS LOS MÓDULOS POR ÁREA DE LA EMPRESA
   const menuGroups = [
     {
       title: "Visión General",
@@ -35,32 +64,13 @@ export default function Sidebar() {
           name: "Dashboard",
           href: "/admin",
           icon: LayoutDashboard,
-          allowedRoles: ["ADMIN"],
+          allowedRoles: ["ADMIN"] as UserRole[],
         },
       ],
     },
     {
-      title: "Planta y Logística",
-      items: [
-        {
-          name: "Inventario",
-          href: "/admin/inventory",
-          icon: Database,
-          allowedRoles: ["ADMIN", "SUPERVISOR"],
-        },
-        {
-          name: "Producción",
-          href: "/admin/production",
-          icon: Factory,
-          allowedRoles: ["ADMIN", "SUPERVISOR"],
-        },
-        {
-          name: "Terminal Móvil",
-          href: "/admin/operator",
-          icon: Smartphone, // Cambié el ícono para que no se repita con Producción
-          allowedRoles: ["ADMIN", "SUPERVISOR", "OPERATOR"],
-        },
-      ],
+      title: activeModule.displayName,
+      items: activeModule.sidebarItems.map(moduleItemToNavItem),
     },
     {
       title: "Área Comercial",
@@ -69,13 +79,13 @@ export default function Sidebar() {
           name: "Ventas",
           href: "/admin/sales",
           icon: ShoppingCart,
-          allowedRoles: ["ADMIN", "SUPERVISOR"],
+          allowedRoles: ["ADMIN", "SUPERVISOR"] as UserRole[],
         },
         {
           name: "Clientes",
           href: "/admin/customers",
           icon: Contact2,
-          allowedRoles: ["ADMIN", "SUPERVISOR"],
+          allowedRoles: ["ADMIN", "SUPERVISOR"] as UserRole[],
         },
       ],
     },
@@ -86,19 +96,19 @@ export default function Sidebar() {
           name: "Kardex",
           href: "/admin/kardex",
           icon: History,
-          allowedRoles: ["ADMIN", "SUPERVISOR"],
+          allowedRoles: ["ADMIN", "SUPERVISOR"] as UserRole[],
         },
         {
           name: "Reportes",
           href: "/admin/reports",
           icon: BarChart3,
-          allowedRoles: ["ADMIN", "SUPERVISOR"],
+          allowedRoles: ["ADMIN", "SUPERVISOR"] as UserRole[],
         },
         {
           name: "Auditoría",
           href: "/admin/audit",
           icon: ShieldAlert,
-          allowedRoles: ["ADMIN"],
+          allowedRoles: ["ADMIN"] as UserRole[],
         },
       ],
     },
@@ -109,13 +119,13 @@ export default function Sidebar() {
           name: "Usuarios",
           href: "/admin/users",
           icon: Users,
-          allowedRoles: ["ADMIN"],
+          allowedRoles: ["ADMIN"] as UserRole[],
         },
         {
           name: "Configuración",
           href: "/admin/settings",
           icon: Settings,
-          allowedRoles: ["ADMIN"],
+          allowedRoles: ["ADMIN"] as UserRole[],
         },
       ],
     },
@@ -140,25 +150,24 @@ export default function Sidebar() {
         </div>
       </div>
 
+      {/* SELECTOR DE LÍNEA DE NEGOCIO */}
+      <BusinessLineSelector />
+
       {/* MENÚ DE NAVEGACIÓN AGRUPADO */}
       <nav className="flex-1 p-4 space-y-6 overflow-y-auto custom-scrollbar">
         {menuGroups.map((group, groupIndex) => {
-          // Filtramos los ítems del grupo según el rol del usuario
           const filteredItems = group.items.filter((item) =>
             item.allowedRoles.includes(role as UserRole),
           );
 
-          // Si el usuario no tiene acceso a ningún ítem de este grupo, no lo mostramos
           if (filteredItems.length === 0) return null;
 
           return (
             <div key={groupIndex} className="space-y-1">
-              {/* TÍTULO DEL GRUPO */}
               <p className="px-3 text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
                 {group.title}
               </p>
 
-              {/* ÍTEMS DEL GRUPO */}
               {filteredItems.map((item) => {
                 const isActive =
                   pathname === item.href ||

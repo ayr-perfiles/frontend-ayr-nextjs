@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { AuthProvider, useAuth, UserRole } from "@/context/AuthContext";
+import { BusinessLineProvider } from "@/context/BusinessLineContext";
 import Sidebar from "@/components/layout/sidebar";
 import { Loader2, Zap, Menu, X } from "lucide-react";
 
@@ -13,6 +14,7 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/admin/reports": ["ADMIN", "SUPERVISOR"],
   "/admin/inventory": ["ADMIN", "SUPERVISOR"],
   "/admin/production": ["ADMIN", "SUPERVISOR"],
+  "/admin/roofing": ["ADMIN", "SUPERVISOR"],
   "/admin/operator": ["ADMIN", "SUPERVISOR", "OPERATOR"],
   "/admin": ["ADMIN"],
 };
@@ -93,6 +95,7 @@ export default function AdminLayout({
 
   return (
     <AuthProvider>
+      <BusinessLineProvider>
       <AuthGuard>
         <div className="flex h-screen bg-gray-100 overflow-hidden font-sans relative">
           {/* =========================================
@@ -153,6 +156,7 @@ export default function AdminLayout({
           </main>
         </div>
       </AuthGuard>
+      </BusinessLineProvider>
     </AuthProvider>
   );
 }
