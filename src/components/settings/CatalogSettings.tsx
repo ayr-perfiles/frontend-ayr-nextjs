@@ -4,7 +4,7 @@ import {
   getCatalog,
   saveProduct,
   deleteProduct,
-} from "@/services/catalogService";
+} from "@/modules/drywall/services/catalogService";
 import {
   BookOpen,
   Plus,
