@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { X, Save, RefreshCw } from "lucide-react";
 import toast from "react-hot-toast";
 import { generateSKU } from "@/modules/roofing/domain/skuGenerator";
@@ -8,24 +8,15 @@ import {
   generateDisplayName,
   createProduct,
 } from "@/modules/roofing/services/catalogService";
-import { RoofingProductSchema } from "@/modules/roofing/schemas/catalog";
+import {
+  addProductFormSchema,
+  type AddProductFormState,
+} from "@/modules/roofing/schemas/catalog";
 import type { RoofingProductInput } from "@/modules/roofing/schemas/catalog";
+import { useForm } from "@/core/hooks/useForm";
 
 const MATERIAL_OPTIONS = ["UPVC", "ACERO_GALV", "POLICARBONATO"] as const;
 const COLOR_SUGGESTIONS = ["ROJO", "AZUL", "VERDE", "BLANCO", "GRIS", "AMARILLO"];
-
-type FormState = {
-  material: (typeof MATERIAL_OPTIONS)[number];
-  color: string;
-  thickness: string;
-  width: string;
-  length: string;
-  weight: string;
-  sku: string;
-  displayName: string;
-};
-
-type FormErrors = Partial<Record<keyof FormState, string>>;
 
 interface AddProductModalProps {
   onClose: () => void;
@@ -33,7 +24,7 @@ interface AddProductModalProps {
 }
 
 export default function AddProductModal({ onClose, onSuccess }: AddProductModalProps) {
-  const [form, setForm] = useState<FormState>({
+  const initialValues: AddProductFormState = {
     material: "UPVC",
     color: "ROJO",
     thickness: "1.5",
@@ -42,11 +33,12 @@ export default function AddProductModal({ onClose, onSuccess }: AddProductModalP
     weight: "",
     sku: "",
     displayName: "",
-  });
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [saving, setSaving] = useState(false);
+  };
 
-  function set(key: keyof FormState, value: string) {
+  const { values: form, setValues: setForm, errors, setErrors, validate, isSubmitting, setIsSubmitting } =
+    useForm<AddProductFormState>(addProductFormSchema, initialValues);
+
+  function set(key: keyof AddProductFormState, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   }
@@ -79,11 +71,7 @@ export default function AddProductModal({ onClose, onSuccess }: AddProductModalP
   function applyPreview() {
     const preview = buildPreview();
     if (!preview) return;
-    setForm((prev) => ({
-      ...prev,
-      sku: preview.sku,
-      displayName: preview.displayName,
-    }));
+    setForm((prev) => ({ ...prev, sku: preview.sku, displayName: preview.displayName }));
   }
 
   // Auto-update preview when spec fields change
@@ -93,6 +81,8 @@ export default function AddProductModal({ onClose, onSuccess }: AddProductModalP
   }, [form.material, form.color, form.thickness, form.width, form.length]);
 
   async function handleSubmit() {
+    if (!validate()) return;
+
     const input: RoofingProductInput = {
       material: form.material,
       color: form.color || undefined,
@@ -105,18 +95,7 @@ export default function AddProductModal({ onClose, onSuccess }: AddProductModalP
       ...(form.weight ? { weight: parseFloat(form.weight) } : {}),
     };
 
-    const result = RoofingProductSchema.safeParse(input);
-    if (!result.success) {
-      const fieldErrors: FormErrors = {};
-      for (const issue of result.error.issues) {
-        const field = issue.path[0] as keyof FormState;
-        if (field && !fieldErrors[field]) fieldErrors[field] = issue.message;
-      }
-      setErrors(fieldErrors);
-      return;
-    }
-
-    setSaving(true);
+    setIsSubmitting(true);
     try {
       await createProduct(input);
       toast.success("Producto creado exitosamente");
@@ -125,12 +104,14 @@ export default function AddProductModal({ onClose, onSuccess }: AddProductModalP
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al crear producto");
     } finally {
-      setSaving(false);
+      setIsSubmitting(false);
     }
   }
 
+  const hasErrors = Object.keys(errors).length > 0;
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg my-8 overflow-hidden animate-in fade-in zoom-in-95">
         {/* Header */}
         <div className="p-6 bg-emerald-600 text-white flex justify-between items-center">
@@ -140,10 +121,7 @@ export default function AddProductModal({ onClose, onSuccess }: AddProductModalP
               Catálogo Coberturas
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="hover:bg-white/20 p-2 rounded-full transition"
-          >
+          <button onClick={onClose} className="hover:bg-white/20 p-2 rounded-full transition">
             <X size={20} />
           </button>
         </div>
@@ -181,7 +159,7 @@ export default function AddProductModal({ onClose, onSuccess }: AddProductModalP
                 list="add-color-suggestions"
                 value={form.color}
                 onChange={(e) => set("color", e.target.value.toUpperCase())}
-                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-emerald-500"
+                className={`w-full p-3 border rounded-xl font-bold outline-none focus:border-emerald-500 ${errors.color ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"}`}
                 placeholder="ROJO"
               />
               <datalist id="add-color-suggestions">
@@ -211,7 +189,7 @@ export default function AddProductModal({ onClose, onSuccess }: AddProductModalP
                   min="0"
                   value={form.thickness}
                   onChange={(e) => set("thickness", e.target.value)}
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-emerald-500"
+                  className={`w-full p-3 border rounded-xl font-bold outline-none focus:border-emerald-500 ${errors.thickness ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"}`}
                 />
                 {errors.thickness && (
                   <p className="text-red-500 text-xs mt-1">{errors.thickness}</p>
@@ -227,7 +205,7 @@ export default function AddProductModal({ onClose, onSuccess }: AddProductModalP
                   min="0"
                   value={form.width}
                   onChange={(e) => set("width", e.target.value)}
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-emerald-500"
+                  className={`w-full p-3 border rounded-xl font-bold outline-none focus:border-emerald-500 ${errors.width ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"}`}
                 />
                 {errors.width && (
                   <p className="text-red-500 text-xs mt-1">{errors.width}</p>
@@ -243,7 +221,7 @@ export default function AddProductModal({ onClose, onSuccess }: AddProductModalP
                   min="0"
                   value={form.length}
                   onChange={(e) => set("length", e.target.value)}
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-emerald-500"
+                  className={`w-full p-3 border rounded-xl font-bold outline-none focus:border-emerald-500 ${errors.length ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"}`}
                 />
                 {errors.length && (
                   <p className="text-red-500 text-xs mt-1">{errors.length}</p>
@@ -265,8 +243,11 @@ export default function AddProductModal({ onClose, onSuccess }: AddProductModalP
               value={form.weight}
               onChange={(e) => set("weight", e.target.value)}
               placeholder="Dejar vacío si no aplica"
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-emerald-500"
+              className={`w-full p-3 border rounded-xl font-bold outline-none focus:border-emerald-500 ${errors.weight ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"}`}
             />
+            {errors.weight && (
+              <p className="text-red-500 text-xs mt-1">{errors.weight}</p>
+            )}
           </div>
 
           {/* SKU & DisplayName preview */}
@@ -320,11 +301,11 @@ export default function AddProductModal({ onClose, onSuccess }: AddProductModalP
           </div>
 
           <button
-            onClick={handleSubmit}
-            disabled={saving}
+            onClick={() => void handleSubmit()}
+            disabled={isSubmitting || hasErrors}
             className="w-full bg-emerald-600 text-white p-4 rounded-xl font-black flex justify-center items-center gap-2 hover:bg-emerald-700 transition active:scale-95 shadow-md shadow-emerald-200 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {saving ? (
+            {isSubmitting ? (
               <>
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 Guardando…

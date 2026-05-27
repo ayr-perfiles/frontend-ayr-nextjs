@@ -14,7 +14,13 @@
       "PowerShell(head -30)",
       "Bash(node -e ' *)",
       "PowerShell(New-Item -ItemType Directory -Force \"c:\\\\Users\\\\win11\\\\Documents\\\\workspace\\\\ayr\\\\frontend-ayr-nextjs\\\\docs\\\\05-formulas\")",
-      "PowerShell(\"ok\")"
+      "PowerShell(\"ok\")",
+      "Bash(xargs wc -l)",
+      "Bash(xargs grep -l \"useEffect\\\\|useState\")",
+      "Bash(Get-ChildItem src/core/hooks/)",
+      "Bash(Select-Object Name)",
+      "Bash(grep -v \"^$\")",
+      "Bash(xargs grep -l \"export function\\\\|export const\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\User\\Documents\\workspace\\ayr\\frontend-ayr"

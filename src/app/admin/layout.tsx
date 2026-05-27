@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { AuthProvider, useAuth, UserRole } from "@/context/AuthContext";
 import { BusinessLineProvider } from "@/context/BusinessLineContext";
 import Sidebar from "@/components/layout/sidebar";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { Loader2, Zap, Menu, X } from "lucide-react";
 
 const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
@@ -153,7 +154,9 @@ export default function AdminLayout({
           <main
             className={`flex-1 overflow-y-auto ${isMobileTerminal ? "p-0 pt-16 lg:pt-0" : "p-4 pt-20 lg:p-8 lg:pt-8"}`}
           >
-            {children}
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
           </main>
         </div>
       </AuthGuard>

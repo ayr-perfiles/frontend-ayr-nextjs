@@ -17,6 +17,12 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
+import { useForm } from "@/core/hooks/useForm";
+import {
+  coilInvoiceHeaderSchema,
+  coilEntryFormSchema,
+  type CoilInvoiceHeader,
+} from "@/modules/drywall/schemas/coil";
 
 interface AddCoilFormProps {
   onOpenChange: (isOpen: boolean) => void;
@@ -31,54 +37,53 @@ interface CoilEntry {
   value: number | "";
 }
 
+type RowErrors = Partial<Record<"coilId" | "weight" | "width" | "thickness" | "value", string>>;
+
+const localDate = () => {
+  const tzOffset = new Date().getTimezoneOffset() * 60000;
+  return new Date(Date.now() - tzOffset).toISOString().split("T")[0];
+};
+
 export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-
-  // --- 1. ESTADOS DE LA FACTURA ---
   const [searchingDoc, setSearchingDoc] = useState(false);
-  const [docType, setDocType] = useState<"LOCAL" | "TAX_ID">("LOCAL");
-  const [providerDoc, setProviderDoc] = useState("");
-  const [providerName, setProviderName] = useState("");
-  const [invoiceNumber, setInvoiceNumber] = useState("");
-
-  const [invoiceDate, setInvoiceDate] = useState(() => {
-    const tzOffset = new Date().getTimezoneOffset() * 60000;
-    const localISOTime = new Date(Date.now() - tzOffset)
-      .toISOString()
-      .split("T")[0];
-    return localISOTime;
-  });
-
-  const [currency, setCurrency] = useState<"PEN" | "USD">("PEN");
-  const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [fetchingRate, setFetchingRate] = useState(false);
 
-  // --- 2. ESTADOS DE LAS BOBINAS ---
-  const [coils, setCoils] = useState<CoilEntry[]>([
-    {
-      uid: Date.now().toString(),
-      coilId: "",
-      weight: "",
-      width: 1200,
-      thickness: 0.45,
-      value: "",
-    },
-  ]);
+  // --- HEADER FORM ---
+  const initialHeader: CoilInvoiceHeader = {
+    docType: "LOCAL",
+    providerDoc: "",
+    providerName: "",
+    invoiceDate: localDate(),
+    invoiceNumber: "",
+    currency: "PEN",
+    exchangeRate: 1,
+  };
 
-  // --- EFECTOS: API TIPO DE CAMBIO ---
+  const { values, setValues, errors, setErrors, validate } = useForm<CoilInvoiceHeader>(
+    coilInvoiceHeaderSchema,
+    initialHeader,
+  );
+
+  // --- COIL ROWS ---
+  const [coils, setCoils] = useState<CoilEntry[]>([
+    { uid: Date.now().toString(), coilId: "", weight: "", width: 1200, thickness: 0.45, value: "" },
+  ]);
+  const [coilErrors, setCoilErrors] = useState<Record<string, RowErrors>>({});
+
+  // --- FETCH EXCHANGE RATE ---
   useEffect(() => {
-    if (currency === "USD" && invoiceDate) {
+    if (values.currency === "USD" && values.invoiceDate) {
       const fetchRate = async () => {
         setFetchingRate(true);
         try {
-          const res = await fetch(`/api/tipo-cambio?fecha=${invoiceDate}`);
+          const res = await fetch(`/api/tipo-cambio?fecha=${values.invoiceDate}`);
           if (res.ok) {
             const data = await res.json();
             if (data.venta) {
-              setExchangeRate(data.venta);
-              if (data.fallback)
-                toast.error(`TC Referencial: S/ ${data.venta}`);
+              setValues((prev) => ({ ...prev, exchangeRate: data.venta }));
+              if (data.fallback) toast.error(`TC Referencial: S/ ${data.venta}`);
               else toast.success(`TC Obtenido: S/ ${data.venta}`);
             }
           }
@@ -90,32 +95,28 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       };
       fetchRate();
     } else {
-      setExchangeRate(1);
+      setValues((prev) => ({ ...prev, exchangeRate: 1 }));
     }
-  }, [currency, invoiceDate]);
+  }, [values.currency, values.invoiceDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- BÚSQUEDA RUC / DNI ---
+  // --- RUC / DNI LOOKUP ---
   const handleSearchDoc = async () => {
-    if (
-      docType === "LOCAL" &&
-      providerDoc.length !== 8 &&
-      providerDoc.length !== 11
-    ) {
+    if (values.docType === "LOCAL" && values.providerDoc.length !== 8 && values.providerDoc.length !== 11) {
       toast.error("El documento debe tener 8 (DNI) u 11 (RUC) dígitos.");
       return;
     }
     setSearchingDoc(true);
-    setProviderName("");
+    setValues((prev) => ({ ...prev, providerName: "" }));
     try {
-      const response = await fetch(`/api/consulta-doc?numero=${providerDoc}`);
+      const response = await fetch(`/api/consulta-doc?numero=${values.providerDoc}`);
       const data = await response.json();
       if (!response.ok) throw new Error("No encontrado");
-      const isRUC = providerDoc.length === 11;
+      const isRUC = values.providerDoc.length === 11;
       const nombre = isRUC
         ? data.razon_social || data.razonSocial
         : `${data.first_name} ${data.first_last_name} ${data.second_last_name}`;
       if (nombre) {
-        setProviderName(nombre.toUpperCase());
+        setValues((prev) => ({ ...prev, providerName: nombre.toUpperCase() }));
         toast.success("Proveedor encontrado");
       } else throw new Error("Desconocido");
     } catch {
@@ -125,18 +126,11 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     }
   };
 
-  // --- FUNCIONES DEL DETALLE ---
+  // --- COIL ROW HELPERS ---
   const addCoilRow = () => {
     setCoils([
       ...coils,
-      {
-        uid: Date.now().toString(),
-        coilId: "",
-        weight: "",
-        width: 1200,
-        thickness: 0.45,
-        value: "",
-      },
+      { uid: Date.now().toString(), coilId: "", weight: "", width: 1200, thickness: 0.45, value: "" },
     ]);
   };
 
@@ -146,56 +140,77 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       return;
     }
     setCoils(coils.filter((c) => c.uid !== uid));
+    setCoilErrors((prev) => {
+      const next = { ...prev };
+      delete next[uid];
+      return next;
+    });
   };
 
   const updateCoil = (uid: string, field: keyof CoilEntry, val: CoilEntry[keyof CoilEntry]) => {
     setCoils(coils.map((c) => (c.uid === uid ? { ...c, [field]: val } : c)));
+    if (coilErrors[uid]?.[field as keyof RowErrors]) {
+      setCoilErrors((prev) => ({
+        ...prev,
+        [uid]: { ...prev[uid], [field]: undefined },
+      }));
+    }
   };
 
-  // --- GUARDADO BATCH ---
+  // --- SUBMIT ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!invoiceDate) {
-      toast.error("La fecha de factura es obligatoria.");
-      return;
-    }
 
-    for (let i = 0; i < coils.length; i++) {
-      const c = coils[i];
-      if (!c.coilId || !c.weight || !c.width || !c.thickness || !c.value) {
-        toast.error(
-          `Completa todos los campos obligatorios en la bobina #${i + 1}`,
-        );
-        return;
+    // 1. Validate header
+    if (!validate()) return;
+
+    // 2. Validate coil rows
+    const rowErrors: Record<string, RowErrors> = {};
+    for (const coil of coils) {
+      const result = coilEntryFormSchema.safeParse({
+        coilId: coil.coilId,
+        weight: coil.weight,
+        width: coil.width,
+        thickness: coil.thickness,
+        value: coil.value,
+      });
+      if (!result.success) {
+        const errs: RowErrors = {};
+        for (const issue of result.error.issues) {
+          const field = issue.path[0] as keyof RowErrors;
+          if (!errs[field]) errs[field] = issue.message;
+        }
+        rowErrors[coil.uid] = errs;
       }
     }
+    if (Object.keys(rowErrors).length > 0) {
+      setCoilErrors(rowErrors);
+      toast.error("Corrige los errores en las bobinas antes de continuar.");
+      return;
+    }
+    setCoilErrors({});
 
     setLoading(true);
     try {
       const batch = writeBatch(db);
-      const finalInvoiceDate = new Date(`${invoiceDate}T12:00:00`);
+      const finalInvoiceDate = new Date(`${values.invoiceDate}T12:00:00`);
 
       for (const coil of coils) {
-        const docRef = doc(db, "coils", coil.coilId.toUpperCase());
-
+        const docRef = doc(db, "coils", coil.coilId.toString().toUpperCase());
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          toast.error(
-            `La serie ${coil.coilId.toUpperCase()} ya existe. Revisa tus datos.`,
-          );
+          toast.error(`La serie ${coil.coilId.toString().toUpperCase()} ya existe. Revisa tus datos.`);
           setLoading(false);
           return;
         }
 
         const weight = Number(coil.weight);
         const inputVal = Number(coil.value);
-
-        const finalTotalValuePEN =
-          currency === "USD" ? inputVal * exchangeRate : inputVal;
+        const finalTotalValuePEN = values.currency === "USD" ? inputVal * values.exchangeRate : inputVal;
         const exactCostPerKg = weight > 0 ? finalTotalValuePEN / weight : 0;
 
         batch.set(docRef, {
-          id: coil.coilId.toUpperCase(),
+          id: coil.coilId.toString().toUpperCase(),
           initialWeight: weight,
           currentWeight: weight,
           masterWidth: Number(coil.width),
@@ -206,13 +221,13 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           metadata: {
-            providerDocType: docType,
-            providerDoc: providerDoc || null,
-            provider: providerName || "SIN PROVEEDOR",
-            invoiceNumber: invoiceNumber || null,
+            providerDocType: values.docType,
+            providerDoc: values.providerDoc || null,
+            provider: values.providerName || "SIN PROVEEDOR",
+            invoiceNumber: values.invoiceNumber || null,
             invoiceDate: finalInvoiceDate,
-            currency,
-            exchangeRate: currency === "USD" ? exchangeRate : 1,
+            currency: values.currency,
+            exchangeRate: values.currency === "USD" ? values.exchangeRate : 1,
             originalCurrencyValue: inputVal,
             isManualEntry: true,
           },
@@ -220,11 +235,10 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       }
 
       await batch.commit();
-      // Reemplaza el toast.success actual por esto:
-      const isConverted = currency === "USD";
+      const isConverted = values.currency === "USD";
       toast.success(
         isConverted
-          ? `¡${coils.length} bobinas guardadas! Se convirtieron los USD a Soles (TC: ${exchangeRate}).`
+          ? `¡${coils.length} bobinas guardadas! Se convirtieron los USD a Soles (TC: ${values.exchangeRate}).`
           : `Se registraron ${coils.length} bobinas correctamente.`,
       );
       onOpenChange(false);
@@ -235,14 +249,11 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     }
   };
 
-  const totalInvoiceValue = coils.reduce(
-    (sum, c) => sum + (Number(c.value) || 0),
-    0,
-  );
-  const totalInvoiceWeight = coils.reduce(
-    (sum, c) => sum + (Number(c.weight) || 0),
-    0,
-  );
+  const hasHeaderErrors = Object.keys(errors).length > 0;
+  const hasRowErrors = Object.keys(coilErrors).length > 0;
+
+  const totalInvoiceValue = coils.reduce((sum, c) => sum + (Number(c.value) || 0), 0);
+  const totalInvoiceWeight = coils.reduce((sum, c) => sum + (Number(c.weight) || 0), 0);
 
   return (
     <div className="flex flex-col h-full bg-slate-50 max-h-[90vh] w-full rounded-xl overflow-hidden shadow-2xl">
@@ -253,24 +264,19 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
             <Receipt size={22} />
           </div>
           <div>
-            <h2 className="text-xl font-black leading-tight">
-              Factura de Compra
-            </h2>
+            <h2 className="text-xl font-black leading-tight">Factura de Compra</h2>
             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">
               Ingreso de Materia Prima
             </p>
           </div>
         </div>
-        <button
-          onClick={() => onOpenChange(false)}
-          className="p-2 hover:bg-white/10 rounded-full transition"
-        >
+        <button onClick={() => onOpenChange(false)} className="p-2 hover:bg-white/10 rounded-full transition">
           <X size={24} />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-        {/* SECCIÓN MAESTRA: FACTURA */}
+        {/* DATOS DEL PROVEEDOR */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
           <header className="flex items-center gap-2 pb-3 border-b border-slate-100">
             <Building2 size={18} className="text-blue-600" />
@@ -281,15 +287,17 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5">
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">
-                Origen
-              </label>
+              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Origen</label>
               <select
-                value={docType}
+                value={values.docType}
                 onChange={(e) => {
-                  setDocType(e.target.value as "LOCAL" | "TAX_ID");
-                  setProviderDoc("");
-                  setProviderName("");
+                  setValues((prev) => ({
+                    ...prev,
+                    docType: e.target.value as "LOCAL" | "TAX_ID",
+                    providerDoc: "",
+                    providerName: "",
+                  }));
+                  setErrors((prev) => ({ ...prev, docType: undefined }));
                 }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500"
               >
@@ -300,82 +308,85 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
 
             <div>
               <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">
-                {docType === "LOCAL" ? "RUC / DNI" : "Tax ID"}
+                {values.docType === "LOCAL" ? "RUC / DNI" : "Tax ID"}
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-sm font-bold focus:border-blue-500 outline-none"
-                  value={providerDoc}
-                  onChange={(e) =>
-                    setProviderDoc(
-                      docType === "LOCAL"
-                        ? e.target.value.replace(/\D/g, "")
-                        : e.target.value.toUpperCase(),
-                    )
-                  }
+                  value={values.providerDoc}
+                  onChange={(e) => {
+                    setValues((prev) => ({
+                      ...prev,
+                      providerDoc:
+                        values.docType === "LOCAL"
+                          ? e.target.value.replace(/\D/g, "")
+                          : e.target.value.toUpperCase(),
+                    }));
+                  }}
                 />
-                {docType === "LOCAL" && (
+                {values.docType === "LOCAL" && (
                   <button
                     type="button"
                     onClick={handleSearchDoc}
                     className="bg-slate-100 text-slate-600 px-3 rounded-lg hover:bg-blue-500 hover:text-white transition"
                   >
-                    {searchingDoc ? (
-                      <Loader2 size={18} className="animate-spin" />
-                    ) : (
-                      <Search size={18} />
-                    )}
+                    {searchingDoc ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
                   </button>
                 )}
               </div>
             </div>
 
             <div className="sm:col-span-2">
-              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">
-                Razón Social
-              </label>
+              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Razón Social</label>
               <input
                 type="text"
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none"
-                value={providerName}
-                onChange={(e) => setProviderName(e.target.value.toUpperCase())}
+                value={values.providerName}
+                onChange={(e) =>
+                  setValues((prev) => ({ ...prev, providerName: e.target.value.toUpperCase() }))
+                }
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-blue-600 mb-1.5 uppercase">
+              <label className={`block text-[11px] font-bold mb-1.5 uppercase ${errors.invoiceDate ? "text-red-500" : "text-blue-600"}`}>
                 Fecha Factura *
               </label>
               <input
                 type="date"
-                required
-                className="w-full bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-sm font-bold text-blue-900 outline-none focus:border-blue-500"
-                value={invoiceDate}
-                onChange={(e) => setInvoiceDate(e.target.value)}
+                className={`w-full rounded-lg p-2.5 text-sm font-bold outline-none focus:border-blue-500 border ${errors.invoiceDate ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-200 text-blue-900"}`}
+                value={values.invoiceDate}
+                onChange={(e) => {
+                  setValues((prev) => ({ ...prev, invoiceDate: e.target.value }));
+                  setErrors((prev) => ({ ...prev, invoiceDate: undefined }));
+                }}
               />
+              {errors.invoiceDate && (
+                <p className="text-red-500 text-xs mt-1">{errors.invoiceDate}</p>
+              )}
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">
-                Factura N°
-              </label>
+              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Factura N°</label>
               <input
                 type="text"
                 placeholder="F001-000"
                 className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-sm font-bold outline-none focus:border-blue-500"
-                value={invoiceNumber}
-                onChange={(e) => setInvoiceNumber(e.target.value.toUpperCase())}
+                value={values.invoiceNumber}
+                onChange={(e) =>
+                  setValues((prev) => ({ ...prev, invoiceNumber: e.target.value.toUpperCase() }))
+                }
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">
-                Moneda
-              </label>
+              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Moneda</label>
               <select
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value as "PEN" | "USD")}
+                value={values.currency}
+                onChange={(e) =>
+                  setValues((prev) => ({ ...prev, currency: e.target.value as "PEN" | "USD" }))
+                }
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500"
               >
                 <option value="PEN">Soles (S/)</option>
@@ -384,22 +395,29 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">
+              <label className={`block text-[11px] font-bold mb-1.5 uppercase ${errors.exchangeRate ? "text-red-500" : "text-slate-500"}`}>
                 T. Cambio
               </label>
               <input
                 type="number"
                 step="0.001"
-                disabled={currency === "PEN"}
-                className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-sm font-bold disabled:bg-slate-100 outline-none focus:border-blue-500"
-                value={exchangeRate}
-                onChange={(e) => setExchangeRate(Number(e.target.value))}
+                disabled={values.currency === "PEN"}
+                className={`w-full bg-white border rounded-lg p-2.5 text-sm font-bold disabled:bg-slate-100 outline-none focus:border-blue-500 ${errors.exchangeRate ? "border-red-300" : "border-slate-200"}`}
+                value={values.exchangeRate}
+                onChange={(e) => {
+                  setValues((prev) => ({ ...prev, exchangeRate: Number(e.target.value) }));
+                  setErrors((prev) => ({ ...prev, exchangeRate: undefined }));
+                }}
               />
+              {fetchingRate && <p className="text-xs text-blue-500 mt-1">Obteniendo TC...</p>}
+              {errors.exchangeRate && (
+                <p className="text-red-500 text-xs mt-1">{errors.exchangeRate}</p>
+              )}
             </div>
           </div>
         </div>
 
-        {/* SECCIÓN DETALLE: BOBINAS (AHORA USA GRID-COLS-12 PARA ENCAJE PERFECTO) */}
+        {/* DETALLE DE BOBINAS */}
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
           <header className="flex justify-between items-center pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
@@ -414,118 +432,99 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
           </header>
 
           <div className="space-y-3">
-            {/* Cabecera Desktop alineada perfectamente */}
             <div className="hidden md:grid grid-cols-12 gap-4 px-4 py-3 bg-slate-50 rounded-lg text-[11px] font-black text-slate-500 uppercase">
               <div className="col-span-3">N° Serie / ID *</div>
               <div className="col-span-2">Peso (kg) *</div>
               <div className="col-span-2">Ancho (mm) *</div>
               <div className="col-span-2">Espesor *</div>
-              <div className="col-span-2">Valor ({currency}) *</div>
+              <div className="col-span-2">Valor ({values.currency}) *</div>
               <div className="col-span-1 text-center">Acción</div>
             </div>
 
-            {/* Filas */}
-            {coils.map((coil) => (
-              <div
-                key={coil.uid}
-                className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 bg-white border border-slate-100 rounded-lg relative hover:border-blue-200 hover:shadow-md transition"
-              >
-                <div className="md:col-span-3">
-                  <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
-                    N° Serie *
-                  </label>
-                  <input
-                    required
-                    type="text"
-                    placeholder="F001-..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-md p-2.5 text-sm font-black uppercase outline-none focus:bg-white focus:border-blue-500"
-                    value={coil.coilId}
-                    onChange={(e) =>
-                      updateCoil(
-                        coil.uid,
-                        "coilId",
-                        e.target.value.toUpperCase(),
-                      )
-                    }
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
-                    Peso (kg) *
-                  </label>
-                  <input
-                    required
-                    type="number"
-                    step="0.01"
-                    className="w-full bg-white border border-slate-200 rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500"
-                    value={coil.weight}
-                    onChange={(e) =>
-                      updateCoil(coil.uid, "weight", e.target.value)
-                    }
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
-                    Ancho (mm) *
-                  </label>
-                  <input
-                    required
-                    type="number"
-                    className="w-full bg-white border border-slate-200 rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500"
-                    value={coil.width}
-                    onChange={(e) =>
-                      updateCoil(coil.uid, "width", e.target.value)
-                    }
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
-                    Espesor (mm) *
-                  </label>
-                  <input
-                    required
-                    type="number"
-                    step="0.01"
-                    className="w-full bg-white border border-slate-200 rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500"
-                    value={coil.thickness}
-                    onChange={(e) =>
-                      updateCoil(coil.uid, "thickness", e.target.value)
-                    }
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
-                    Valor {currency} *
-                  </label>
-                  <div className="relative">
-                    <DollarSign
-                      size={14}
-                      className="absolute left-3 top-3 text-emerald-500"
-                    />
+            {coils.map((coil) => {
+              const rowErr = coilErrors[coil.uid] ?? {};
+              return (
+                <div
+                  key={coil.uid}
+                  className={`grid grid-cols-1 md:grid-cols-12 gap-4 p-4 bg-white border rounded-lg relative transition ${Object.keys(rowErr).length > 0 ? "border-red-300 bg-red-50/20" : "border-slate-100 hover:border-blue-200 hover:shadow-md"}`}
+                >
+                  <div className="md:col-span-3">
+                    <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1.5">N° Serie *</label>
                     <input
-                      required
+                      type="text"
+                      placeholder="F001-..."
+                      className={`w-full border rounded-md p-2.5 text-sm font-black uppercase outline-none focus:bg-white focus:border-blue-500 ${rowErr.coilId ? "bg-red-50 border-red-300" : "bg-slate-50 border-slate-200"}`}
+                      value={coil.coilId}
+                      onChange={(e) => updateCoil(coil.uid, "coilId", e.target.value.toUpperCase())}
+                    />
+                    {rowErr.coilId && <p className="text-red-500 text-xs mt-1">{rowErr.coilId}</p>}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1.5">Peso (kg) *</label>
+                    <input
                       type="number"
                       step="0.01"
-                      className="pl-8 w-full bg-emerald-50 border border-emerald-200 rounded-md p-2.5 text-sm font-black text-emerald-800 outline-none focus:bg-white focus:border-emerald-500"
-                      value={coil.value}
-                      onChange={(e) =>
-                        updateCoil(coil.uid, "value", e.target.value)
-                      }
+                      className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${rowErr.weight ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
+                      value={coil.weight}
+                      onChange={(e) => updateCoil(coil.uid, "weight", e.target.value)}
                     />
+                    {rowErr.weight && <p className="text-red-500 text-xs mt-1">{rowErr.weight}</p>}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1.5">Ancho (mm) *</label>
+                    <input
+                      type="number"
+                      className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${rowErr.width ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
+                      value={coil.width}
+                      onChange={(e) => updateCoil(coil.uid, "width", e.target.value)}
+                    />
+                    {rowErr.width && <p className="text-red-500 text-xs mt-1">{rowErr.width}</p>}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1.5">Espesor (mm) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${rowErr.thickness ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
+                      value={coil.thickness}
+                      onChange={(e) => updateCoil(coil.uid, "thickness", e.target.value)}
+                    />
+                    {rowErr.thickness && <p className="text-red-500 text-xs mt-1">{rowErr.thickness}</p>}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
+                      Valor {values.currency} *
+                    </label>
+                    <div className="relative">
+                      <DollarSign size={14} className="absolute left-3 top-3 text-emerald-500" />
+                      <input
+                        type="number"
+                        step="0.01"
+                        className={`pl-8 w-full border rounded-md p-2.5 text-sm font-black outline-none ${rowErr.value ? "bg-red-50 border-red-300 text-red-800" : "bg-emerald-50 border-emerald-200 text-emerald-800 focus:bg-white focus:border-emerald-500"}`}
+                        value={coil.value}
+                        onChange={(e) => updateCoil(coil.uid, "value", e.target.value)}
+                      />
+                    </div>
+                    {rowErr.value && <p className="text-red-500 text-xs mt-1">{rowErr.value}</p>}
+                  </div>
+
+                  <div className="md:col-span-1 flex items-end justify-center pb-1">
+                    <button
+                      type="button"
+                      onClick={() => removeCoilRow(coil.uid)}
+                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                      title="Quitar bobina"
+                    >
+                      <Trash2 size={20} />
+                    </button>
                   </div>
                 </div>
-                <div className="md:col-span-1 flex items-end justify-center pb-1">
-                  <button
-                    type="button"
-                    onClick={() => removeCoilRow(coil.uid)}
-                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                    title="Quitar bobina"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <button
@@ -542,31 +541,24 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       <div className="bg-white border-t border-slate-200 p-6 shrink-0 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-8">
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase">
-              Peso Total Factura
-            </p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Peso Total Factura</p>
             <p className="text-xl font-black text-slate-800">
-              {totalInvoiceWeight.toLocaleString("es-PE")}{" "}
-              <span className="text-xs text-slate-500">kg</span>
+              {totalInvoiceWeight.toLocaleString("es-PE")} <span className="text-xs text-slate-500">kg</span>
             </p>
           </div>
-          <div className="w-px h-8 bg-slate-200"></div>
+          <div className="w-px h-8 bg-slate-200" />
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase">
-              Monto Total Factura
-            </p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Monto Total Factura</p>
             <p className="text-2xl font-black text-emerald-600">
-              {currency}{" "}
-              {totalInvoiceValue.toLocaleString("es-PE", {
-                minimumFractionDigits: 2,
-              })}
+              {values.currency}{" "}
+              {totalInvoiceValue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
             </p>
           </div>
         </div>
 
         <button
           onClick={handleSubmit}
-          disabled={loading}
+          disabled={loading || hasHeaderErrors || hasRowErrors}
           className="w-full md:w-auto bg-slate-900 text-white px-10 py-4 rounded-xl text-sm font-black flex items-center justify-center gap-3 hover:bg-blue-600 transition shadow-xl disabled:opacity-50"
         >
           {loading ? <Loader2 className="animate-spin" /> : <Save size={20} />}

@@ -70,3 +70,42 @@ export type RoofingProductInput = z.input<typeof RoofingProductSchema>;
 
 /** Parsed output type: all defaults resolved (family/active always present). */
 export type RoofingProductParsed = z.infer<typeof RoofingProductSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Form schema for AddProductModal
+// Validates FormState (all string values from HTML inputs) before building the
+// RoofingProductInput for the service. Uses string refines instead of coerce so
+// the schema output type matches FormState exactly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const addProductFormSchema = z.object({
+  material: z.enum(['UPVC', 'ACERO_GALV', 'POLICARBONATO']),
+  color: z.string(),
+  thickness: z
+    .string()
+    .refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, 'El espesor debe ser mayor a 0')
+    .refine(v => parseFloat(v) <= 10, 'El espesor no puede superar 10 mm'),
+  width: z
+    .string()
+    .refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, 'El ancho debe ser mayor a 0')
+    .refine(v => parseFloat(v) <= 10, 'El ancho no puede superar 10 m'),
+  length: z
+    .string()
+    .refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, 'El largo debe ser mayor a 0')
+    .refine(v => parseFloat(v) <= 20, 'El largo no puede superar 20 m'),
+  weight: z
+    .string()
+    .refine(v => v === '' || (!isNaN(parseFloat(v)) && parseFloat(v) > 0), 'El peso debe ser mayor a 0'),
+  sku: z.string(),
+  displayName: z.string(),
+}).superRefine((data, ctx) => {
+  if (data.material === 'UPVC' && !data.color) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['color'],
+      message: 'El color es obligatorio para material UPVC',
+    });
+  }
+});
+
+export type AddProductFormState = z.infer<typeof addProductFormSchema>;

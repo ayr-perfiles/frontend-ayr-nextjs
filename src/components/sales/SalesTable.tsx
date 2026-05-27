@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Sale } from "@/types";
+import { TableSkeleton } from "@/components/ui/TableSkeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
 import {
   CheckCircle2,
   FileText,
@@ -47,6 +49,10 @@ export function SalesTable({
   onEdit,
   onCancel,
 }: SalesTableProps) {
+  if (isLoading && displaySales.length === 0) {
+    return <TableSkeleton rows={7} columns={7} />;
+  }
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
       <div className="overflow-x-auto min-h-[250px]">
@@ -79,16 +85,12 @@ export function SalesTable({
           <tbody className="divide-y divide-slate-50">
             {displaySales.length === 0 && !isLoading ? (
               <tr>
-                <td colSpan={7} className="p-12 text-center text-slate-400">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-50 mb-4 text-slate-400">
-                    <AlertCircle size={24} />
-                  </div>
-                  <h3 className="text-slate-900 font-bold text-lg">
-                    No hay resultados
-                  </h3>
-                  <p className="font-medium text-slate-500 mt-1">
-                    No se encontraron operaciones con los filtros actuales.
-                  </p>
+                <td colSpan={7}>
+                  <EmptyState
+                    icon="Receipt"
+                    title="No hay resultados"
+                    description="No se encontraron operaciones con los filtros actuales."
+                  />
                 </td>
               </tr>
             ) : (

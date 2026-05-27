@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RoofingProductSchema } from './catalog';
+import { RoofingProductSchema, addProductFormSchema } from './catalog';
 import { generateSKU, combinationKey } from '../domain/skuGenerator';
 
 // ─── fixtures ────────────────────────────────────────────────────────────────
@@ -262,5 +262,90 @@ describe('combinationKey', () => {
 
   it('normaliza material a mayúsculas en la clave', () => {
     expect(combinationKey({ ...base, material: 'upvc' })).toBe(combinationKey({ ...base, material: 'UPVC' }));
+  });
+});
+
+// ─── addProductFormSchema ─────────────────────────────────────────────────────
+
+describe('addProductFormSchema', () => {
+  const validForm = {
+    material: 'UPVC' as const,
+    color: 'ROJO',
+    thickness: '1.5',
+    width: '1.075',
+    length: '6',
+    weight: '',
+    sku: '',
+    displayName: '',
+  };
+
+  it('acepta datos válidos', () => {
+    expect(addProductFormSchema.safeParse(validForm).success).toBe(true);
+  });
+
+  it('rechaza espesor no numérico', () => {
+    const r = addProductFormSchema.safeParse({ ...validForm, thickness: 'abc' });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0].path).toContain('thickness');
+  });
+
+  it('rechaza espesor = 0', () => {
+    const r = addProductFormSchema.safeParse({ ...validForm, thickness: '0' });
+    expect(r.success).toBe(false);
+  });
+
+  it('rechaza espesor > 10', () => {
+    const r = addProductFormSchema.safeParse({ ...validForm, thickness: '11' });
+    expect(r.success).toBe(false);
+  });
+
+  it('rechaza ancho no numérico', () => {
+    const r = addProductFormSchema.safeParse({ ...validForm, width: 'abc' });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0].path).toContain('width');
+  });
+
+  it('rechaza ancho = 0', () => {
+    const r = addProductFormSchema.safeParse({ ...validForm, width: '0' });
+    expect(r.success).toBe(false);
+  });
+
+  it('rechaza largo = 0', () => {
+    const r = addProductFormSchema.safeParse({ ...validForm, length: '0' });
+    expect(r.success).toBe(false);
+  });
+
+  it('rechaza largo > 20', () => {
+    const r = addProductFormSchema.safeParse({ ...validForm, length: '21' });
+    expect(r.success).toBe(false);
+  });
+
+  it('acepta peso vacío (opcional)', () => {
+    const r = addProductFormSchema.safeParse({ ...validForm, weight: '' });
+    expect(r.success).toBe(true);
+  });
+
+  it('acepta peso positivo como string', () => {
+    const r = addProductFormSchema.safeParse({ ...validForm, weight: '5.5' });
+    expect(r.success).toBe(true);
+  });
+
+  it('rechaza peso = 0', () => {
+    const r = addProductFormSchema.safeParse({ ...validForm, weight: '0' });
+    expect(r.success).toBe(false);
+  });
+
+  it('rechaza UPVC sin color', () => {
+    const r = addProductFormSchema.safeParse({ ...validForm, material: 'UPVC', color: '' });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const colorIssue = r.error.issues.find((i) => i.path.includes('color'));
+      expect(colorIssue).toBeDefined();
+    }
+  });
+
+  it('acepta ACERO_GALV sin color', () => {
+    const r = addProductFormSchema.safeParse({ ...validForm, material: 'ACERO_GALV', color: '' });
+    expect(r.success).toBe(true);
   });
 });

@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db } from "@/lib/firebase/clientApp";
-import { collection, query, onSnapshot } from "firebase/firestore";
-import { ProductionLog, StockSummary } from "@/types";
+import { useProduction } from "@/modules/drywall/hooks/useProduction";
+import { EmptyState } from "@/components/ui/EmptyState";
 import {
   Factory,
   Package,
@@ -25,8 +24,7 @@ import { ProductionTable } from "@/modules/drywall/components/production/Product
 export default function ProductionPage() {
   const { user, role } = useAuth();
 
-  // ESTADO DE STOCK (tiempo real, independiente del hook de logs)
-  const [stock, setStock] = useState<StockSummary[]>([]);
+  const { stock } = useProduction();
 
   // FILTROS DE PRODUCCIÓN
   const [searchTerm, setSearchTerm] = useState("");
@@ -50,20 +48,6 @@ export default function ProductionPage() {
   useEffect(() => {
     if (error) toast.error(error);
   }, [error]);
-
-  // 1. CARGA DE STOCK GLOBAL (En tiempo real)
-  useEffect(() => {
-    const qStock = query(collection(db, "inventory_stock"));
-    const unsubStock = onSnapshot(qStock, (snapshot) => {
-      setStock(
-        snapshot.docs.map((doc) => ({
-          sku: doc.id,
-          ...doc.data(),
-        })) as StockSummary[],
-      );
-    });
-    return () => unsubStock();
-  }, []);
 
   // ACCIONES
   const handleVoidLog = async (logId: string, pieces: number) => {
@@ -141,8 +125,12 @@ export default function ProductionPage() {
         </h2>
 
         {stock.length === 0 && !loading ? (
-          <div className="p-6 bg-white rounded-xl border border-dashed border-slate-300 text-center text-slate-500">
-            Aún no hay productos procesados.
+          <div className="bg-white rounded-xl border border-dashed border-slate-300">
+            <EmptyState
+              icon="Factory"
+              title="Sin stock registrado"
+              description="Aún no hay productos procesados en planta."
+            />
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">

@@ -2,6 +2,8 @@
 
 import { AlertTriangle, Clock, History, SlidersHorizontal } from "lucide-react";
 import type { InventoryItem } from "../../services/inventoryService";
+import { TableSkeleton } from "@/components/ui/TableSkeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 interface Props {
   items: InventoryItem[];
@@ -35,28 +37,16 @@ function formatDate(ts: { toDate?: () => Date } | null | undefined): string {
 }
 
 export default function InventoryTable({ items, loading, canEdit, onAdjust, onViewMovements }: Props) {
-  if (loading) {
-    return (
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="animate-pulse">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex gap-4 px-6 py-4 border-b border-gray-50">
-              <div className="h-4 bg-gray-100 rounded w-24" />
-              <div className="h-4 bg-gray-100 rounded flex-1" />
-              <div className="h-4 bg-gray-100 rounded w-16" />
-              <div className="h-4 bg-gray-100 rounded w-20" />
-              <div className="h-4 bg-gray-100 rounded w-24" />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <TableSkeleton rows={6} columns={7} />;
 
   if (items.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-12 text-center">
-        <p className="text-gray-400 font-medium text-sm">No hay productos que coincidan con los filtros.</p>
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+        <EmptyState
+          icon="Package"
+          title="Sin productos"
+          description="No hay productos que coincidan con los filtros."
+        />
       </div>
     );
   }

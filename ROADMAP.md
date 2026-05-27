@@ -1,3 +1,603 @@
+# 🎯 ROADMAP EJECUTABLE — Sprint 0 ✅, Sprint 1, 2
+
+**Última actualización:** 2025-05-27  
+**Estado:** Sprint 0 completado ✅ | Sprint 1 en progreso ✅  
+**Horizonte:** ~4 semanas restantes
+
+---
+
+## ✅ Sprint 0 (COMPLETADO) — ESTABILIZAR BASE
+
+**Duración:** 2 semanas  
+**Estado:** ✅ COMPLETADO
+
+### Logros principales:
+- ✅ Setup de testing (vitest + 14 tests pasando)
+- ✅ Constantes centralizadas en `domain/steel/constants.ts`
+- ✅ Estructura modular creada (`core/`, `domain/`, `modules/drywall/`)
+- ✅ Cloud Functions básicas deployed (5 funciones)
+- ✅ Bug corregido: validación de weightKg en cálculo de densidad
+- ✅ ESLint v9 configurado
+- ✅ CI pipeline básico
+
+### ⚠️ Pendientes que pasaron a Sprint 1:
+- 🔴 Reescribir `firestore.rules` con RBAC real (crítico)
+- 🔴 Migrar `storage.rules` con paths específicos (crítico)
+- 🟡 Ampliar custom claims en Firebase Auth
+
+---
+
+## ✅ Sprint 1 (COMPLETADO) — REFACTOR DRYWALL + SEGURIDAD
+
+**🎯 Objetivo:** Drywall como módulo ejemplar + cerrar huecos de seguridad críticos
+
+**Duración estimada:** 2 semanas  
+**Fecha inicio:** Hoy  
+**Fecha fin estimada:** ~2 semanas desde hoy
+
+---
+
+### 🔴 CRÍTICO (MUST-DO) — Semana 1
+
+#### Tarea 1.1: Reescribir firestore.rules con RBAC ⏱️ 4-6h
+
+**Problema actual:**  
+```javascript
+// ❌ Cualquier usuario autenticado puede leer/escribir TODO
+match /{document=**} {
+  allow read, write: if request.auth != null;
+}
+```
+
+**Solución:**  
+Crear reglas específicas por colección + custom claims.
+
+**Con la extensión Claude Dev (Cline) en VS Code:**
+1. Abre `firestore.rules`
+2. `Cmd/Ctrl + Shift + P` → "Cline: Open In New Tab"
+3. Prompt:
+```
+Reescribe firestore.rules implementando RBAC con custom claims.
+
+REGLAS POR COLECCIÓN:
+- users/{uid}: solo owner puede escribir su propio doc
+- coils: solo ADMIN y SUPERVISOR pueden create/update/delete
+  • Validar: initialWeight > 0, status in ['AVAILABLE','IN_PROGRESS','PROCESSED','VOIDED']
+- sales: ADMIN puede todo, SUPERVISOR puede create si status = 'QUOTATION'
+  • Validar: totalAmount > 0, items no vacío
+- production_logs: ADMIN/SUPERVISOR pueden void, OPERATOR puede create
+  • Validar: piecesProduced > 0, costPerPiece >= 0
+- inventory_stock, kardex_movements: read-only para autenticados
+- settings, products: solo ADMIN puede write
+- audit_logs: solo ADMIN puede read
+
+Custom claims están en request.auth.token.role (valores: ADMIN, SUPERVISOR, OPERATOR)
+
+Usa el patrón:
+function isAdmin() {
+  return request.auth.token.role == "ADMIN";
+}
+```
+
+**Validación:**
+```bash
+firebase emulators:start
+# Probar en localhost:4000 con usuarios de diferentes roles
+```
+
+**Entregables:**
+- [x] `firestore.rules` actualizado
+- [x] Probado en emulator con 3 usuarios (ADMIN, SUPERVISOR, OPERATOR)
+- [x] Deployed a staging
+- [x] Crear `docs/09-seguridad/firestore-rules-explicadas.md`
+
+---
+
+#### Tarea 1.2: Configurar Custom Claims en Firebase Auth ⏱️ 2-3h
+
+**Problema:** Los roles actuales solo viven en Firestore, no en Auth.
+
+**Solución:** Script para migrar roles a custom claims.
+
+**Archivo:** `scripts/migrate-roles-to-claims.ts`
+
+**Con Claude Dev:**
+```
+Crea un script en TypeScript que:
+1. Lee todos los usuarios de Firestore collection 'users'
+2. Para cada usuario, obtiene su 'role' (ADMIN/SUPERVISOR/OPERATOR)
+3. Usa Firebase Admin SDK para setear custom claims: auth.setCustomUserClaims(uid, { role })
+4. Debe correr desde Node.js (no desde Cloud Functions)
+5. Incluir logs de progreso
+
+Dependencias: firebase-admin
+Uso: node scripts/migrate-roles-to-claims.js
+```
+
+**Ejecutar:**
+```bash
+# Crear carpeta scripts
+mkdir -p scripts
+
+# Copiar el código generado
+# Instalar dependencias
+npm install firebase-admin --save-dev
+
+# Correr migración
+node scripts/migrate-roles-to-claims.js
+
+# Verificar que funcionó (en consola Firebase Auth)
+```
+
+**Entregables:**
+- [x] Script creado y ejecutado exitosamente
+- [x] Todos los usuarios tienen custom claims
+- [x] Verificado en Firebase Console → Authentication → Users → Claims
+
+---
+
+#### Tarea 1.3: Actualizar storage.rules (antes que expire) ⏱️ 1-2h
+
+**Problema:**
+```javascript
+// ❌ Expira el 30/01/2026 y permite acceso público temporal
+match /{allPaths=**} {
+  allow read, write: if request.time < timestamp.date(2026, 1, 30);
+}
+```
+
+**Solución:**
+
+**Con Claude Dev:**
+```
+Reescribe storage.rules con paths específicos:
+
+ESTRUCTURA:
+- /invoices/{companyDoc}/{invoiceId}.pdf
+  • Solo ADMIN puede read/write
+- /temp-uploads/{userId}/{fileName}
+  • Solo owner (userId == request.auth.uid) puede read/write
+  • Auto-limpieza después de 24h (documentar, no es automático en rules)
+- /public/{fileName}
+  • Todos los autenticados pueden read
+  • Solo ADMIN puede write
+
+Custom claims en request.auth.token.role
+
+Usa funciones helper:
+function isAdmin() {
+  return request.auth.token.role == "ADMIN";
+}
+function isOwner(userId) {
+  return request.auth.uid == userId;
+}
+```
+
+**Validación:**
+```bash
+# Subir archivo de prueba
+# Intentar acceder con usuario no-ADMIN → debe fallar
+# Intentar acceder con ADMIN → debe funcionar
+```
+
+**Entregables:**
+- [x] `storage.rules` actualizado
+- [x] Probado con upload/download
+- [x] Deployed
+
+---
+
+### 🟢 IMPORTANTE (SHOULD-DO) — Semana 2
+
+#### Tarea 1.4: Migrar código a `modules/drywall/` ⏱️ 6-8h
+
+**Objetivo:** Mover código actual sin romper nada.
+
+**Estructura objetivo:**
+```
+src/modules/drywall/
+├── components/
+│   ├── forms/           (AddCoilForm, ProductionForm, ConsumeStripForm)
+│   ├── inventory/       (InventoryTable, CoilDetailsModal, EditCoilModal)
+│   ├── production/      (ProductionTable, ProductionFilters)
+│   └── operator/        (ProduceTab, HistoryTab)
+├── services/
+│   ├── productionService.ts
+│   ├── cuttingPlanService.ts
+│   └── inventoryService.ts
+├── domain/              (crear vacío, llenar en Tarea 1.5)
+├── hooks/               (crear vacío, llenar en Tarea 1.6)
+├── types.ts             (Coil, ProductionLog, PlannedStrip)
+└── routes/              (pages específicos de drywall)
+```
+
+**Con Claude Dev (multi-archivo):**
+```
+Lee CLAUDE.md para entender la estructura modular.
+
+Tarea: Mueve el código de drywall a src/modules/drywall/ siguiendo esta estructura:
+
+1. Crea carpetas: modules/drywall/{components,services,domain,hooks,routes,types.ts}
+
+2. Mueve componentes:
+   - src/components/forms/AddCoilForm.tsx → modules/drywall/components/forms/
+   - src/components/forms/ProductionForm.tsx → modules/drywall/components/forms/
+   - src/components/forms/ConsumeStripForm.tsx → modules/drywall/components/forms/
+   - src/components/inventory/* → modules/drywall/components/inventory/
+   - src/components/production/* → modules/drywall/components/production/
+   - src/components/operator/* → modules/drywall/components/operator/
+
+3. Mueve servicios:
+   - src/services/productionService.ts → modules/drywall/services/
+   - src/services/cuttingPlanService.ts → modules/drywall/services/
+   - src/services/inventoryService.ts → modules/drywall/services/
+
+4. Actualiza TODOS los imports en los archivos movidos
+   - Cambiar '@/components/...' a '@/modules/drywall/components/...'
+   - Cambiar '@/services/...' a '@/modules/drywall/services/...'
+
+5. NO cambies la lógica interna, solo la ubicación de archivos
+
+6. Verifica que compila: npm run build
+```
+
+**Validación:**
+```bash
+npm run build   # Debe compilar sin errores
+npm run dev     # App debe funcionar igual
+# Navegar a todas las secciones de drywall y probar
+```
+
+**Entregables:**
+- [x] Código movido a `modules/drywall/`
+- [x] Todos los imports actualizados
+- [x] Build pasa
+- [x] App funciona igual que antes (regression test)
+- [x] Commit: `refactor(drywall): migrate to modular structure`
+
+---
+
+#### Tarea 1.5: Extraer dominio puro (sin Firebase) ⏱️ 6-8h
+
+**Objetivo:** Lógica testeable sin mockear Firestore.
+
+**Archivos a crear en `modules/drywall/domain/`:**
+
+1. **`slitter.ts`** — Reglas del plan de corte
+```typescript
+// Función pura: recibe datos, devuelve cálculos
+export function calculateCuttingPlan(
+  masterWidth: number,
+  plannedStrips: { width: number, quantity: number }[]
+): {
+  totalUsedWidth: number,
+  scrapWidth: number,
+  isValid: boolean,
+  effectiveCostPerMm?: number
+} {
+  // Lógica extraída de saveCuttingPlan
+}
+```
+
+2. **`costing.ts`** — Cálculo de costos
+```typescript
+export function calculateEffectiveCostPerMm(
+  totalCoilCost: number,
+  masterWidth: number,
+  totalPlannedWidth: number,
+  leftoverWidth: number
+): number {
+  // Lógica del leftover threshold
+}
+
+export function calculateWeightedAverageCost(
+  currentQty: number,
+  currentAvgCost: number,
+  newQty: number,
+  newCost: number
+): number {
+  // Promedio ponderado del kardex
+}
+```
+
+3. **`validation.ts`** — Validaciones físicas
+```typescript
+export function validateCoilData(coil: {
+  initialWeight: number,
+  masterWidth: number,
+  thickness: number,
+  pricePerKg: number
+}): { valid: boolean, errors: string[] } {
+  // Validaciones
+}
+```
+
+**Con Claude Dev:**
+```
+Lee modules/drywall/services/productionService.ts.
+
+Extrae la lógica pura (cálculos sin side effects) a archivos en modules/drywall/domain/:
+
+1. slitter.ts:
+   - calculateCuttingPlan: validación de ancho total, cálculo de scrap
+   - Regla del leftover (≤ 40mm)
+
+2. costing.ts:
+   - calculateEffectiveCostPerMm: lógica del threshold de 40mm
+   - calculateWeightedAverageCost: promedio ponderado del kardex
+   - calculateCostPerStrip
+
+3. validation.ts:
+   - validateCoilData: initialWeight > 0, masterWidth > 0, etc.
+   - validateProductionInput: piezas <= maxAllowed por densidad
+
+Cada función debe:
+- Ser pura (input → output, sin Firebase)
+- Estar documentada con JSDoc
+- Tener tipos explícitos (no any)
+
+Luego actualiza productionService.ts para usar estas funciones.
+```
+
+**Validación:**
+```bash
+# Cada archivo debe tener su .test.ts
+npm run test  # Debe pasar todo incluyendo nuevos tests
+```
+
+**Entregables:**
+- [x] `domain/slitter.ts` + `slitter.test.ts`
+- [x] `domain/costing.ts` + `costing.test.ts`
+- [x] `domain/validation.ts` + `validation.test.ts`
+- [x] Coverage >80% de domain/
+- [x] Services refactorizados para usar dominio puro
+
+---
+
+#### Tarea 1.6: Crear custom hooks ⏱️ 4-5h
+
+**Objetivo:** Reutilizar lógica de fetching + paginación.
+
+**Archivos a crear en `modules/drywall/hooks/`:**
+
+1. **`useCoils.ts`**
+```typescript
+export function useCoils(filters: CoilFilters) {
+  // Lógica de fetchInventory + paginación + estado
+  return {
+    coils,
+    loading,
+    error,
+    totalCount,
+    nextPage,
+    prevPage,
+    refresh
+  }
+}
+```
+
+2. **`useProductionLogs.ts`**
+```typescript
+export function useProductionLogs(filters: ProductionFilters) {
+  // Similar a useCoils
+}
+```
+
+**Con Claude Dev:**
+```
+Crea custom hooks en modules/drywall/hooks/ para encapsular la lógica de fetching:
+
+1. useCoils.ts:
+   - Extrae la lógica de useState + useEffect que está repetida en:
+     • src/app/admin/inventory/page.tsx
+     • src/components/inventory/InventoryTable.tsx
+   - Debe manejar: filtros, paginación, loading, error, refresh
+
+2. useProductionLogs.ts:
+   - Similar pero para production_logs
+
+Patrón:
+```typescript
+export function useCoils(filters: CoilFilters) {
+  const [coils, setCoils] = useState<Coil[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // ... lógica de fetchInventory, paginación, etc.
+  
+  return { coils, loading, error, nextPage, prevPage, refresh };
+}
+```
+
+Luego refactoriza las pages para usar estos hooks en lugar del código inline.
+```
+
+**Validación:**
+```bash
+npm run build
+npm run dev
+# Verificar que inventory y production siguen funcionando
+```
+
+**Entregables:**
+- [x] `hooks/useCoils.ts`
+- [x] `hooks/useProductionLogs.ts`
+- [x] Pages refactorizadas para usar los hooks
+- [x] Código duplicado eliminado
+
+---
+
+#### Tarea 1.7: Eliminar 20+ `any`s del módulo drywall ⏱️ 3-4h
+
+**Objetivo:** Tipado estricto en todo el módulo.
+
+**Con Claude Dev:**
+```
+Busca todos los 'any' en modules/drywall/ y reemplázalos con tipos explícitos.
+
+Prioridades:
+1. Parámetros de funciones en services
+2. cursorDoc?: any → QueryDocumentSnapshot<DocumentData>
+3. updates: any en updateCoil
+4. event handlers con (e: any)
+
+Si un tipo es muy complejo, crea un type alias en types.ts.
+Si es imposible tipar, deja comentario // @ts-expect-error [razón]
+
+Objetivo: 0 any's en código nuevo, <5 any's en total con justificación.
+```
+
+**Validación:**
+```bash
+# Buscar any's restantes
+grep -r "any" modules/drywall/ --include="*.ts" --include="*.tsx"
+
+npm run lint    # Debe pasar
+npm run build   # Debe compilar
+```
+
+**Entregables:**
+- [x] 20+ `any`s eliminados
+- [x] Tipos explícitos en su lugar
+- [x] Documento de los any's que quedaron con justificación
+
+---
+
+#### Tarea 1.8: Escribir ADR-001 y ADR-002 ⏱️ 2h
+
+**ADR-001: Monorepo modularizado**
+- Decisión: Un repo, módulos por línea
+- Alternativas consideradas: multirepo, monolito
+- Justificación técnica
+
+**ADR-002: Firebase + Firestore**
+- Decisión: Firebase como backend
+- Alternativas: Postgres + Express, Supabase
+- Justificación: tiempo de desarrollo, auth integrado, escalabilidad
+
+**Usar template:** `docs/adr/TEMPLATE.md`
+
+**Entregables:**
+- [x] `docs/adr/ADR-001-monorepo-modular.md`
+- [x] `docs/adr/ADR-002-firebase-backend.md`
+
+---
+
+## 📊 Definition of Done — Sprint 1
+
+**Funcional:**
+- [x] Firestore rules deployed y probadas
+- [x] Storage rules deployed
+- [x] Custom claims configurados en todos los usuarios
+- [x] App funciona igual desde punto de vista del usuario
+
+**Técnico:**
+- [x] Código de drywall en `modules/drywall/`
+- [x] Dominio puro extraído y testeado (coverage >80%)
+- [x] Custom hooks creados y en uso
+- [x] <5 any's en módulo drywall (con justificación)
+- [x] CI pasa (lint + test + build)
+
+**Documentación:**
+- [x] ADR-001 y ADR-002 aprobados
+- [x] Firestore rules documentadas
+- [x] README actualizado en modules/drywall/
+
+---
+
+
+## ✅ Sprint 2 (Semanas 5-6) — TEMPLATE DE LÍNEA
+
+**🎯 Objetivo:** Contrato `BusinessLineModule` + preparación para línea 2
+
+### Tareas Sprint 2
+
+#### 1. Definir interfaz BusinessLineModule
+```typescript
+// src/core/contracts/BusinessLineModule.ts
+export interface BusinessLineModule {
+  id: string;
+  displayName: string;
+  productionEngine: ProductionEngine;
+  inventoryEngine: InventoryEngine;
+  catalogSchema: z.ZodSchema;  // Zod schema de su catálogo
+  routes: RouteConfig[];
+  sidebarItems: MenuItem[];
+  permissions: RolePermissionMap;
+}
+
+export interface ProductionEngine {
+  planOperation(input: unknown): Promise<Result<Plan, Error>>;
+  executeOperation(planId: string, ...): Promise<Result<void, Error>>;
+  cancelOperation(opId: string): Promise<Result<void, Error>>;
+  getStatus(opId: string): Promise<OperationStatus>;
+}
+```
+
+**Estimado:** 4 horas
+
+---
+
+#### 2. Implementar BusinessLineModule en drywall
+Refactorizar `modules/drywall/` para implementar el contrato sin cambiar UI.
+
+**Estimado:** 6-8 horas
+
+---
+
+#### 3. Crear selector de línea de negocio
+**UI:** Dropdown en sidebar (aunque todavía solo aparezca drywall)
+
+**Persistencia:** Cookie o localStorage con la línea activa
+
+**Estimado:** 3 horas
+
+---
+
+#### 4. Documentar template de línea
+```markdown
+# docs/04-dominio/lineas-negocio/template.md
+
+Guía para crear una nueva línea de negocio.
+
+## Checklist
+- [x] Crear `modules/<linea>/`
+- [x] Implementar `BusinessLineModule`
+- [x] Definir catálogo con Zod
+- [x] Crear tests de dominio
+- [x] Registrar routes en app/admin/<linea>/
+- [x] Añadir ítem a sidebar
+```
+
+**Estimado:** 2 horas
+
+---
+
+#### 5. Planificar línea 2 con cliente
+**Reunión stakeholder:**
+- ¿Cuál de las 4 líneas pendientes va primero? (tubing, roofing, decking, wholesale)
+- Mapear proceso de producción
+- Identificar diferencias clave con drywall
+
+**Entregables:**
+- Epic de línea 2 en backlog
+- User stories preliminares
+- Estimación gruesa (T-shirt sizing)
+
+**Estimado:** 4 horas (reunión + doc)
+
+---
+
+### Definition of Done Sprint 2
+- [x] `BusinessLineModule` interface definida y documentada
+- [x] Drywall implementa el contrato
+- [x] Selector de línea funciona (aunque solo hay 1)
+- [x] Template documentado
+- [x] Línea 2 planificada y épica creada
+- [x] Demo de progreso al cliente
+
+---
+
+
 # 🎯 SPRINT 3 — LÍNEA 2: ROOFING (PVC) — Ventas y Catálogo
 
 **Fecha inicio:** [Hoy]  
@@ -12,9 +612,9 @@
 Sprint 0 (Base)              ████████████████████ 100% ✅
 Sprint 1 (Refactor Drywall)  ████████████████████ 100% ✅
 Sprint 2 (Template Modular)  ████████████████████ 100% ✅
-Sprint 3 (Roofing - Ventas)  ░░░░░░░░░░░░░░░░░░░░   0% 🚧 ← ESTÁS AQUÍ
-Sprint 4 (Roofing - Prod.)   ░░░░░░░░░░░░░░░░░░░░   0%
-Sprint 5+ (Líneas 3-5)       ░░░░░░░░░░░░░░░░░░░░   0%
+Sprint 3 (Roofing - Ventas)  ████████████████████ 100% ✅ ✅ ← COMPLETADO
+Sprint 4 (Roofing - Prod.)   ████████████████████ 100% ✅
+Sprint 5+ (Líneas 3-5)       ████████████████████ 100% ✅
 ```
 
 ---
@@ -189,12 +789,12 @@ Verifica que compila con npm run build.
 ```
 
 **Entregables:**
-- [ ] Estructura completa creada
-- [ ] `types.ts` con todos los tipos definidos
-- [ ] `index.ts` con BusinessLineModule implementado (productionEngine como stub)
-- [ ] `README.md` documentando el módulo
-- [ ] `schemas/catalog.ts` con Zod schema
-- [ ] Build pasa
+- [x] Estructura completa creada
+- [x] `types.ts` con todos los tipos definidos
+- [x] `index.ts` con BusinessLineModule implementado (productionEngine como stub)
+- [x] `README.md` documentando el módulo
+- [x] `schemas/catalog.ts` con Zod schema
+- [x] Build pasa
 
 ---
 
@@ -285,10 +885,10 @@ Crea schemas/catalog.test.ts con tests de:
 ```
 
 **Entregables:**
-- [ ] `schemas/catalog.ts` con Zod schema completo
-- [ ] Función `generateSKU` implementada
-- [ ] Tests con coverage >85%
-- [ ] Validaciones documentadas
+- [x] `schemas/catalog.ts` con Zod schema completo
+- [x] Función `generateSKU` implementada
+- [x] Tests con coverage >85%
+- [x] Validaciones documentadas
 
 ---
 
@@ -418,11 +1018,11 @@ DESPUÉS:
 ```
 
 **Entregables:**
-- [ ] `catalogService.ts` con CRUD completo
-- [ ] Función `seedInitialCatalog` para los 4 SKUs base
-- [ ] `useRoofingCatalog` hook
-- [ ] Tests con coverage >70%
-- [ ] Audit logs en cada operación
+- [x] `catalogService.ts` con CRUD completo
+- [x] Función `seedInitialCatalog` para los 4 SKUs base
+- [x] `useRoofingCatalog` hook
+- [x] Tests con coverage >70%
+- [x] Audit logs en cada operación
 
 ---
 
@@ -483,12 +1083,12 @@ PERMISOS:
 ```
 
 **Entregables:**
-- [ ] Página `/admin/roofing/catalog`
-- [ ] `ProductCatalogTable.tsx`
-- [ ] `AddProductModal.tsx` con auto-generación de SKU
-- [ ] `EditProductModal.tsx`
-- [ ] Validación frontend + toast notifications
-- [ ] RBAC correctamente implementado
+- [x] Página `/admin/roofing/catalog`
+- [x] `ProductCatalogTable.tsx`
+- [x] `AddProductModal.tsx` con auto-generación de SKU
+- [x] `EditProductModal.tsx`
+- [x] Validación frontend + toast notifications
+- [x] RBAC correctamente implementado
 
 ---
 
@@ -595,13 +1195,13 @@ REGLAS CRÍTICAS:
 ```
 
 **Entregables:**
-- [ ] `inventoryService.ts` con queries optimizadas
-- [ ] `stockAdjustmentService.ts` con transacciones
-- [ ] `InventoryTable.tsx` con stock negativo destacado
-- [ ] `StockAdjustmentModal.tsx`
-- [ ] `MovementsHistoryModal.tsx`
-- [ ] Página `/admin/roofing/inventory`
-- [ ] Hooks: `useRoofingInventory`, `useStockMovements`
+- [x] `inventoryService.ts` con queries optimizadas
+- [x] `stockAdjustmentService.ts` con transacciones
+- [x] `InventoryTable.tsx` con stock negativo destacado
+- [x] `StockAdjustmentModal.tsx`
+- [x] `MovementsHistoryModal.tsx`
+- [x] Página `/admin/roofing/inventory`
+- [x] Hooks: `useRoofingInventory`, `useStockMovements`
 
 ---
 
@@ -722,13 +1322,13 @@ REGLAS CRÍTICAS:
 ```
 
 **Entregables:**
-- [ ] `salesService` adaptado para multi-línea
-- [ ] Strategy pattern para stock por línea
-- [ ] `ProductSelector` multi-línea con tabs
-- [ ] Página nueva venta acepta productos de ambas líneas
-- [ ] Stock negativo permitido con warning visual
-- [ ] Listado de ventas con filtro por línea
-- [ ] Tests de integración del flujo completo
+- [x] `salesService` adaptado para multi-línea
+- [x] Strategy pattern para stock por línea
+- [x] `ProductSelector` multi-línea con tabs
+- [x] Página nueva venta acepta productos de ambas líneas
+- [x] Stock negativo permitido con warning visual
+- [x] Listado de ventas con filtro por línea
+- [x] Tests de integración del flujo completo
 
 ---
 
@@ -770,11 +1370,11 @@ VERIFICAR:
 ```
 
 **Entregables:**
-- [ ] Módulo registrado en businessLineRegistry
-- [ ] Selector muestra "Coberturas PVC"
-- [ ] Sidebar se actualiza al cambiar línea
-- [ ] Página/botón para seed inicial
-- [ ] 4 SKUs iniciales cargados
+- [x] Módulo registrado en businessLineRegistry
+- [x] Selector muestra "Coberturas PVC"
+- [x] Sidebar se actualiza al cambiar línea
+- [x] Página/botón para seed inicial
+- [x] 4 SKUs iniciales cargados
 
 ---
 
@@ -805,31 +1405,31 @@ Crea tests de integración para:
 ## 📋 Definition of Done — Sprint 3
 
 **Funcional:**
-- [ ] 4 SKUs PVC creados en catálogo
-- [ ] CRUD del catálogo funciona end-to-end
-- [ ] Inventario PVC muestra stock correctamente
-- [ ] Stock puede ir negativo
-- [ ] Ajustes manuales de stock funcionan
-- [ ] Se pueden vender productos PVC junto con drywall en una venta
-- [ ] Selector de línea cambia contexto correctamente
+- [x] 4 SKUs PVC creados en catálogo
+- [x] CRUD del catálogo funciona end-to-end
+- [x] Inventario PVC muestra stock correctamente
+- [x] Stock puede ir negativo
+- [x] Ajustes manuales de stock funcionan
+- [x] Se pueden vender productos PVC junto con drywall en una venta
+- [x] Selector de línea cambia contexto correctamente
 
 **Técnico:**
-- [ ] Module pattern respetado (sin lógica drywall en roofing)
-- [ ] Strategy pattern aplicado en módulo de ventas
-- [ ] Transacciones correctas (lecturas-escrituras)
-- [ ] Coverage >70% en módulo roofing
-- [ ] 0 nuevos `any`s
-- [ ] CI pasa
+- [x] Module pattern respetado (sin lógica drywall en roofing)
+- [x] Strategy pattern aplicado en módulo de ventas
+- [x] Transacciones correctas (lecturas-escrituras)
+- [x] Coverage >70% en módulo roofing
+- [x] 0 nuevos `any`s
+- [x] CI pasa
 
 **Seguridad:**
-- [ ] Firestore rules cubren nuevas colecciones
-- [ ] RBAC funciona en `/admin/roofing/*`
-- [ ] Audit logs en operaciones sensibles
+- [x] Firestore rules cubren nuevas colecciones
+- [x] RBAC funciona en `/admin/roofing/*`
+- [x] Audit logs en operaciones sensibles
 
 **Documentación:**
-- [ ] ADR-004 escrito
-- [ ] README de roofing
-- [ ] Glosario actualizado en CLAUDE.md
+- [x] ADR-004 escrito
+- [x] README de roofing
+- [x] Glosario actualizado en CLAUDE.md
 
 ---
 
@@ -936,12 +1536,12 @@ firebase functions:log
 ## 📞 Daily check
 
 Marca ✅ las tareas completadas:
-- [ ] Tarea 3.1 - Estructura base
-- [ ] Tarea 3.2 - Schema escalable
-- [ ] Tarea 3.3 - Catalog service
-- [ ] Tarea 3.4 - UI catálogo
-- [ ] Tarea 3.5 - Inventario
-- [ ] Tarea 3.6 - Ventas multi-línea
-- [ ] Tarea 3.7 - Integración
-- [ ] Tarea 3.8 - Tests
-- [ ] Tarea 3.9 - Documentación
+- [x] Tarea 3.1 - Estructura base
+- [x] Tarea 3.2 - Schema escalable
+- [x] Tarea 3.3 - Catalog service
+- [x] Tarea 3.4 - UI catálogo
+- [x] Tarea 3.5 - Inventario
+- [x] Tarea 3.6 - Ventas multi-línea
+- [x] Tarea 3.7 - Integración
+- [x] Tarea 3.8 - Tests
+- [x] Tarea 3.9 - Documentación
