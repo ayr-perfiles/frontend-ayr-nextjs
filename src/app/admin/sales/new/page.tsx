@@ -152,7 +152,7 @@ export default function NewSalePage() {
       }
     };
     loadDuplicate();
-  }, [duplicateId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [duplicateId]);  
 
   // ── Lógica de clientes ───────────────────────────────────────────────────
   const fetchClientData = async (docNum: string) => {

@@ -37,7 +37,7 @@ function buildAudit(action: RoofingAuditAction, entityId: string, details: strin
 
 /** Strip internal Firestore fields and attach sku from document id. */
 function toProduct(id: string, data: Record<string, unknown>): RoofingProduct {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const { _combinationKey: _ck, ...rest } = data;
   return { sku: id, ...rest } as RoofingProduct;
 }
@@ -171,7 +171,7 @@ export async function createProduct(input: RoofingProductInput): Promise<Roofing
     tx.set(productRef, payload);
     tx.set(auditRef, buildAudit('CREATE_ROOFING_PRODUCT', sku, `Producto creado: ${displayName}`));
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     const { _combinationKey: _ck, createdAt: _ca, updatedAt: _ua, ...productFields } = payload;
     return { sku, ...productFields, createdAt: null, updatedAt: null } as RoofingProduct;
   });

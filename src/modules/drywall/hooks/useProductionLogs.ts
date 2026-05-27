@@ -117,7 +117,7 @@ export function useProductionLogs(
         setLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [pageSize, skuFilter, debouncedSearch, startDate, endDate],
   );
 

@@ -1,28 +1,10 @@
-// import { defineConfig, globalIgnores } from "eslint/config";
-// import nextVitals from "eslint-config-next/core-web-vitals";
-// import nextTs from "eslint-config-next/typescript";
-
-// const eslintConfig = defineConfig([
-//   ...nextVitals,
-//   ...nextTs,
-//   // Override default ignores of eslint-config-next.
-//   globalIgnores([
-//     // Default ignores of eslint-config-next:
-//     ".next/**",
-//     "out/**",
-//     "build/**",
-//     "next-env.d.ts",
-//   ]),
-// ]);
-
-// export default eslintConfig;
-
 import js from "@eslint/js";
 import typescript from "@typescript-eslint/eslint-plugin";
 import typescriptParser from "@typescript-eslint/parser";
 import reactPlugin from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import next from "@next/eslint-plugin-next";
+import globals from "globals";
 
 export default [
   js.configs.recommended,
@@ -39,12 +21,17 @@ export default [
       parserOptions: {
         ecmaVersion: "latest",
         sourceType: "module",
-        ecmaFeatures: {
-          jsx: true,
-        },
+        ecmaFeatures: { jsx: true },
+      },
+      globals: {
+        ...globals.browser, // ← fix 339 no-undef (window, document, etc.)
+        ...globals.node, // ← process, __dirname, etc.
+        ...globals.es2021, // ← Promise, Map, Set, etc.
       },
     },
     rules: {
+      // ── TypeScript ──────────────────────────────────────
+      "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": [
         "warn",
         {
@@ -52,9 +39,16 @@ export default [
           varsIgnorePattern: "^_",
         },
       ],
-      "@typescript-eslint/no-explicit-any": "warn",
+
+      // ── Desactivar reglas JS base (TypeScript las reemplaza) ──
+      "no-undef": "off", // ← TypeScript maneja esto mejor
+      "no-unused-vars": "off", // ← usar solo la versión TS arriba
+
+      // ── React ────────────────────────────────────────────
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
+
+      // ── General ──────────────────────────────────────────
       "no-console": ["warn", { allow: ["warn", "error"] }],
     },
   },
@@ -67,7 +61,9 @@ export default [
       "dist/",
       "coverage/",
       ".vercel/",
-      "**/*.config.js",
+      "next.config.ts",
+      "vitest.config.ts",
+      "postcss.config.js",
     ],
   },
 ];

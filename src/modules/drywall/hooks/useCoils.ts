@@ -114,7 +114,7 @@ export function useCoils(filters: CoilFilters): UseCoilsResult {
         setLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [pageSize, statusFilter, debouncedSearch, startDate, endDate],
   );
 
