@@ -1,0 +1,205 @@
+import { db } from '@/lib/firebase/clientApp';
+import {
+  collection,
+  doc,
+  DocumentReference,
+  DocumentSnapshot,
+  serverTimestamp,
+  Transaction,
+} from 'firebase/firestore';
+import type { BusinessLine } from '@/types';
+
+export type { BusinessLine };
+
+export interface StockWriteParams {
+  sku: string;
+  quantity: number;
+  newBalance: number;
+  saleId: string;
+  customerName: string;
+  sellerId: string;
+  /** Costo promedio unitario — usado por roofing para registrar movimiento */
+  avgCost?: number;
+}
+
+export interface StockStrategy {
+  stockCollection: string;
+  movementsCollection: string;
+  getStockRef(sku: string): DocumentReference;
+  extractQuantity(snap: DocumentSnapshot): number;
+  extractAvgCost(snap: DocumentSnapshot): number;
+  /** Descuenta stock al procesar o aprobar una venta */
+  writeSaleDecrement(params: StockWriteParams, snap: DocumentSnapshot | null, tx: Transaction): void;
+  /** Devuelve stock al anular una venta */
+  writeSaleReversal(params: StockWriteParams, snap: DocumentSnapshot | null, tx: Transaction): void;
+}
+
+// ─── Drywall (perfiles) ───────────────────────────────────────────────────────
+// colección: inventory_stock  campo: totalQuantity
+// movimientos: kardex_movements
+
+export const drywallStockStrategy: StockStrategy = {
+  stockCollection: 'inventory_stock',
+  movementsCollection: 'kardex_movements',
+
+  getStockRef(sku) {
+    return doc(db, 'inventory_stock', sku);
+  },
+
+  extractQuantity(snap) {
+    if (!snap.exists()) return 0;
+    return (snap.data().totalQuantity as number) ?? 0;
+  },
+
+  extractAvgCost(snap) {
+    if (!snap.exists()) return 0;
+    return (snap.data().lastCostPerPiece as number) ?? 0;
+  },
+
+  writeSaleDecrement({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx) {
+    const stockRef = doc(db, 'inventory_stock', sku);
+    const update = { totalQuantity: newBalance, lastUpdate: serverTimestamp() };
+
+    if (snap?.exists()) {
+      tx.update(stockRef, update);
+    } else {
+      tx.set(stockRef, { sku, totalQuantity: newBalance, totalWeight: 0, lastUpdate: serverTimestamp() });
+    }
+
+    tx.set(doc(collection(db, 'kardex_movements')), {
+      sku,
+      date: serverTimestamp(),
+      type: 'OUT',
+      quantity,
+      balance: newBalance,
+      reference: saleId,
+      description: `Venta a ${customerName}`,
+      user: sellerId,
+    });
+  },
+
+  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx) {
+    const stockRef = doc(db, 'inventory_stock', sku);
+
+    if (snap?.exists()) {
+      tx.update(stockRef, { totalQuantity: newBalance, lastUpdate: serverTimestamp() });
+    } else {
+      tx.set(stockRef, { sku, totalQuantity: newBalance, totalWeight: 0, lastUpdate: serverTimestamp() });
+    }
+
+    tx.set(doc(collection(db, 'kardex_movements')), {
+      sku,
+      date: serverTimestamp(),
+      type: 'IN',
+      quantity,
+      balance: newBalance,
+      reference: saleId,
+      description: `Anulación de Venta: ${customerName}`,
+      user: sellerId,
+    });
+  },
+};
+
+// ─── Roofing (PVC) ────────────────────────────────────────────────────────────
+// colección: roofing_stock  campo: quantity
+// movimientos: roofing_stock_movements
+
+export const roofingStockStrategy: StockStrategy = {
+  stockCollection: 'roofing_stock',
+  movementsCollection: 'roofing_stock_movements',
+
+  getStockRef(sku) {
+    return doc(db, 'roofing_stock', sku);
+  },
+
+  extractQuantity(snap) {
+    if (!snap.exists()) return 0;
+    return (snap.data().quantity as number) ?? 0;
+  },
+
+  extractAvgCost(snap) {
+    if (!snap.exists()) return 0;
+    return (snap.data().avgCost as number) ?? 0;
+  },
+
+  writeSaleDecrement({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx) {
+    const stockRef = doc(db, 'roofing_stock', sku);
+    const currentAvgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
+    const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
+
+    if (snap?.exists()) {
+      tx.update(stockRef, {
+        quantity: newBalance,
+        totalValue: Number((newBalance * currentAvgCost).toFixed(2)),
+        lastUpdate: serverTimestamp(),
+      });
+    } else {
+      tx.set(stockRef, {
+        sku,
+        productName,
+        quantity: newBalance,
+        avgCost: 0,
+        totalValue: 0,
+        lastUpdate: serverTimestamp(),
+      });
+    }
+
+    tx.set(doc(collection(db, 'roofing_stock_movements')), {
+      sku,
+      type: 'SALIDA',
+      quantity,
+      costPerUnit: currentAvgCost,
+      reason: `Venta ${saleId} — ${customerName}`,
+      businessLine: 'roofing',
+      createdBy: sellerId,
+      createdAt: serverTimestamp(),
+    });
+  },
+
+  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx) {
+    const stockRef = doc(db, 'roofing_stock', sku);
+    const avgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
+    const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
+
+    if (snap?.exists()) {
+      tx.update(stockRef, {
+        quantity: newBalance,
+        totalValue: Number((newBalance * avgCost).toFixed(2)),
+        lastUpdate: serverTimestamp(),
+      });
+    } else {
+      tx.set(stockRef, {
+        sku,
+        productName,
+        quantity: newBalance,
+        avgCost: 0,
+        totalValue: 0,
+        lastUpdate: serverTimestamp(),
+      });
+    }
+
+    tx.set(doc(collection(db, 'roofing_stock_movements')), {
+      sku,
+      type: 'ENTRADA',
+      quantity,
+      costPerUnit: avgCost,
+      reason: `Anulación Venta ${saleId} — ${customerName}`,
+      businessLine: 'roofing',
+      createdBy: sellerId,
+      createdAt: serverTimestamp(),
+    });
+  },
+};
+
+// ─── Registry ─────────────────────────────────────────────────────────────────
+
+export function getStockStrategy(businessLine: BusinessLine | string): StockStrategy {
+  switch (businessLine) {
+    case 'drywall':
+      return drywallStockStrategy;
+    case 'roofing':
+      return roofingStockStrategy;
+    default:
+      throw new Error(`Línea de negocio no soportada: ${businessLine}`);
+  }
+}

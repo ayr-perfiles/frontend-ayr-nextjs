@@ -6,8 +6,6 @@ import { db } from "@/lib/firebase/clientApp";
 import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
 import {
   collection,
-  onSnapshot,
-  query,
   doc,
   getDoc,
   getDocs,
@@ -15,15 +13,14 @@ import {
   where,
   arrayUnion,
   serverTimestamp,
+  query,
 } from "firebase/firestore";
-import { getCatalog, ProductConfig } from "@/services/catalogService";
 import { getSystemSettings, SystemSettings } from "@/services/settingsService";
-import { StockSummary } from "@/types";
-import { processSale, createQuotation } from "@/services/salesService";
+import { processSale, createQuotation, type CartItem } from "@/services/salesService";
 import { useAuth } from "@/context/AuthContext";
+import ProductSelector from "@/core/sales/components/ProductSelector";
 import {
   ShoppingCart,
-  Plus,
   Trash2,
   FileText,
   CheckCircle2,
@@ -35,23 +32,11 @@ import {
   Loader2,
   Scale,
   Percent,
-  Package,
-  Factory,
+  Plus,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
 const IGV_RATE = 0.18;
-
-// 🚀 NUEVO: Soporte para flag isCoil
-interface CartItem {
-  sku: string;
-  quantity: number;
-  unitPrice: number;
-  unitValue: number;
-  baseCost: number;
-  unitWeight: number;
-  isCoil?: boolean;
-}
 
 interface Contact {
   id?: string;
@@ -60,6 +45,11 @@ interface Contact {
   email: string;
 }
 
+const LINE_BADGES: Record<string, { label: string; cls: string }> = {
+  drywall: { label: "DRY", cls: "bg-blue-100 text-blue-700" },
+  roofing: { label: "PVC", cls: "bg-emerald-100 text-emerald-700" },
+};
+
 export default function NewSalePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -67,7 +57,6 @@ export default function NewSalePage() {
 
   const { user } = useAuth();
 
-  const [catalog, setCatalog] = useState<ProductConfig[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
 
   const [documentNumber, setDocumentNumber] = useState("");
@@ -78,201 +67,33 @@ export default function NewSalePage() {
   const [globalContacts, setGlobalContacts] = useState<Contact[]>([]);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [suggestedCustomers, setSuggestedCustomers] = useState<any[]>([]);
+  const [suggestedCustomers, setSuggestedCustomers] = useState<Record<string, unknown>[]>([]);
   const [isSearchingClient, setIsSearchingClient] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchInputRef = useRef<HTMLDivElement>(null);
 
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [availableStock, setAvailableStock] = useState<StockSummary[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // 🚀 NUEVO: Estado Híbrido
-  const [productMode, setProductMode] = useState<"PROFILES" | "COILS">(
-    "PROFILES",
-  );
-  const [availableCoils, setAvailableCoils] = useState<any[]>([]);
-
-  const [selectedSku, setSelectedSku] = useState("");
-  const [addQuantity, setAddQuantity] = useState<number | "">("");
-  const [addPrice, setAddPrice] = useState<number | "">("");
-  const [baseCost, setBaseCost] = useState<number>(0);
 
   // 1. CARGA INICIAL
   useEffect(() => {
-    const fetchGlobals = async () => {
-      const dataSettings = await getSystemSettings();
+    const load = async () => {
+      const [dataSettings, contactsSnap] = await Promise.all([
+        getSystemSettings(),
+        getDocs(collection(db, "contacts")),
+      ]);
       setSettings(dataSettings);
-
-      const dataCatalog = await getCatalog();
-      const activeProducts = dataCatalog.filter((p) => p.isActive);
-      setCatalog(activeProducts);
-
-      if (activeProducts.length > 0 && productMode === "PROFILES") {
-        setSelectedSku(activeProducts[0].sku);
-      }
-
-      const contactsSnap = await getDocs(collection(db, "contacts"));
       setGlobalContacts(
         contactsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Contact),
       );
     };
-    fetchGlobals();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // 2. ESCUCHAS EN TIEMPO REAL (STOCK Y BOBINAS DISPONIBLES)
-  useEffect(() => {
-    const qStock = query(collection(db, "inventory_stock"));
-    const unsubStock = onSnapshot(qStock, (snapshot) => {
-      setAvailableStock(
-        snapshot.docs.map((doc) => ({
-          sku: doc.id,
-          ...doc.data(),
-        })) as StockSummary[],
-      );
-    });
-
-    const qCoils = query(
-      collection(db, "coils"),
-      where("status", "==", "AVAILABLE"),
-    );
-    const unsubCoils = onSnapshot(qCoils, (snapshot) => {
-      setAvailableCoils(
-        snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
-      );
-    });
-
-    return () => {
-      unsubStock();
-      unsubCoils();
-    };
+    load();
   }, []);
 
-  // 3. EFECTO DE CAMBIO DE MODO
-  useEffect(() => {
-    if (productMode === "PROFILES") {
-      setSelectedSku(catalog[0]?.sku || "");
-      setAddQuantity("");
-    } else {
-      setSelectedSku(availableCoils[0]?.id || "");
-    }
-    setAddPrice("");
-    setBaseCost(0);
-  }, [productMode, catalog, availableCoils]);
-
-  // 4. EFECTO DE CÁLCULO DE COSTO Y PRECIO SUGERIDO
-  useEffect(() => {
-    if (!selectedSku) return;
-
-    if (productMode === "PROFILES") {
-      const stockItem = availableStock.find((s) => s.sku === selectedSku);
-      if (stockItem && stockItem.lastCostPerPiece) {
-        const cost = Number(stockItem.lastCostPerPiece.toFixed(2));
-        setBaseCost(cost);
-
-        const targetMargin = (settings?.minMarginPercent || 20) / 100;
-        const suggestedValueWithoutIGV = cost / (1 - targetMargin);
-        const suggestedPriceWithIGV = suggestedValueWithoutIGV * (1 + IGV_RATE);
-
-        setAddPrice(Number(suggestedPriceWithIGV.toFixed(2)));
-      } else {
-        setBaseCost(0);
-        setAddPrice("");
-      }
-    } else {
-      const coil = availableCoils.find((c) => c.id === selectedSku);
-      if (coil && coil.pricePerKg) {
-        const cost = Number(coil.pricePerKg.toFixed(2));
-        setBaseCost(cost);
-
-        // Auto-rellenar cantidad con el peso total de la bobina
-        setAddQuantity(coil.currentWeight || coil.initialWeight || 0);
-
-        const targetMargin = (settings?.minMarginPercent || 20) / 100;
-        const suggestedValueWithoutIGV = cost / (1 - targetMargin);
-        const suggestedPriceWithIGV = suggestedValueWithoutIGV * (1 + IGV_RATE);
-
-        setAddPrice(Number(suggestedPriceWithIGV.toFixed(2)));
-      } else {
-        setBaseCost(0);
-        setAddPrice("");
-        setAddQuantity("");
-      }
-    }
-  }, [selectedSku, availableStock, availableCoils, productMode, settings]);
-
-  // ... (TODA LA LÓGICA DE CLIENTES SE MANTIENE INTACTA) ...
-  const fetchClientData = async (docNum: string) => {
-    const clientRef = doc(db, "customers", docNum);
-    const clientSnap = await getDoc(clientRef);
-
-    if (clientSnap.exists()) {
-      const data = clientSnap.data();
-      setDocumentNumber(docNum);
-      setCustomerName(data.name || "");
-      setCustomerAddress(data.address || "");
-
-      const contactsQuery = query(
-        collection(db, "contacts"),
-        where("associatedCompanyIds", "array-contains", docNum),
-      );
-      const contactsSnap = await getDocs(contactsQuery);
-
-      const fetchedContacts = contactsSnap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      })) as Contact[];
-
-      setContacts(fetchedContacts);
-      if (fetchedContacts.length > 0 && fetchedContacts[0].id) {
-        setSelectedContactId(fetchedContacts[0].id);
-      }
-      return true;
-    }
-    return false;
-  };
-
-  useEffect(() => {
-    const loadDuplicateSale = async () => {
-      if (!duplicateId || catalog.length === 0) return;
-      try {
-        const saleRef = doc(db, "sales", duplicateId);
-        const saleSnap = await getDoc(saleRef);
-        if (saleSnap.exists()) {
-          const data = saleSnap.data();
-          const docNum = data.documentNumber || "";
-          setDocumentNumber(docNum);
-          setCustomerName(data.customerName || "");
-          setSearchTerm(docNum);
-          if (docNum) await fetchClientData(docNum);
-
-          const oldItems = data.items || [];
-          const migratedItems = oldItems.map((item: any) => {
-            const productInfo = catalog.find((p) => p.sku === item.sku);
-            const unitPrice = item.unitPrice || 0;
-            const unitValue = item.unitValue || unitPrice / (1 + IGV_RATE);
-
-            return {
-              ...item,
-              unitValue,
-              unitWeight: item.unitWeight || productInfo?.standardWeight || 0,
-            };
-          });
-          setCart(migratedItems);
-        }
-      } catch (error) {
-        console.error("Error al duplicar venta:", error);
-      }
-    };
-    loadDuplicateSale();
-  }, [duplicateId, catalog]);
-
+  // 2. CLIC FUERA DEL BUSCADOR DE CLIENTES
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        searchInputRef.current &&
-        !searchInputRef.current.contains(event.target as Node)
-      ) {
+      if (searchInputRef.current && !searchInputRef.current.contains(event.target as Node)) {
         setShowSuggestions(false);
       }
     };
@@ -280,35 +101,81 @@ export default function NewSalePage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // 3. BÚSQUEDA PREDICTIVA DE CLIENTES
   useEffect(() => {
     if (searchTerm.trim().length < 2) {
       setSuggestedCustomers([]);
       setShowSuggestions(false);
       return;
     }
-    const performPredictiveSearch = async () => {
+    const t = setTimeout(async () => {
       setIsSearchingClient(true);
       try {
         const { hits } = await algoliaClient.searchSingleIndex({
           indexName: ALGOLIA_INDICES.CUSTOMERS,
           searchParams: { query: searchTerm, hitsPerPage: 5 },
         });
-        setSuggestedCustomers(hits);
+        setSuggestedCustomers(hits as Record<string, unknown>[]);
         setShowSuggestions(hits.length > 0);
-      } catch (error) {
-        console.error("Error en Algolia:", error);
+      } catch (e) {
+        console.error(e);
       } finally {
         setIsSearchingClient(false);
       }
-    };
-    const timeoutId = setTimeout(() => performPredictiveSearch(), 300);
-    return () => clearTimeout(timeoutId);
+    }, 300);
+    return () => clearTimeout(t);
   }, [searchTerm]);
 
-  const handleSelectSuggestedCustomer = async (hit: any) => {
-    setSearchTerm(hit.documentNumber || hit.objectID);
+  // 4. CARGAR VENTA DUPLICADA
+  useEffect(() => {
+    const loadDuplicate = async () => {
+      if (!duplicateId) return;
+      try {
+        const snap = await getDoc(doc(db, "sales", duplicateId));
+        if (snap.exists()) {
+          const data = snap.data();
+          const docNum = data.documentNumber || "";
+          setDocumentNumber(docNum);
+          setCustomerName(data.customerName || "");
+          setSearchTerm(docNum);
+          if (docNum) await fetchClientData(docNum);
+          setCart(
+            (data.items || []).map((item: CartItem) => ({
+              ...item,
+              businessLine: item.businessLine ?? "drywall",
+              unitValue: item.unitValue || item.unitPrice / (1 + IGV_RATE),
+            })),
+          );
+        }
+      } catch (e) {
+        console.error("Error al duplicar venta:", e);
+      }
+    };
+    loadDuplicate();
+  }, [duplicateId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Lógica de clientes ───────────────────────────────────────────────────
+  const fetchClientData = async (docNum: string) => {
+    const snap = await getDoc(doc(db, "customers", docNum));
+    if (snap.exists()) {
+      const data = snap.data();
+      setDocumentNumber(docNum);
+      setCustomerName(data.name || "");
+      setCustomerAddress(data.address || "");
+
+      const cSnap = await getDocs(query(collection(db, "contacts"), where("associatedCompanyIds", "array-contains", docNum)));
+      const fetched = cSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Contact);
+      setContacts(fetched);
+      if (fetched.length > 0 && fetched[0].id) setSelectedContactId(fetched[0].id);
+      return true;
+    }
+    return false;
+  };
+
+  const handleSelectSuggestedCustomer = async (hit: Record<string, unknown>) => {
+    setSearchTerm((hit.documentNumber ?? hit.objectID) as string);
     setShowSuggestions(false);
-    await fetchClientData(hit.documentNumber || hit.objectID);
+    await fetchClientData((hit.documentNumber ?? hit.objectID) as string);
   };
 
   const handleDeepSearchClient = async () => {
@@ -323,23 +190,20 @@ export default function NewSalePage() {
       if (!existsLocally) {
         const res = await fetch(`/api/consulta-doc?numero=${targetDoc}`);
         const data = await res.json();
-        if (!res.ok)
-          throw new Error(data.error || "No se pudo obtener la información.");
-
+        if (!res.ok) throw new Error(data.error || "No se pudo obtener la información.");
         const isRUC = targetDoc.length === 11;
-        const nombreCompleto = isRUC
-          ? data.razon_social || data.razonSocial
-          : `${data.nombres || data.first_name} ${data.apellidoPaterno || data.first_last_name} ${data.apellidoMaterno || data.second_last_name}`;
-
+        const nombre = isRUC
+          ? data.razon_social ?? data.razonSocial
+          : `${data.nombres ?? data.first_name} ${data.apellidoPaterno ?? data.first_last_name} ${data.apellidoMaterno ?? data.second_last_name}`;
         setDocumentNumber(targetDoc);
-        setCustomerName(nombreCompleto);
+        setCustomerName(nombre);
         setCustomerAddress(data.direccion || "Dirección no registrada");
         setContacts([]);
         setSelectedContactId("");
-        toast.success("🌐 Datos importados exitosamente desde SUNAT/RENIEC.");
+        toast.success("Datos importados desde SUNAT/RENIEC.");
       }
-    } catch (error: any) {
-      toast.error(`❌ ${error.message}`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Error al buscar cliente.");
     } finally {
       setIsSearchingClient(false);
     }
@@ -352,149 +216,60 @@ export default function NewSalePage() {
   };
 
   const handleContactNameChange = (index: number, newName: string) => {
-    const newContacts = [...contacts];
-    newContacts[index].name = newName;
-    const existingContact = globalContacts.find(
-      (c) => c.name.toLowerCase() === newName.toLowerCase(),
-    );
-
-    if (existingContact) {
-      newContacts[index].id = existingContact.id;
-      newContacts[index].phone = existingContact.phone || "";
-      newContacts[index].email = existingContact.email || "";
-      toast.success(`Contacto "${existingContact.name}" autocompletado.`);
-    } else if (
-      newContacts[index].id &&
-      !newContacts[index].id?.startsWith("temp_")
-    ) {
-      newContacts[index].id = `temp_${Date.now()}`;
+    const updated = [...contacts];
+    updated[index].name = newName;
+    const existing = globalContacts.find((c) => c.name.toLowerCase() === newName.toLowerCase());
+    if (existing) {
+      updated[index] = { ...updated[index], id: existing.id, phone: existing.phone || "", email: existing.email || "" };
+      toast.success(`Contacto "${existing.name}" autocompletado.`);
+    } else if (updated[index].id && !updated[index].id?.startsWith("temp_")) {
+      updated[index].id = `temp_${Date.now()}`;
     }
-    setContacts(newContacts);
+    setContacts(updated);
   };
 
-  const updateContact = (
-    index: number,
-    field: keyof Contact,
-    value: string,
-  ) => {
-    const newContacts = [...contacts];
-    newContacts[index][field] = value;
-    setContacts(newContacts);
+  const updateContact = (index: number, field: keyof Contact, value: string) => {
+    const updated = [...contacts];
+    updated[index][field] = value;
+    setContacts(updated);
   };
 
-  // 🚀 LÓGICA DE AÑADIR AL CARRITO HÍBRIDA
-  const handleAddToCart = () => {
-    if (!selectedSku || !addQuantity || !addPrice) return;
+  // ── Gestión del carrito ──────────────────────────────────────────────────
 
-    const inputPrice = Number(addPrice);
-    const unitValueWithoutIGV = inputPrice / (1 + IGV_RATE);
-
-    if (unitValueWithoutIGV < baseCost) {
-      if (
-        !confirm(
-          `⚠️ ALERTA DE PÉRDIDA: El valor sin IGV (S/ ${unitValueWithoutIGV.toFixed(2)}) es MENOR que su costo (S/ ${baseCost.toFixed(2)}). ¿Deseas vender a pérdida?`,
-        )
-      )
-        return;
-    }
-
-    if (productMode === "PROFILES") {
-      const stockItem = availableStock.find((s) => s.sku === selectedSku);
-      const currentQtyInCart =
-        cart.find((c) => c.sku === selectedSku)?.quantity || 0;
-      const requestedTotal = currentQtyInCart + Number(addQuantity);
-
-      if (!stockItem || stockItem.totalQuantity < requestedTotal) {
-        toast.error(
-          `⚠️ Stock insuficiente. Solo tienes ${stockItem?.totalQuantity || 0} unidades.`,
-        );
-        return;
-      }
-
-      const productInfo = catalog.find((p) => p.sku === selectedSku);
-      const unitWeight = productInfo?.standardWeight || 0;
-      const existingItemIndex = cart.findIndex(
-        (item) => item.sku === selectedSku,
+  function handleAddItem(newItem: CartItem) {
+    setCart((prev) => {
+      const existingIdx = prev.findIndex(
+        (i) => i.sku === newItem.sku && (i.businessLine ?? "drywall") === (newItem.businessLine ?? "drywall"),
       );
-
-      if (existingItemIndex >= 0) {
-        const newCart = [...cart];
-        newCart[existingItemIndex].quantity += Number(addQuantity);
-        newCart[existingItemIndex].unitPrice = inputPrice;
-        newCart[existingItemIndex].unitValue = unitValueWithoutIGV;
-        setCart(newCart);
-      } else {
-        setCart([
-          ...cart,
-          {
-            sku: selectedSku,
-            quantity: Number(addQuantity),
-            unitPrice: inputPrice,
-            unitValue: unitValueWithoutIGV,
-            baseCost,
-            unitWeight,
-            isCoil: false,
-          },
-        ]);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          quantity: updated[existingIdx].quantity + newItem.quantity,
+          unitPrice: newItem.unitPrice,
+          unitValue: newItem.unitValue,
+        };
+        return updated;
       }
-      setAddQuantity(""); // Reseteamos cantidad en perfiles
-    } else {
-      // MODO BOBINAS
-      const existingItemIndex = cart.findIndex(
-        (item) => item.sku === selectedSku,
-      );
-      if (existingItemIndex >= 0) {
-        toast.error("Esta bobina ya está en el carrito.");
-        return;
-      }
+      return [...prev, newItem];
+    });
+  }
 
-      setCart([
-        ...cart,
-        {
-          sku: selectedSku,
-          quantity: Number(addQuantity), // En bobinas, el "Quantity" es el peso
-          unitPrice: inputPrice, // En bobinas, el "UnitPrice" es Precio x Kg
-          unitValue: unitValueWithoutIGV,
-          baseCost,
-          unitWeight: 1, // unitWeight es 1 para que totalWeight = quantity * 1 = peso
-          isCoil: true,
-        },
-      ]);
-      // En bobinas no reseteamos la cantidad porque es auto-completada.
-    }
-  };
+  const removeFromCart = (index: number) => setCart(cart.filter((_, i) => i !== index));
 
-  const removeFromCart = (index: number) =>
-    setCart(cart.filter((_, i) => i !== index));
-
-  const totalAmount = cart.reduce(
-    (sum, item) => sum + item.quantity * item.unitPrice,
-    0,
-  );
-  const totalValue = cart.reduce(
-    (sum, item) => sum + item.quantity * item.unitValue,
-    0,
-  );
-  const totalCost = cart.reduce(
-    (sum, item) => sum + item.quantity * item.baseCost,
-    0,
-  );
+  // ── Cálculos de resumen ──────────────────────────────────────────────────
+  const totalAmount = cart.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  const totalValue = cart.reduce((s, i) => s + i.quantity * i.unitValue, 0);
+  const totalCost = cart.reduce((s, i) => s + i.quantity * i.baseCost, 0);
   const totalIGV = totalAmount - totalValue;
-  const totalWeight = cart.reduce(
-    (sum, item) => sum + item.quantity * item.unitWeight,
-    0,
-  );
-
+  const totalWeight = cart.reduce((s, i) => s + i.quantity * (i.unitWeight ?? 0), 0);
   const projectedProfit = totalValue - totalCost;
-  const marginPercent =
-    totalValue > 0 ? (projectedProfit / totalValue) * 100 : 0;
-
+  const marginPercent = totalValue > 0 ? (projectedProfit / totalValue) * 100 : 0;
   const MIN_MARGIN_ALERT = settings?.minMarginPercent ?? 20;
-  const LOW_STOCK_ALERT = settings?.lowStockProduct ?? 100;
 
+  // ── Submit ───────────────────────────────────────────────────────────────
   const handleAction = async (actionType: "QUOTE" | "SALE") => {
-    if (!customerName || !documentNumber)
-      return toast.error("Faltan datos del cliente.");
+    if (!customerName || !documentNumber) return toast.error("Faltan datos del cliente.");
     if (cart.length === 0) return toast.error("El carrito está vacío.");
 
     setIsSubmitting(true);
@@ -504,87 +279,32 @@ export default function NewSalePage() {
         if (!contact.name) continue;
         let contactId = contact.id;
         const isNew = !contactId || contactId.startsWith("temp_");
-
         if (isNew) {
-          const newContactRef = doc(collection(db, "contacts"));
-          contactId = newContactRef.id;
-          await setDoc(newContactRef, {
-            name: contact.name,
-            phone: contact.phone,
-            email: contact.email,
-            associatedCompanyIds: [documentNumber],
-            createdAt: serverTimestamp(),
-          });
+          const ref = doc(collection(db, "contacts"));
+          contactId = ref.id;
+          await setDoc(ref, { name: contact.name, phone: contact.phone, email: contact.email, associatedCompanyIds: [documentNumber], createdAt: serverTimestamp() });
         } else {
-          await setDoc(
-            doc(db, "contacts", contactId!),
-            {
-              name: contact.name,
-              phone: contact.phone,
-              email: contact.email,
-              associatedCompanyIds: arrayUnion(documentNumber),
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true },
-          );
+          await setDoc(doc(db, "contacts", contactId!), { name: contact.name, phone: contact.phone, email: contact.email, associatedCompanyIds: arrayUnion(documentNumber), updatedAt: serverTimestamp() }, { merge: true });
         }
         finalContactIds.push(contactId as string);
       }
 
-      const docType =
-        documentNumber.length === 11
-          ? "RUC"
-          : documentNumber.length === 8
-            ? "DNI"
-            : "TAX_ID";
+      const docType = documentNumber.length === 11 ? "RUC" : documentNumber.length === 8 ? "DNI" : "TAX_ID";
+      await setDoc(doc(db, "customers", documentNumber), { name: customerName, documentNumber, documentType: docType, address: customerAddress, contactIds: finalContactIds, lastUpdate: serverTimestamp() }, { merge: true });
 
-      await setDoc(
-        doc(db, "customers", documentNumber),
-        {
-          name: customerName,
-          documentNumber: documentNumber,
-          documentType: docType,
-          address: customerAddress,
-          contactIds: finalContactIds,
-          lastUpdate: serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      const sellerId = user?.email || user?.uid || "VENDEDOR_DESCONOCIDO";
-      const selectedContact =
-        contacts.find((c) => c.id === selectedContactId) || contacts[0];
-      const contactNameFinal = selectedContact?.name || "";
-      const contactPhoneFinal = selectedContact?.phone || "";
+      const sellerId = user?.email ?? user?.uid ?? "VENDEDOR_DESCONOCIDO";
+      const selectedContact = contacts.find((c) => c.id === selectedContactId) ?? contacts[0];
 
       if (actionType === "QUOTE") {
-        await createQuotation(
-          customerName,
-          documentNumber,
-          cart,
-          sellerId,
-          customerAddress,
-          contactNameFinal,
-          contactPhoneFinal,
-        );
-        toast.success("📄 Cotización generada con éxito.");
+        await createQuotation(customerName, documentNumber, cart, sellerId, customerAddress, selectedContact?.name ?? "", selectedContact?.phone ?? "");
+        toast.success("Cotización generada con éxito.");
       } else {
-        await processSale(
-          customerName,
-          documentNumber,
-          cart,
-          sellerId,
-          customerAddress,
-          contactNameFinal,
-          contactPhoneFinal,
-        );
-        toast.success(
-          "✅ Venta procesada. El stock/bobinas han sido descontados.",
-        );
+        await processSale(customerName, documentNumber, cart, sellerId, customerAddress, selectedContact?.name ?? "", selectedContact?.phone ?? "");
+        toast.success("Venta procesada. El stock fue descontado.");
       }
       router.push("/admin/sales");
-    } catch (error: any) {
-      toast.error(error.message || "Error al procesar la operación.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Error al procesar la operación.");
     } finally {
       setIsSubmitting(false);
     }
@@ -593,40 +313,35 @@ export default function NewSalePage() {
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20">
       <datalist id="global-contacts-list">
-        {globalContacts.map((c) => (
-          <option key={c.id} value={c.name} />
-        ))}
+        {globalContacts.map((c) => <option key={c.id} value={c.name} />)}
       </datalist>
 
+      {/* Header */}
       <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <div>
           <h1 className="text-2xl font-black flex items-center gap-2 text-gray-800 tracking-tight">
             <ShoppingCart className="text-blue-600" /> Nuevo Documento
           </h1>
           <p className="text-gray-500 text-sm font-medium">
-            Cotización o Venta Directa Híbrida (Perfiles o Bobinas Madre).
+            Cotización o Venta Directa — Drywall · Coberturas PVC · Bobinas M.P.
           </p>
         </div>
-        <button
-          onClick={() => router.push("/admin/sales")}
-          className="text-gray-500 hover:text-blue-600 font-bold transition"
-        >
+        <button onClick={() => router.push("/admin/sales")} className="text-gray-500 hover:text-blue-600 font-bold transition">
           Volver a Historial
         </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* LEFT COLUMN */}
         <div className="lg:col-span-8 space-y-6">
+          {/* Customer */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
             <h2 className="text-lg font-black text-gray-800 mb-6 flex items-center gap-2 border-b border-gray-50 pb-4">
-              <Building2 size={20} className="text-blue-500" /> Información de
-              Facturación
+              <Building2 size={20} className="text-blue-500" /> Información de Facturación
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div className="md:col-span-1 relative" ref={searchInputRef}>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                  Buscar RUC, DNI o Nombre *
-                </label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Buscar RUC, DNI o Nombre *</label>
                 <div className="flex gap-2">
                   <div className="relative w-full">
                     <input
@@ -635,278 +350,70 @@ export default function NewSalePage() {
                       className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 h-[48px]"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      onFocus={() =>
-                        setShowSuggestions(suggestedCustomers.length > 0)
-                      }
+                      onFocus={() => setShowSuggestions(suggestedCustomers.length > 0)}
                     />
                     {showSuggestions && (
                       <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl z-50 overflow-hidden">
                         {suggestedCustomers.map((hit) => (
-                          <div
-                            key={hit.objectID}
-                            onClick={() => handleSelectSuggestedCustomer(hit)}
-                            className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0"
-                          >
-                            <p className="font-bold text-gray-800 text-sm truncate">
-                              {hit.name}
-                            </p>
-                            <p className="text-xs text-gray-500 font-medium">
-                              {hit.documentNumber || hit.objectID}
-                            </p>
+                          <div key={String(hit.objectID)} onClick={() => void handleSelectSuggestedCustomer(hit)} className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0">
+                            <p className="font-bold text-gray-800 text-sm truncate">{String(hit.name ?? "")}</p>
+                            <p className="text-xs text-gray-500 font-medium">{String(hit.documentNumber ?? hit.objectID)}</p>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
                   <button
-                    onClick={handleDeepSearchClient}
+                    onClick={() => void handleDeepSearchClient()}
                     disabled={isSearchingClient}
                     className="bg-blue-600 text-white px-4 rounded-xl hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center shrink-0 h-[48px]"
                   >
-                    {isSearchingClient ? (
-                      <Loader2 size={20} className="animate-spin" />
-                    ) : (
-                      <Search size={20} />
-                    )}
+                    {isSearchingClient ? <Loader2 size={20} className="animate-spin" /> : <Search size={20} />}
                   </button>
                 </div>
               </div>
               <div className="md:col-span-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                  Razón Social / Nombre Confirmado *
-                </label>
-                <input
-                  type="text"
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 h-[48px]"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                />
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Razón Social / Nombre Confirmado *</label>
+                <input type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 h-[48px]" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
               </div>
             </div>
-
             <div className="mb-6">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-                <MapPin size={12} /> Dirección Fiscal
-              </label>
-              <input
-                type="text"
-                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
-                value={customerAddress}
-                onChange={(e) => setCustomerAddress(e.target.value)}
-              />
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1"><MapPin size={12} /> Dirección Fiscal</label>
+              <input type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 outline-none focus:ring-2 focus:ring-blue-500" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} />
             </div>
-
             <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
               <div className="flex justify-between items-center mb-4">
-                <label className="text-[10px] font-black text-blue-800 uppercase tracking-widest flex items-center gap-1">
-                  <Users size={14} /> Contactos (Vínculo Directo)
-                </label>
-                <button
-                  onClick={addContact}
-                  className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                >
-                  <Plus size={14} /> Añadir
-                </button>
+                <label className="text-[10px] font-black text-blue-800 uppercase tracking-widest flex items-center gap-1"><Users size={14} /> Contactos</label>
+                <button onClick={addContact} className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"><Plus size={14} /> Añadir</button>
               </div>
-              {contacts.length === 0 && (
-                <p className="text-xs text-blue-400 font-medium italic mb-2">
-                  Sin contactos. Escribe un nombre y el sistema lo buscará en el
-                  Directorio Global.
-                </p>
-              )}
+              {contacts.length === 0 && <p className="text-xs text-blue-400 font-medium italic mb-2">Sin contactos. Escribe un nombre y el sistema buscará en el Directorio Global.</p>}
               <div className="space-y-3">
                 {contacts.map((contact, idx) => (
-                  <div
-                    key={contact.id || idx}
-                    className={`grid grid-cols-1 md:grid-cols-12 gap-3 bg-white p-3 rounded-xl shadow-sm border transition ${selectedContactId === contact.id && contact.id ? "border-blue-400 ring-1 ring-blue-400" : "border-gray-200"}`}
-                  >
+                  <div key={contact.id || idx} className={`grid grid-cols-1 md:grid-cols-12 gap-3 bg-white p-3 rounded-xl shadow-sm border transition ${selectedContactId === contact.id && contact.id ? "border-blue-400 ring-1 ring-blue-400" : "border-gray-200"}`}>
                     <div className="md:col-span-1 flex items-center justify-center border-r border-gray-100">
-                      <input
-                        type="radio"
-                        checked={selectedContactId === contact.id}
-                        onChange={() => {
-                          if (contact.id) setSelectedContactId(contact.id);
-                        }}
-                        className="w-4 h-4 text-blue-600 cursor-pointer"
-                      />
+                      <input type="radio" checked={selectedContactId === contact.id} onChange={() => { if (contact.id) setSelectedContactId(contact.id); }} className="w-4 h-4 text-blue-600 cursor-pointer" />
                     </div>
-                    <input
-                      type="text"
-                      list="global-contacts-list"
-                      placeholder="Escribe el Nombre..."
-                      className="md:col-span-4 p-2 border border-gray-200 rounded-lg text-sm bg-white font-bold focus:ring-2 focus:ring-blue-400 outline-none"
-                      value={contact.name}
-                      onChange={(e) =>
-                        handleContactNameChange(idx, e.target.value)
-                      }
-                    />
-                    <input
-                      type="tel"
-                      placeholder="Celular"
-                      className="md:col-span-3 p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-blue-400 outline-none"
-                      value={contact.phone}
-                      onChange={(e) =>
-                        updateContact(idx, "phone", e.target.value)
-                      }
-                    />
-                    <input
-                      type="email"
-                      placeholder="Correo"
-                      className="md:col-span-4 p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-blue-400 outline-none"
-                      value={contact.email}
-                      onChange={(e) =>
-                        updateContact(idx, "email", e.target.value)
-                      }
-                    />
+                    <input type="text" list="global-contacts-list" placeholder="Nombre..." className="md:col-span-4 p-2 border border-gray-200 rounded-lg text-sm bg-white font-bold focus:ring-2 focus:ring-blue-400 outline-none" value={contact.name} onChange={(e) => handleContactNameChange(idx, e.target.value)} />
+                    <input type="tel" placeholder="Celular" className="md:col-span-3 p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-blue-400 outline-none" value={contact.phone} onChange={(e) => updateContact(idx, "phone", e.target.value)} />
+                    <input type="email" placeholder="Correo" className="md:col-span-4 p-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-blue-400 outline-none" value={contact.email} onChange={(e) => updateContact(idx, "email", e.target.value)} />
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* 🚀 SECCIÓN PRODUCTOS CON TABS HÍBRIDOS */}
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-gray-50 pb-4">
-              <h2 className="text-lg font-black text-gray-800 flex items-center gap-2">
-                <Plus size={20} className="text-blue-500" /> Agregar a la lista
-              </h2>
-
-              {/* SELECTOR DE MODO */}
-              <div className="flex gap-2 mt-4 md:mt-0 bg-gray-50 p-1 rounded-xl border border-gray-200">
-                <button
-                  onClick={() => setProductMode("PROFILES")}
-                  className={`flex items-center gap-2 px-5 py-2 rounded-lg font-black text-xs uppercase tracking-widest transition ${productMode === "PROFILES" ? "bg-white text-blue-600 shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
-                >
-                  <Package size={14} /> Perfiles
-                </button>
-                <button
-                  onClick={() => setProductMode("COILS")}
-                  className={`flex items-center gap-2 px-5 py-2 rounded-lg font-black text-xs uppercase tracking-widest transition ${productMode === "COILS" ? "bg-white text-orange-600 shadow-sm border border-orange-100" : "text-gray-400 hover:text-gray-600"}`}
-                >
-                  <Factory size={14} /> Bobinas M.P.
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-col md:flex-row items-end gap-4 pb-6">
-              <div className="flex-1 w-full">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                  {productMode === "PROFILES"
-                    ? "Seleccionar Perfil"
-                    : "Bobinas Disponibles (No cortadas)"}
-                </label>
-                <select
-                  className={`w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none h-[56px] ${productMode === "COILS" && "border-orange-200 bg-orange-50 focus:ring-orange-500"}`}
-                  value={selectedSku}
-                  onChange={(e) => setSelectedSku(e.target.value)}
-                >
-                  {productMode === "PROFILES" ? (
-                    catalog
-                      .filter((p) => p.isActive)
-                      .map((prod) => {
-                        const stockItem = availableStock.find(
-                          (s) => s.sku === prod.sku,
-                        );
-                        const stock = stockItem?.totalQuantity || 0;
-                        return (
-                          <option
-                            key={prod.sku}
-                            value={prod.sku}
-                            disabled={stock === 0}
-                          >
-                            {prod.sku} - {prod.name} | Disp: {stock}{" "}
-                            {stock > 0 && stock <= LOW_STOCK_ALERT ? "⚠️" : ""}
-                          </option>
-                        );
-                      })
-                  ) : availableCoils.length === 0 ? (
-                    <option disabled value="">
-                      No hay bobinas libres en planta
-                    </option>
-                  ) : (
-                    availableCoils.map((coil) => (
-                      <option key={coil.id} value={coil.id}>
-                        {coil.id} | {coil.currentWeight} kg | S/{" "}
-                        {coil.pricePerKg.toFixed(2)}/kg
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-
-              <div className="w-full md:w-32">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                  {productMode === "PROFILES" ? "Cant. (Pzas)" : "Peso (kg)"}
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  disabled={productMode === "COILS"} // Bloqueado en bobinas para venta entera
-                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:ring-2 focus:ring-blue-500 text-center h-[56px] disabled:bg-gray-100 disabled:text-gray-400"
-                  value={addQuantity}
-                  onChange={(e) =>
-                    setAddQuantity(e.target.value ? Number(e.target.value) : "")
-                  }
-                />
-              </div>
-
-              <div className="w-full md:w-48 relative group">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-                  Precio Venta {productMode === "COILS" && "x Kg"} (C/ IGV)
-                </label>
-                <div className="absolute -top-12 left-0 bg-gray-900 text-white text-[10px] font-bold p-2 rounded-lg opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none z-10">
-                  Costo Base Empresa: S/ {baseCost.toFixed(2)}
-                </div>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">
-                    S/
-                  </span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className={`w-full p-4 pl-10 border-2 rounded-xl font-black outline-none h-[56px] transition ${Number(addPrice) / (1 + IGV_RATE) < baseCost ? "border-red-400 text-red-600 bg-red-50" : "border-gray-200 text-green-700 bg-gray-50 focus:border-blue-500"}`}
-                    value={addPrice}
-                    onChange={(e) =>
-                      setAddPrice(e.target.value ? Number(e.target.value) : "")
-                    }
-                  />
-                </div>
-                {addPrice && (
-                  <p className="absolute -bottom-5 left-1 text-[10px] text-gray-500 font-bold whitespace-nowrap">
-                    Valor S/IGV: S/ {(Number(addPrice) / 1.18).toFixed(2)}
-                  </p>
-                )}
-              </div>
-
-              <button
-                onClick={handleAddToCart}
-                disabled={
-                  !addQuantity ||
-                  !addPrice ||
-                  (productMode === "COILS" && availableCoils.length === 0)
-                }
-                className={`w-full md:w-auto text-white px-8 rounded-xl font-black transition active:scale-95 h-[56px] flex items-center justify-center disabled:opacity-50 ${productMode === "COILS" ? "bg-orange-600 hover:bg-orange-700" : "bg-gray-900 hover:bg-black"}`}
-              >
-                Añadir
-              </button>
-            </div>
-          </div>
+          {/* Multi-line product selector */}
+          <ProductSelector cartItems={cart} settings={settings} onAdd={handleAddItem} />
         </div>
 
-        {/* COLUMNA DERECHA (RESUMEN FINANCIERO) */}
+        {/* RIGHT COLUMN — Cart summary */}
         <div className="lg:col-span-4 flex flex-col gap-6">
           <div className="bg-white p-6 rounded-3xl shadow-xl shadow-blue-100/50 border border-blue-100 flex flex-col h-full sticky top-6">
             <h2 className="text-xl font-black text-gray-800 mb-4 border-b border-gray-100 pb-4 flex justify-between items-center">
               <span>Resumen</span>
               {totalWeight > 0 && (
                 <span className="text-xs font-bold bg-orange-100 text-orange-700 px-3 py-1 rounded-full flex items-center gap-1">
-                  <Scale size={14} />{" "}
-                  {totalWeight.toLocaleString("es-PE", {
-                    minimumFractionDigits: 3,
-                    maximumFractionDigits: 3,
-                  })}{" "}
-                  kg{" "}
+                  <Scale size={14} /> {totalWeight.toLocaleString("es-PE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg
                 </span>
               )}
             </h2>
@@ -919,52 +426,32 @@ export default function NewSalePage() {
                 </div>
               ) : (
                 cart.map((item, index) => {
-                  const itemProfit =
-                    (item.unitValue - item.baseCost) * item.quantity;
-                  const itemMargin =
-                    ((item.unitValue - item.baseCost) / item.unitValue) * 100;
+                  const itemProfit = (item.unitValue - item.baseCost) * item.quantity;
+                  const itemMargin = item.unitValue > 0 ? ((item.unitValue - item.baseCost) / item.unitValue) * 100 : 0;
                   const isLoss = item.unitValue < item.baseCost;
-                  const isLowMargin =
-                    !isLoss && itemMargin < MIN_MARGIN_ALERT - 0.5;
+                  const isLowMargin = !isLoss && itemMargin < MIN_MARGIN_ALERT - 0.5;
+                  const lineBadge = LINE_BADGES[item.businessLine ?? "drywall"];
 
                   return (
-                    <div
-                      key={index}
-                      className={`flex justify-between items-center p-4 rounded-2xl border ${isLoss || isLowMargin ? "bg-red-50 border-red-100" : "bg-gray-50 border-gray-100"}`}
-                    >
+                    <div key={index} className={`flex justify-between items-center p-4 rounded-2xl border ${isLoss || isLowMargin ? "bg-red-50 border-red-100" : "bg-gray-50 border-gray-100"}`}>
                       <div>
                         <p className="font-black text-gray-800 text-lg leading-none flex items-center gap-2">
                           {item.sku}
-                          {item.isCoil && (
-                            <span className="text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-md uppercase">
-                              M. Prima
-                            </span>
-                          )}
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded-md uppercase font-black ${lineBadge?.cls ?? "bg-gray-100 text-gray-500"}`}>
+                            {lineBadge?.label ?? item.businessLine}
+                          </span>
+                          {item.isCoil && <span className="text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-md uppercase">M. Prima</span>}
                         </p>
                         <p className="text-xs text-gray-500 font-medium mt-1">
-                          {item.quantity} {item.isCoil ? "kg" : "pzas"} x S/{" "}
-                          {item.unitPrice.toFixed(2)} {item.isCoil && "/kg"}
+                          {item.quantity} {item.isCoil ? "kg" : "pzas"} × S/ {item.unitPrice.toFixed(2)}
                         </p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <p
-                            className={`text-[9px] font-black uppercase tracking-widest ${isLoss || isLowMargin ? "text-red-500" : "text-emerald-500"}`}
-                          >
-                            {isLoss
-                              ? "⚠️ PÉRDIDA"
-                              : isLowMargin
-                                ? "⚠️ MARGEN BAJO"
-                                : `Margen: +S/ ${itemProfit.toFixed(2)}`}
-                          </p>
-                        </div>
+                        <p className={`text-[9px] font-black uppercase tracking-widest mt-1.5 ${isLoss || isLowMargin ? "text-red-500" : "text-emerald-500"}`}>
+                          {isLoss ? "⚠️ PÉRDIDA" : isLowMargin ? "⚠️ MARGEN BAJO" : `+S/ ${itemProfit.toFixed(2)}`}
+                        </p>
                       </div>
                       <div className="flex flex-col items-end gap-2">
-                        <span className="font-mono font-black text-gray-900 text-lg">
-                          S/ {(item.quantity * item.unitPrice).toFixed(2)}
-                        </span>
-                        <button
-                          onClick={() => removeFromCart(index)}
-                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition"
-                        >
+                        <span className="font-mono font-black text-gray-900 text-lg">S/ {(item.quantity * item.unitPrice).toFixed(2)}</span>
+                        <button onClick={() => removeFromCart(index)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition">
                           <Trash2 size={16} />
                         </button>
                       </div>
@@ -983,49 +470,28 @@ export default function NewSalePage() {
                 <span>IGV (18%)</span>
                 <span>S/ {totalIGV.toFixed(2)}</span>
               </div>
-
               <div className="flex justify-between items-center pt-2 border-t border-gray-700">
-                <span className="font-bold text-gray-200 uppercase tracking-widest text-sm">
-                  TOTAL:
-                </span>
-                <span className="font-black text-3xl">
-                  S/ {totalAmount.toFixed(2)}
-                </span>
+                <span className="font-bold text-gray-200 uppercase tracking-widest text-sm">TOTAL:</span>
+                <span className="font-black text-3xl">S/ {totalAmount.toFixed(2)}</span>
               </div>
-
               {cart.length > 0 && (
                 <div className="flex justify-between items-center pt-3 border-t border-gray-700">
                   <div className="flex flex-col">
-                    <span className="font-bold text-emerald-400 flex items-center gap-1 text-xs">
-                      <Info size={14} /> Ganancia Neta Real:
-                    </span>
-                    <span
-                      className={`text-[10px] font-black mt-1 flex items-center gap-0.5 uppercase tracking-widest ${marginPercent < MIN_MARGIN_ALERT - 0.5 ? "text-red-400" : "text-gray-400"}`}
-                    >
-                      <Percent size={10} /> Rentabilidad:{" "}
-                      {marginPercent.toFixed(1)}%
+                    <span className="font-bold text-emerald-400 flex items-center gap-1 text-xs"><Info size={14} /> Ganancia Neta Real:</span>
+                    <span className={`text-[10px] font-black mt-1 flex items-center gap-0.5 uppercase tracking-widest ${marginPercent < MIN_MARGIN_ALERT - 0.5 ? "text-red-400" : "text-gray-400"}`}>
+                      <Percent size={10} /> Rentabilidad: {marginPercent.toFixed(1)}%
                     </span>
                   </div>
-                  <span
-                    className={`font-mono font-bold text-lg ${projectedProfit < 0 ? "text-red-400" : "text-emerald-400"}`}
-                  >
+                  <span className={`font-mono font-bold text-lg ${projectedProfit < 0 ? "text-red-400" : "text-emerald-400"}`}>
                     S/ {projectedProfit.toFixed(2)}
                   </span>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3 pt-4">
-                <button
-                  onClick={() => handleAction("QUOTE")}
-                  disabled={isSubmitting || cart.length === 0}
-                  className="flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-gray-700 text-white font-black hover:bg-gray-800 disabled:opacity-50 transition active:scale-95"
-                >
+                <button onClick={() => void handleAction("QUOTE")} disabled={isSubmitting || cart.length === 0} className="flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-gray-700 text-white font-black hover:bg-gray-800 disabled:opacity-50 transition active:scale-95">
                   <FileText size={18} /> COTIZAR
                 </button>
-                <button
-                  onClick={() => handleAction("SALE")}
-                  disabled={isSubmitting || cart.length === 0}
-                  className="flex items-center justify-center gap-2 p-4 rounded-xl bg-blue-600 text-white font-black hover:bg-blue-500 disabled:opacity-50 transition shadow-lg shadow-blue-900/50 active:scale-95"
-                >
+                <button onClick={() => void handleAction("SALE")} disabled={isSubmitting || cart.length === 0} className="flex items-center justify-center gap-2 p-4 rounded-xl bg-blue-600 text-white font-black hover:bg-blue-500 disabled:opacity-50 transition shadow-lg shadow-blue-900/50 active:scale-95">
                   <CheckCircle2 size={18} /> VENDER
                 </button>
               </div>

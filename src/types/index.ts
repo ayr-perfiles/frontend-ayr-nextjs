@@ -50,13 +50,20 @@ export interface StockSummary {
   lastUpdate: any;
 }
 
+export type BusinessLine = 'drywall' | 'roofing';
+
 export interface SaleItem {
   sku: string;
+  /** Línea de negocio del producto; omitido en ventas antiguas (default: drywall) */
+  businessLine?: BusinessLine;
+  /** Nombre del producto para display */
+  productName?: string;
   quantity: number;
   unitPrice: number; // Precio FINAL (Con IGV)
-  unitValue: number; // NUEVO: Valor Real (Sin IGV)
-  baseCost: number; // NUEVO: Costo de producción (Sin IGV)
-  unitWeight: number; // NUEVO: Peso unitario para calcular el peso total de la venta
+  unitValue: number; // Valor Real (Sin IGV)
+  baseCost: number;  // Costo de producción (Sin IGV)
+  unitWeight: number;
+  isCoil?: boolean;
 
   // --- Retrocompatibilidad (Para ventas antiguas) ---
   unitCost?: number;
@@ -69,19 +76,21 @@ export interface Sale {
   customerName: string;
   documentNumber?: string;
 
-  // --- NUEVOS CAMPOS DE DESPACHO Y CONTACTO ---
   customerAddress?: string;
   contactName?: string;
   contactPhone?: string;
-  // --------------------------------------------
 
   items: SaleItem[];
+  skus?: string[];
+  /** Líneas de negocio presentes en esta venta (ej: ['drywall', 'roofing']) */
+  businessLines?: BusinessLine[];
   totalAmount: number;
   totalCost: number;
   totalProfit?: number;
   status: "QUOTATION" | "COMPLETED" | "CANCELLED" | "CONVERTED" | "VOIDED";
   validUntil?: any;
   sellerId: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   timestamp: any;
 }
 

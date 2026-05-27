@@ -11,7 +11,10 @@
       "Bash(npx vitest *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\User\\\\Documents\\\\workspace\\\\ayr\\\\frontend-ayr\\\\src\\\\modules\\\\drywall\\\\components\" -Recurse)",
       "Bash(Select-Object FullName)",
-      "PowerShell(head -30)"
+      "PowerShell(head -30)",
+      "Bash(node -e ' *)",
+      "PowerShell(New-Item -ItemType Directory -Force \"c:\\\\Users\\\\win11\\\\Documents\\\\workspace\\\\ayr\\\\frontend-ayr-nextjs\\\\docs\\\\05-formulas\")",
+      "PowerShell(\"ok\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\User\\Documents\\workspace\\ayr\\frontend-ayr"

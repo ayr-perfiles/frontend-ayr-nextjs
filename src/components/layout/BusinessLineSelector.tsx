@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, Check, Factory, Package, Zap, Layers } from "lucide-react";
+import { ChevronDown, Check, Factory, Package, Zap, Layers, Home } from "lucide-react";
 import { useBusinessLine } from "@/context/BusinessLineContext";
 import type { BusinessLineModule } from "@/core/contracts";
 
@@ -9,6 +9,8 @@ function ModuleIcon({ name, size = 15 }: { name: string; size?: number }) {
   switch (name) {
     case "Factory":
       return <Factory size={size} />;
+    case "Home":
+      return <Home size={size} />;
     case "Package":
       return <Package size={size} />;
     case "Zap":

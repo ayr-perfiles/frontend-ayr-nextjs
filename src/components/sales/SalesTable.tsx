@@ -158,6 +158,22 @@ export function SalesTable({
                           <AlertCircle size={12} /> Anulada
                         </span>
                       )}
+                      {sale.businessLines && sale.businessLines.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {sale.businessLines.map((line) => (
+                            <span
+                              key={line}
+                              className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
+                                line === "drywall"
+                                  ? "bg-blue-50 text-blue-600 border-blue-100"
+                                  : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                              }`}
+                            >
+                              {line === "drywall" ? "DRY" : "PVC"}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
 
                     <td className="p-4 text-right">

@@ -25,6 +25,8 @@ import {
   Smartphone,
   Package,
   Layers,
+  Warehouse,
+  Home,
 } from "lucide-react";
 import type { LucideProps } from "lucide-react";
 import type { ComponentType } from "react";
@@ -34,8 +36,11 @@ function resolveIcon(name: string): ComponentType<LucideProps> {
   const map: Record<string, ComponentType<LucideProps>> = {
     Database,
     Factory,
-    Smartphone,
+    Home,
     Package,
+    ShoppingCart,
+    Smartphone,
+    Warehouse,
     Layers,
   };
   return map[name] ?? Layers;

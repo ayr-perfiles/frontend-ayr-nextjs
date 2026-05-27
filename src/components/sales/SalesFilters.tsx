@@ -20,6 +20,8 @@ interface SalesFiltersProps {
   setEndDate: (val: string) => void;
   isSearching: boolean;
   onClearSearch: () => void;
+  businessLine: string;
+  setBusinessLine: (val: 'ALL' | 'drywall' | 'roofing') => void;
 }
 
 export function SalesFilters(props: SalesFiltersProps) {
@@ -34,6 +36,8 @@ export function SalesFilters(props: SalesFiltersProps) {
     setEndDate,
     isSearching,
     onClearSearch,
+    businessLine,
+    setBusinessLine,
   } = props;
 
   const [isOpen, setIsOpen] = useState(false);
@@ -51,12 +55,16 @@ export function SalesFilters(props: SalesFiltersProps) {
   }, [isOpen]);
 
   const activeFiltersCount =
-    (startDate ? 1 : 0) + (endDate ? 1 : 0) + (statusFilter !== "ALL" ? 1 : 0);
+    (startDate ? 1 : 0) +
+    (endDate ? 1 : 0) +
+    (statusFilter !== "ALL" ? 1 : 0) +
+    (businessLine !== "ALL" ? 1 : 0);
 
   const handleClearAll = () => {
     setStartDate("");
     setEndDate("");
     setStatusFilter("ALL");
+    setBusinessLine("ALL");
     setSearchTerm("");
     onClearSearch();
     setIsOpen(false);
@@ -154,6 +162,36 @@ export function SalesFilters(props: SalesFiltersProps) {
                       {statusFilter === status.id && (
                         <CheckCircle2 size={16} className="text-blue-500" />
                       )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Filtro de Línea de Negocio */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-2">
+                  Línea de Negocio
+                </label>
+                <div className="flex gap-2">
+                  {(
+                    [
+                      { id: "ALL", label: "Todas" },
+                      { id: "drywall", label: "Drywall", cls: "text-blue-600" },
+                      { id: "roofing", label: "PVC", cls: "text-emerald-600" },
+                    ] as { id: 'ALL' | 'drywall' | 'roofing'; label: string; cls?: string }[]
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => setBusinessLine(opt.id)}
+                      className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition border ${
+                        businessLine === opt.id
+                          ? "bg-white shadow-sm border-slate-300 text-slate-800"
+                          : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100"
+                      }`}
+                    >
+                      <span className={businessLine === opt.id ? (opt.cls ?? "") : ""}>
+                        {opt.label}
+                      </span>
                     </button>
                   ))}
                 </div>

@@ -101,6 +101,7 @@ export default function SalesPage() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [businessLine, setBusinessLine] = useState<'ALL' | 'drywall' | 'roofing'>('ALL');
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
@@ -126,6 +127,7 @@ export default function SalesPage() {
       const res = await fetchSales({
         pageSize,
         statusFilter,
+        businessLine: businessLine === "ALL" ? "" : businessLine,
         searchTerm: debouncedSearchTerm,
         startDate,
         endDate,
@@ -138,7 +140,7 @@ export default function SalesPage() {
               : null,
       });
 
-      setSales(res.sales);
+      setSales(res.sales as unknown as Sale[]);
       setFirstDoc(res.firstDoc);
       setLastDoc(res.lastDoc);
       setFilteredTotal(res.totalCount || 0);
@@ -157,7 +159,7 @@ export default function SalesPage() {
     setCurrentPage(1);
     loadData("first");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, startDate, endDate, pageSize, debouncedSearchTerm]);
+  }, [statusFilter, businessLine, startDate, endDate, pageSize, debouncedSearchTerm]);
 
   // 4. PAGINACIÓN
   const hasNextPage = sales.length === pageSize;
@@ -259,6 +261,8 @@ export default function SalesPage() {
         setSearchTerm={setSearchTerm}
         statusFilter={statusFilter}
         setStatusFilter={setStatusFilter}
+        businessLine={businessLine}
+        setBusinessLine={setBusinessLine}
         startDate={startDate}
         setStartDate={setStartDate}
         endDate={endDate}

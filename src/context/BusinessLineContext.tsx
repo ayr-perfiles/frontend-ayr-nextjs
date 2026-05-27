@@ -3,12 +3,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { BusinessLineModule } from "@/core/contracts";
 import { drywallModule } from "@/modules/drywall";
+import { businessLines } from "@/core/registry/businessLineRegistry";
 
-/**
- * Registro central de módulos activos.
- * Para agregar una nueva línea: importar el módulo y añadirlo al array.
- */
-const ACTIVE_MODULES: BusinessLineModule[] = [drywallModule];
+const ACTIVE_MODULES: BusinessLineModule[] = businessLines;
 
 const STORAGE_KEY = "selectedBusinessLine";
 

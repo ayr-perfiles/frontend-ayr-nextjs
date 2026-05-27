@@ -10,6 +10,7 @@ import { Loader2, Zap, Menu, X } from "lucide-react";
 const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/admin/sales": ["ADMIN"],
   "/admin/settings": ["ADMIN"],
+  "/admin/setup": ["ADMIN"],
   "/admin/users": ["ADMIN"],
   "/admin/reports": ["ADMIN", "SUPERVISOR"],
   "/admin/inventory": ["ADMIN", "SUPERVISOR"],
