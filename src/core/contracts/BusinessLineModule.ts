@@ -19,11 +19,11 @@ export interface BusinessLineModule {
   /** Ícono lucide-react (ej: 'Factory', 'Package', 'Zap') */
   icon: string;
 
-  /** Motor de producción específico de esta línea */
-  productionEngine: ProductionEngine;
+  /** Motor de producción específico de esta línea (opcional: líneas sin producción lo omiten) */
+  productionEngine?: ProductionEngine;
 
-  /** Motor de inventario (cómo se ve el stock) */
-  inventoryEngine: InventoryEngine;
+  /** Motor de inventario (cómo se ve el stock); opcional en líneas sin stock propio */
+  inventoryEngine?: InventoryEngine;
 
   /** Schema de Zod para validar productos de esta línea */
   catalogSchema: z.ZodSchema;

@@ -61,7 +61,7 @@ export default function SalesPage() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [businessLine, setBusinessLine] = useState<"ALL" | "drywall" | "roofing">("ALL");
+  const [businessLine, setBusinessLine] = useState<"ALL" | "drywall" | "roofing" | "metallic-roofing">("ALL");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [pageSize, setPageSize] = useState(10);

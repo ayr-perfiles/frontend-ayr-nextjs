@@ -191,6 +191,97 @@ export const roofingStockStrategy: StockStrategy = {
   },
 };
 
+// ─── Metallic-Roofing (coberturas aluzinc) ────────────────────────────────────
+// colección: metallic_roofing_stock  campo: quantity
+// movimientos: metallic_roofing_stock_movements
+
+export const metallicRoofingStockStrategy: StockStrategy = {
+  stockCollection: 'metallic_roofing_stock',
+  movementsCollection: 'metallic_roofing_stock_movements',
+
+  getStockRef(sku) {
+    return doc(db, 'metallic_roofing_stock', sku);
+  },
+
+  extractQuantity(snap) {
+    if (!snap.exists()) return 0;
+    return (snap.data().quantity as number) ?? 0;
+  },
+
+  extractAvgCost(snap) {
+    if (!snap.exists()) return 0;
+    return (snap.data().avgCost as number) ?? 0;
+  },
+
+  writeSaleDecrement({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx) {
+    const stockRef = doc(db, 'metallic_roofing_stock', sku);
+    const currentAvgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
+    const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
+
+    if (snap?.exists()) {
+      tx.update(stockRef, {
+        quantity: newBalance,
+        totalValue: Number((newBalance * currentAvgCost).toFixed(2)),
+        lastUpdate: serverTimestamp(),
+      });
+    } else {
+      tx.set(stockRef, {
+        sku,
+        productName,
+        quantity: newBalance,
+        avgCost: 0,
+        totalValue: 0,
+        lastUpdate: serverTimestamp(),
+      });
+    }
+
+    tx.set(doc(collection(db, 'metallic_roofing_stock_movements')), {
+      sku,
+      type: 'SALIDA',
+      quantity,
+      costPerUnit: currentAvgCost,
+      reason: `Venta ${saleId} — ${customerName}`,
+      businessLine: 'metallic-roofing',
+      createdBy: sellerId,
+      createdAt: serverTimestamp(),
+    });
+  },
+
+  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx) {
+    const stockRef = doc(db, 'metallic_roofing_stock', sku);
+    const avgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
+    const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
+
+    if (snap?.exists()) {
+      tx.update(stockRef, {
+        quantity: newBalance,
+        totalValue: Number((newBalance * avgCost).toFixed(2)),
+        lastUpdate: serverTimestamp(),
+      });
+    } else {
+      tx.set(stockRef, {
+        sku,
+        productName,
+        quantity: newBalance,
+        avgCost: 0,
+        totalValue: 0,
+        lastUpdate: serverTimestamp(),
+      });
+    }
+
+    tx.set(doc(collection(db, 'metallic_roofing_stock_movements')), {
+      sku,
+      type: 'ENTRADA',
+      quantity,
+      costPerUnit: avgCost,
+      reason: `Anulación Venta ${saleId} — ${customerName}`,
+      businessLine: 'metallic-roofing',
+      createdBy: sellerId,
+      createdAt: serverTimestamp(),
+    });
+  },
+};
+
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
 export function getStockStrategy(businessLine: BusinessLine | string): StockStrategy {
@@ -199,6 +290,8 @@ export function getStockStrategy(businessLine: BusinessLine | string): StockStra
       return drywallStockStrategy;
     case 'roofing':
       return roofingStockStrategy;
+    case 'metallic-roofing':
+      return metallicRoofingStockStrategy;
     default:
       throw new Error(`Línea de negocio no soportada: ${businessLine}`);
   }

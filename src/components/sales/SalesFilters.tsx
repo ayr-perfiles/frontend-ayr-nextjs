@@ -21,7 +21,7 @@ interface SalesFiltersProps {
   isSearching: boolean;
   onClearSearch: () => void;
   businessLine: string;
-  setBusinessLine: (val: 'ALL' | 'drywall' | 'roofing') => void;
+  setBusinessLine: (val: 'ALL' | 'drywall' | 'roofing' | 'metallic-roofing') => void;
 }
 
 export function SalesFilters(props: SalesFiltersProps) {
@@ -178,7 +178,8 @@ export function SalesFilters(props: SalesFiltersProps) {
                       { id: "ALL", label: "Todas" },
                       { id: "drywall", label: "Drywall", cls: "text-blue-600" },
                       { id: "roofing", label: "PVC", cls: "text-emerald-600" },
-                    ] as { id: 'ALL' | 'drywall' | 'roofing'; label: string; cls?: string }[]
+                      { id: "metallic-roofing", label: "Aluzinc", cls: "text-zinc-600" },
+                    ] as { id: 'ALL' | 'drywall' | 'roofing' | 'metallic-roofing'; label: string; cls?: string }[]
                   ).map((opt) => (
                     <button
                       key={opt.id}
