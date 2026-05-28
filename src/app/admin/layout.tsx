@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { AuthProvider, useAuth, UserRole } from "@/context/AuthContext";
 import { BusinessLineProvider } from "@/context/BusinessLineContext";
-import Sidebar from "@/components/layout/sidebar";
+import AdminShell from "@/components/layout/AdminShell";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
-import { Loader2, Zap, Menu, X } from "lucide-react";
+import { Loader2, Zap } from "lucide-react";
 
 const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/admin/sales": ["ADMIN"],
@@ -17,6 +17,7 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/admin/inventory": ["ADMIN", "SUPERVISOR"],
   "/admin/production": ["ADMIN", "SUPERVISOR"],
   "/admin/roofing": ["ADMIN", "SUPERVISOR"],
+  "/admin/metallic-roofing": ["ADMIN", "SUPERVISOR"],
   "/admin/operator": ["ADMIN", "SUPERVISOR", "OPERATOR"],
   "/admin": ["ADMIN"],
 };
@@ -84,82 +85,14 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const isMobileTerminal = pathname === "/admin/operator";
-
-  // ESTADO PARA EL MENÚ MÓVIL
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  // Cerrar el menú móvil automáticamente cuando el usuario cambia de página
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [pathname]);
-
   return (
     <AuthProvider>
       <BusinessLineProvider>
-      <AuthGuard>
-        <div className="flex h-screen bg-gray-100 overflow-hidden font-sans relative">
-          {/* =========================================
-              CABECERA MÓVIL (Visible solo en pantallas pequeñas)
-              ========================================= */}
-          <div className="lg:hidden absolute top-0 left-0 w-full bg-gray-900 text-white p-4 flex justify-between items-center z-30 shadow-md">
-            <div className="flex items-center gap-2">
-              <Zap size={20} className="text-blue-500" fill="currentColor" />
-              <h1 className="text-lg font-black tracking-tighter italic">
-                AYR STEEL
-              </h1>
-            </div>
-            <button
-              onClick={() => setIsMobileMenuOpen(true)}
-              className="p-2 bg-gray-800 rounded-xl hover:bg-gray-700 transition active:scale-95"
-            >
-              <Menu size={24} />
-            </button>
-          </div>
-
-          {/* =========================================
-              SIDEBAR (Lateral) Y OVERLAY MÓVIL
-              ========================================= */}
-          {/* Overlay oscuro para móvil */}
-          {isMobileMenuOpen && (
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-          )}
-
-          {/* Contenedor del Sidebar */}
-          <div
-            className={`
-            fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out
-            lg:relative lg:translate-x-0
-            ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
-          `}
-          >
-            {/* Botón para cerrar en móvil */}
-            <button
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="lg:hidden absolute top-4 -right-12 p-2 bg-white text-gray-900 rounded-xl shadow-xl"
-            >
-              <X size={24} />
-            </button>
-
-            <Sidebar />
-          </div>
-
-          {/* =========================================
-              CONTENIDO PRINCIPAL
-              ========================================= */}
-          <main
-            className={`flex-1 overflow-y-auto ${isMobileTerminal ? "p-0 pt-16 lg:pt-0" : "p-4 pt-20 lg:p-8 lg:pt-8"}`}
-          >
-            <ErrorBoundary>
-              {children}
-            </ErrorBoundary>
-          </main>
-        </div>
-      </AuthGuard>
+        <AuthGuard>
+          <AdminShell>
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </AdminShell>
+        </AuthGuard>
       </BusinessLineProvider>
     </AuthProvider>
   );

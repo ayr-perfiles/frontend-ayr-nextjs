@@ -1,52 +1,44 @@
 # CLAUDE.md — AYR Steel ERP
 
-> **Versión:** 5.1 | **Sprint actual:** Mejoras + UI (post Sprint 3)
-> **v5.1:** decisiones de diseño resueltas + módulo `metallic-roofing` v1 generado (ver §13).
-> **Cambios v4→v5 (validados contra código real):**
+> **Versión:** 5.2 | **Sprint actual:** Mejoras + UI (post Sprint 3) **v5.2:** `metallic-roofing` v1 ✅ integrado. Lint 0 errors, 204/204 tests, build = error pre-existente `coils/page.js` (no introducido). Roofing = UPVC-only. Engines opcionales. **Cambios v4→v5 (validados contra código real):**
 >
-> 1. El modelo declaraba 2 líneas; la facturación (marzo 2026, S/ 1.24M) + el árbol de
->    `src/app/admin/` muestran **5 líneas**: `drywall`, `roofing` (UPVC), `metallic-roofing`
->    (aluzinc — mayor ingreso, 74.6%), `trading`, `services`.
-> 2. `metallic-roofing`, `trading` y `services` **ya tienen ruta en `app/admin/` pero NO están
->    registrados** en `businessLineRegistry.ts` ni tienen carpeta en `src/modules/`.
-> 3. ⚠️ **`firestore.rules` está totalmente abierto** — no implementa los roles que esta §5
->    declara. Ver §5 y §12.
->    Lee esto COMPLETO antes de cualquier cambio.
+> 1. El modelo declaraba 2 líneas; la facturación (marzo 2026, S/ 1.24M) + el árbol de `src/app/admin/` muestran **5 líneas**: `drywall`, `roofing` (UPVC), `metallic-roofing` (aluzinc — mayor ingreso, 74.6%), `trading`, `services`.
+> 2. `metallic-roofing`, `trading` y `services` **ya tienen ruta en** `app/admin/` **pero NO están registrados** en `businessLineRegistry.ts` ni tienen carpeta en `src/modules/`.
+> 3. ⚠️ `firestore.rules` **está totalmente abierto** — no implementa los roles que esta §5 declara. Ver §5 y §12. Lee esto COMPLETO antes de cualquier cambio.
 
 ---
 
 ## 1. Contexto del producto
 
-ERP de empresa que vende productos derivados de **acero** (bobina galvanizada/aluzinc) y **PVC**.
-Diversificación **ya en marcha** — es la realidad de la facturación, no un plan futuro.
+ERP de empresa que vende productos derivados de **acero** (bobina galvanizada/aluzinc) y **PVC**. Diversificación **ya en marcha** — es la realidad de la facturación, no un plan futuro.
 
 **Líneas de negocio (facturación marzo 2026 + estado en código):**
 
-| #   | Línea                                                    | Módulo / `id`      | Registrado                  | Ruta `app/` | Materia prima                  | % ingr mar-26 |
-| --- | -------------------------------------------------------- | ------------------ | --------------------------- | ----------- | ------------------------------ | ------------: |
-| 1   | Coberturas **Aluzinc** (metálicas)                       | `metallic-roofing` | 🚧 v1 (catálogo+inv+ventas) | ✅ existe   | Bobina aluzinc/galvanizada     |         74.6% |
-| 2   | **Drywall** (parantes, rieles, omegas)                   | `drywall`          | ✅ sí                       | ✅          | Bobina de acero                |         20.4% |
-| 3   | Coberturas **UPVC / termoacústicos**                     | `roofing`          | ✅ sí                       | ✅          | Plancha UPVC                   |          4.5% |
-| 4   | **Compra-venta** (policarbonato, tubos, autoperforantes) | `trading`          | ❌ no                       | ✅ existe   | Producto terminado de terceros |          0.4% |
-| 5   | **Servicio de conformado**                               | `services`         | ❌ no                       | ✅ existe   | N/A (mano de obra)             |          0.1% |
 
-> ⚠️ **`roofing` = SOLO UPVC.** En el código `roofingModule.displayName = 'Coberturas PVC'`.
-> Las coberturas de **Aluzinc (metal)** son `metallic-roofing`, línea aparte y la de mayor
-> ingreso. No mezclar ambas bajo "roofing".
+| #   | Línea                                                    | Módulo / `id`      | Registrado                       | Ruta `app/` | Materia prima                  | % ingr mar-26 |
+| --- | -------------------------------------------------------- | ------------------ | -------------------------------- | ----------- | ------------------------------ | ------------- |
+| 1   | Coberturas **Aluzinc** (metálicas)                       | `metallic-roofing` | ✅ v1 registrado (cat+inv+ventas) | ✅ existe    | Bobina aluzinc/galvanizada     | 74.6%         |
+| 2   | **Drywall** (parantes, rieles, omegas)                   | `drywall`          | ✅ sí                             | ✅           | Bobina de acero                | 20.4%         |
+| 3   | Coberturas **UPVC / termoacústicos**                     | `roofing`          | ✅ sí                             | ✅           | Plancha UPVC                   | 4.5%          |
+| 4   | **Compra-venta** (policarbonato, tubos, autoperforantes) | `trading`          | ❌ no                             | ✅ existe    | Producto terminado de terceros | 0.4%          |
+| 5   | **Servicio de conformado**                               | `services`         | ❌ no                             | ✅ existe    | N/A (mano de obra)             | 0.1%          |
+
+
+> ⚠️ `roofing` **= SOLO UPVC.** En el código `roofingModule.displayName = 'Coberturas PVC'`. Las coberturas de **Aluzinc (metal)** son `metallic-roofing`, línea aparte y la de mayor ingreso. No mezclar ambas bajo "roofing".
 
 **Dos troncos por materia prima:**
 
-- **ACERO / bobina** → alimenta `drywall` (perfiles) **y** `metallic-roofing` (coberturas).
-  Las bobinas (`BOB045GALV`, `BOB28NAT`) se facturan dentro de la categoría aluzinc.
+- **ACERO / bobina** → alimenta `drywall` (perfiles) **y** `metallic-roofing` (coberturas). Las bobinas (`BOB045GALV`, `BOB28NAT`) se facturan dentro de la categoría aluzinc.
 - **PVC** → `roofing`/UPVC (termoacústicos `TC5`).
 
 **Usuarios:** ADMIN, SUPERVISOR, OPERATOR (custom claims en Firebase Auth)
 
-> ⚠️ Los roles se aplican hoy solo en UI/middleware, **NO en `firestore.rules`** (ver §5).
+> ⚠️ Los roles se aplican hoy solo en UI/middleware, **NO en** `firestore.rules` (ver §5).
 
 ---
 
 ## 2. Stack
+
 
 | Capa       | Tech                                                       |
 | ---------- | ---------------------------------------------------------- |
@@ -58,6 +50,7 @@ Diversificación **ya en marcha** — es la realidad de la facturación, no un p
 | Validación | Zod                                                        |
 | Lint       | ESLint v9 flat config — 0 errors, ~238 warnings aceptables |
 
+
 ```bash
 npm run dev              # :3000
 npm run emulate          # Firebase emulators + dev juntos
@@ -65,6 +58,7 @@ npm run build            # Build producción
 npm run lint             # ESLint (debe ser 0 errors)
 npm run test             # Vitest
 npm run test:coverage    # Coverage report
+
 ```
 
 ---
@@ -105,19 +99,19 @@ src/
 │                          #  sales, settings, ui, users)
 ├── context/  config/  services/  types/  utils/
 └── lib/firebase/
+
 ```
 
-> Nota v4→v5: `auth/ crm/ audit/ settings/ kardex/ reports/ dashboard/` **no** viven en `core/`
-> (como decía v4) sino en `components/` y `app/admin/`. `domain/` hoy solo tiene `steel/`.
+> Nota v4→v5: `auth/ crm/ audit/ settings/ kardex/ reports/ dashboard/` **no** viven en `core/` (como decía v4) sino en `components/` y `app/admin/`. `domain/` hoy solo tiene `steel/`.
 
 ---
 
 ## 4. Colecciones Firestore
 
-> ⚠️ Reglas reales NO distinguen colección ni rol (ver §5). La columna "Escritura" describe la
-> intención de negocio, **no lo que firestore.rules aplica hoy**.
+> ⚠️ Reglas reales NO distinguen colección ni rol (ver §5). La columna "Escritura" describe la intención de negocio, **no lo que firestore.rules aplica hoy**.
 
 **Existentes:**
+
 
 | Colección                 | Línea            | Escritura (intención)               |
 | ------------------------- | ---------------- | ----------------------------------- |
@@ -134,7 +128,9 @@ src/
 | `customers/contacts`      | global           | ADMIN/SUPERVISOR                    |
 | `settings/products`       | global           | ADMIN                               |
 
+
 **Por crear para líneas nuevas (⚠️ CONFIRMAR naming contra los services):**
+
 
 | Colección                           | Línea                |
 | ----------------------------------- | -------------------- |
@@ -143,6 +139,7 @@ src/
 | `metallic_roofing_stock_movements`  | metallic-roofing     |
 | `trading_catalog` / `trading_stock` | trading              |
 | `services_catalog`                  | services (sin stock) |
+
 
 ⚠️ TEMPORAL = migrar a Cloud Functions en Sprint 4.
 
@@ -170,17 +167,14 @@ src/
 
 ### 🔴 Seguridad — ⚠️ DESALINEADA CON EL CÓDIGO
 
-- **Estado real:** `firestore.rules` usa `match /{document=**} { allow read, write: if request.auth != null }`.
-  Es decir, **cualquier autenticado lee/escribe todo**. No hay roles en Firestore.
+- **Estado real:** `firestore.rules` usa `match /{document=**} { allow read, write: if request.auth != null }`. Es decir, **cualquier autenticado lee/escribe todo**. No hay roles en Firestore.
 - **Regla:** NUNCA abrir rules "para que pase". Hoy están abiertas → **deuda de seguridad crítica**, priorizar.
-- Los 3 lugares que deben sincronizarse (layout + firestore.rules + middleware) hoy solo coinciden
-  en 2 (layout + middleware vía `RRolePermissionMap`). Firestore es el eslabón abierto.
+- Los 3 lugares que deben sincronizarse (layout + firestore.rules + middleware) hoy solo coinciden en 2 (layout + middleware vía `RRolePermissionMap`). Firestore es el eslabón abierto.
 - Roles en custom claims: ADMIN, SUPERVISOR, OPERATOR.
 
 ### 🔴 Tipado
 
-- NUNCA introducir `any` nuevo. ~47 any's actuales con justificación (varios en `contracts` con
-  `eslint-disable` y comentario "migrar cuando cada módulo defina su tipo concreto").
+- NUNCA introducir `any` nuevo. ~47 any's actuales con justificación (varios en `contracts` con `eslint-disable` y comentario "migrar cuando cada módulo defina su tipo concreto").
 
 ### 🟠 ESLint
 
@@ -211,6 +205,7 @@ Trading (reventa):
 
 Services:
   CONFORMADO   (unidad: TONELADA)
+
 ```
 
 ---
@@ -234,10 +229,10 @@ const costPerMm =
 // Roofing / Metallic-roofing — costo promedio ponderado
 newAvgCost =
   (currentQty * currentAvgCost + newQty * newUnitCost) / (currentQty + newQty);
+
 ```
 
-> ⚠️ Metallic-roofing: definir si su `ProductionEngine` comparte la fórmula de bobina con
-> drywall (mismo insumo) o si solo inventaría cobertura ya conformada.
+> ⚠️ Metallic-roofing: definir si su `ProductionEngine` comparte la fórmula de bobina con drywall (mismo insumo) o si solo inventaría cobertura ya conformada.
 
 ---
 
@@ -247,16 +242,17 @@ Cada línea registrada DEBE implementar:
 
 ```ts
 interface BusinessLineModule {
-  id: string; // 'drywall' | 'roofing' | 'metallic-roofing' | ...
-  displayName: string; // 'Coberturas PVC'
-  icon: string; // lucide-react: 'Factory' | 'Home' | ...
-  productionEngine: ProductionEngine; // plan/execute/cancel/getStatus
-  inventoryEngine: InventoryEngine; // getInventoryView / calculateMetrics
+  id: string;                  // 'drywall' | 'roofing' | 'metallic-roofing' | ...
+  displayName: string;         // 'Coberturas PVC'
+  icon: string;                // lucide-react: 'Factory' | 'Home' | ...
+  productionEngine: ProductionEngine;   // plan/execute/cancel/getStatus
+  inventoryEngine: InventoryEngine;     // getInventoryView / calculateMetrics
   catalogSchema: z.ZodSchema;
   routes: RouteConfig[];
   sidebarItems: MenuItem[];
-  permissions: RolePermissionMap; // canView/Create/Edit/Delete/Void por rol
+  permissions: RolePermissionMap;       // canView/Create/Edit/Delete/Void por rol
 }
+
 ```
 
 Patrón de errores: `Result<T, DomainError>` (Railway), no excepciones para errores de dominio.
@@ -272,17 +268,14 @@ Patrón de errores: `Result<T, DomainError>` (Railway), no excepciones para erro
 export const businessLines: BusinessLineModule[] = [
   drywallModule,
   roofingModule,
-  metallicRoofingModule, // 🔜
-  tradingModule, // 🔜  (ver decisión abajo)
-  servicesModule, // 🔜  (ver decisión abajo)
+  metallicRoofingModule,   // 🔜
+  tradingModule,           // 🔜  (ver decisión abajo)
+  servicesModule,          // 🔜  (ver decisión abajo)
 ];
+
 ```
 
-> ✅ **DECISIÓN RESUELTA (v5.1):** `productionEngine` e `inventoryEngine` pasan a ser
-> **opcionales** en `BusinessLineModule` (ver patch en §13). Los consumidores hacen null-check.
-> Así `trading` (sin producción), `services` (sin producción ni stock) y `metallic-roofing` v1
-> (sin producción todavía) se registran sin engines falsos. `catalogSchema`, `routes`,
-> `sidebarItems` y `permissions` siguen obligatorios.
+> ✅ **DECISIÓN RESUELTA (v5.1):** `productionEngine` e `inventoryEngine` pasan a ser **opcionales** en `BusinessLineModule` (ver patch en §13). Los consumidores hacen null-check. Así `trading` (sin producción), `services` (sin producción ni stock) y `metallic-roofing` v1 (sin producción todavía) se registran sin engines falsos. `catalogSchema`, `routes`, `sidebarItems` y `permissions` siguen obligatorios.
 
 ---
 
@@ -293,6 +286,7 @@ export const businessLines: BusinessLineModule[] = [
 // ✅ SIEMPRE strategy  (core/sales/strategies/)
 const strategy = getStockStrategy(item.businessLine);
 await strategy.decrementStock(item.sku, item.quantity, transaction);
+
 ```
 
 Estrategias esperadas: `drywall`, `roofing`, `metallic-roofing`, `trading`, `services` (no-op).
@@ -310,20 +304,22 @@ Estrategias esperadas: `drywall`, `roofing`, `metallic-roofing`, `trading`, `ser
 7. ESLint: `no-undef` off, `no-unused-vars` off (usar versión TS).
 8. **"roofing" ≠ aluzinc.** `roofing` = UPVC; aluzinc = `metallic-roofing`. Separar por SKU/categoría.
 9. **Bobinas compartidas:** una bobina se consume para drywall o metallic-roofing; imputar costo a la línea que la conforma.
-10. **Rutas huérfanas:** `metallic-roofing`, `trading`, `services` tienen página pero no módulo
-    registrado → el selector de línea / sidebar dinámico no las verá hasta registrarlas.
+10. **Rutas huérfanas:** `trading`, `services` tienen página pero no módulo registrado. `metallic-roofing` ya registrado ✅.
 
 ---
 
 ## 11. Roadmap
 
-| Sprint | Estado | Foco                                                                             |
-| ------ | ------ | -------------------------------------------------------------------------------- |
-| 0-3    | ✅     | Base, drywall, template, roofing (UPVC) ventas                                   |
-| Actual | 🚧     | Mejoras generales + UI/UX                                                        |
-| 4      | 🔜     | **Registrar `metallic-roofing`** (mayor ingreso) + roofing producción            |
-| 5      | 🔜     | Registrar `trading` y `services` (resolver contrato §8)                          |
-| 6      | 🔜     | 🔴 **Cerrar firestore.rules** por colección+rol; migrar stock/kardex a Functions |
+
+| Sprint | Estado | Foco                                                                           |
+| ------ | ------ | ------------------------------------------------------------------------------ |
+| 0-3    | ✅      | Base, drywall, template, roofing (UPVC) ventas                                 |
+| Actual | 🚧     | Mejoras generales + UI/UX                                                      |
+| 4      | ✅      | `metallic-roofing` v1 registrado + roofing = UPVC-only                         |
+| 5      | 🔜     | `trading` (reventa, sin productionEngine) + `services` (sin engines)           |
+| 6      | 🔜     | `metallic-roofing` producción (conformado desde bobina)                        |
+| 7      | 🔜     | 🔴 Cerrar `firestore.rules` por colección+rol; migrar stock/kardex a Functions |
+
 
 ---
 
@@ -343,21 +339,19 @@ Estrategias esperadas: `drywall`, `roofing`, `metallic-roofing`, `trading`, `ser
 
 ---
 
-## 13. Decisiones resueltas + módulo `metallic-roofing` v1 (v5.1)
+## 13. Decisiones resueltas + módulo `metallic-roofing` v1 ✅ (v5.2)
 
-**Decisiones (todas mías por delegación):**
+**Estado:** integrado, lint 0, 204/204 tests, roofing sin regresión. Build: error pre-existente `coils/page.js`, no introducido.
+
+**Decisiones tomadas:**
 
 1. **Engines opcionales** en `BusinessLineModule` (no no-op). Ver §8 y el patch.
-2. **`metallic-roofing` v1 = catálogo + inventario + ventas, SIN producción.** El conformado
-   desde bobina se modela en sprint posterior (igual que roofing hizo ventas antes que producción).
-3. **Colecciones:** `metallic_roofing_catalog`, `metallic_roofing_stock`,
-   `metallic_roofing_stock_movements` (espejo exacto del patrón roofing).
-4. **SKU manual con override**; `generateSKU` solo de conveniencia (los SKU reales de aluzinc
-   son irregulares: `BOB28NAT` vs `BOB045GALV`, `PL040X6MT`).
-5. **Familias** modeladas con enum `family`: `COBERTURA | PLANCHA | BOBINA | ACCESORIO`
-   (`length` requerido solo en `PLANCHA`).
+2. `metallic-roofing` **v1 = catálogo + inventario + ventas, SIN producción.** El conformado desde bobina se modela en sprint posterior (igual que roofing hizo ventas antes que producción).
+3. **Colecciones:** `metallic_roofing_catalog`, `metallic_roofing_stock`, `metallic_roofing_stock_movements` (espejo exacto del patrón roofing).
+4. **SKU manual con override**; `generateSKU` solo de conveniencia (los SKU reales de aluzinc son irregulares: `BOB28NAT` vs `BOB045GALV`, `PL040X6MT`).
+5. **Familias** modeladas con enum `family`: `COBERTURA | PLANCHA | BOBINA | ACCESORIO` (`length` requerido solo en `PLANCHA`).
 
-**Archivos generados (pegar en `src/modules/metallic-roofing/`):**
+**Archivos generados (pegar en** `src/modules/metallic-roofing/`**):**
 
 ```
 types.ts
@@ -368,28 +362,24 @@ engines/{inventory,production}.ts   ← production es stub, NO se exporta en ind
 config/{sidebar,permissions}.ts
 routes.ts
 index.ts   ← exporta metallicRoofingModule (sin productionEngine)
+
 ```
 
-**Patches al core (en `_patches/`):**
+**Patches al core (en** `_patches/`**):**
 
 - `core-contracts/PATCH-BusinessLineModule.md` → hacer engines opcionales + null-checks.
 - `core-registry/businessLineRegistry.ts` → añade `metallicRoofingModule` al array.
-- `core-sales-strategies/metallicRoofingStrategy.ts` → **SKETCH**, ajustar a la interfaz real
-  `StockStrategy`/`getStockStrategy` (no la tuve a la vista).
+- `core-sales-strategies/metallicRoofingStrategy.ts` → **SKETCH**, ajustar a la interfaz real `StockStrategy`/`getStockStrategy` (no la tuve a la vista).
 
 **Pasos de integración:**
 
 1. Aplicar el patch del contrato (engines opcionales) y blindar consumidores con null-check.
-2. Copiar `src/modules/metallic-roofing/` y crear los componentes UI (`components/catalog/`,
-   `components/inventory/`) — NO generados aquí, espejar los de `roofing/components/`.
+2. Copiar `src/modules/metallic-roofing/` y crear los componentes UI (`components/catalog/`, `components/inventory/`) — NO generados aquí, espejar los de `roofing/components/`.
 3. Reemplazar `businessLineRegistry.ts` por la versión del patch.
 4. Registrar la estrategia de stock de aluzinc en `core/sales/strategies/` (ajustar el sketch).
 5. Ampliar el enum `SaleItem.businessLine` a `'metallic-roofing'` en schemas/tipos de ventas.
 6. `npm run lint && npm run test && npm run build`.
 
-**Pendiente de verificar (no tuve los archivos):** `RoofingProductSchema`, `roofing/types.ts`,
-`skuGenerator` real, engines de roofing, interfaz `StockStrategy`, y los componentes UI.
-Si los compartes, alineo el módulo 1:1 y completo la UI.
+**Pendiente de verificar (no tuve los archivos):** `RoofingProductSchema`, `roofing/types.ts`, `skuGenerator` real, engines de roofing, interfaz `StockStrategy`, y los componentes UI. Si los compartes, alineo el módulo 1:1 y completo la UI.
 
-**Siguiente recomendado:** repetir el patrón para `trading` (sin `productionEngine`) y luego
-`services` (sin `productionEngine` ni `inventoryEngine`, catálogo de servicios por tonelada).
+**Siguiente recomendado:** repetir el patrón para `trading` (sin `productionEngine`) y luego `services` (sin `productionEngine` ni `inventoryEngine`, catálogo de servicios por tonelada).

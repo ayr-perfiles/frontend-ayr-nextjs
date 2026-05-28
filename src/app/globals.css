@@ -24,3 +24,80 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ── AdminShell design tokens ─────────────────────────────────────────────── */
+/* --color-background overrides the Tailwind @theme token intentionally;
+   oklch(0.99 0.003 240) ≈ #fafbfc (near-white, safe replacement).
+   --font-sans / --font-mono are NOT redefined here — the Geist vars in
+   @theme inline already handle them correctly. */
+:root {
+  --color-background:      oklch(0.99 0.003 240);
+  --color-surface:         oklch(1.00 0 0);
+  --color-surface-muted:   oklch(0.97 0.005 240);
+  --color-surface-sunken:  oklch(0.95 0.006 240);
+
+  --color-border:          oklch(0.91 0.006 240);
+  --color-border-strong:   oklch(0.83 0.008 240);
+  --color-border-focus:    oklch(0.55 0.16 240);
+
+  --color-fg:              oklch(0.20 0.012 250);
+  --color-fg-muted:        oklch(0.46 0.010 250);
+  --color-fg-subtle:       oklch(0.62 0.008 250);
+  --color-fg-on-primary:   oklch(0.99 0 0);
+
+  --color-primary:         oklch(0.48 0.13 245);
+  --color-primary-hover:   oklch(0.42 0.13 245);
+  --color-primary-soft:    oklch(0.94 0.03 245);
+
+  --color-success:         oklch(0.62 0.15 150);
+  --color-success-soft:    oklch(0.95 0.04 150);
+  --color-warning:         oklch(0.76 0.15 75);
+  --color-warning-soft:    oklch(0.96 0.05 75);
+  --color-danger:          oklch(0.58 0.20 25);
+  --color-danger-soft:     oklch(0.96 0.04 25);
+  --color-info:            oklch(0.62 0.13 230);
+  --color-info-soft:       oklch(0.95 0.03 230);
+
+  --color-material-acero:  oklch(0.55 0.04 250);
+  --color-material-pvc:    oklch(0.58 0.07 180);
+
+  --color-role-admin:      oklch(0.48 0.13 245);
+  --color-role-supervisor: oklch(0.55 0.10 200);
+  --color-role-operator:   oklch(0.55 0.04 250);
+
+  --color-env-dev:         oklch(0.72 0.16 60);
+  --color-env-emul:        oklch(0.65 0.12 290);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-md: 0 2px 6px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 8px 24px rgb(0 0 0 / 0.08);
+}
+
+html.dark {
+  --color-background:      oklch(0.18 0.012 250);
+  --color-surface:         oklch(0.22 0.012 250);
+  --color-surface-muted:   oklch(0.25 0.012 250);
+  --color-surface-sunken:  oklch(0.20 0.012 250);
+
+  --color-border:          oklch(0.30 0.012 250);
+  --color-border-strong:   oklch(0.38 0.012 250);
+  --color-border-focus:    oklch(0.62 0.14 245);
+
+  --color-fg:              oklch(0.96 0.005 250);
+  --color-fg-muted:        oklch(0.72 0.010 250);
+  --color-fg-subtle:       oklch(0.55 0.010 250);
+
+  --color-primary:         oklch(0.62 0.14 245);
+  --color-primary-hover:   oklch(0.68 0.14 245);
+  --color-primary-soft:    oklch(0.32 0.07 245);
+
+  --color-success-soft:    oklch(0.28 0.06 150);
+  --color-warning-soft:    oklch(0.30 0.07 75);
+  --color-danger-soft:     oklch(0.30 0.07 25);
+  --color-info-soft:       oklch(0.28 0.05 230);
+}

@@ -1,26 +1,38 @@
-# CLAUDE.md — AYR Steel ERP
+# GEMINI.md — AYR Steel ERP
 
-> **Versión:** 4.0 | **Sprint actual:** Mejoras + UI (post Sprint 3)  
-> Lee esto COMPLETO antes de cualquier cambio.
+> **Versión:** 5.2 | **Sprint actual:** Mejoras + UI (post Sprint 3)
+> **v5.2:** `metallic-roofing` v1 ✅ integrado. Lint 0 errors, 204/204 tests, build = error pre-existente `coils/page.js` (no introducido). Roofing = UPVC-only. Engines opcionales.
+
+Este archivo contiene los mandatos fundamentales y reglas de ingeniería para Gemini CLI en este proyecto. **Prioridad absoluta sobre cualquier flujo genérico.**
 
 ---
 
 ## 1. Contexto del producto
 
-ERP de empresa que vende productos de **acero** y **PVC**. Diversificación activa.
+ERP de empresa que vende productos derivados de **acero** (bobina galvanizada/aluzinc) y **PVC**. Diversificación **ya en marcha** — es la realidad de la facturación, no un plan futuro.
 
-**Líneas de negocio:**
-| # | Módulo | Estado | Materia prima |
-|---|---|---|---|
-| 1 | `drywall` | ✅ Producción | Bobinas de acero |
-| 2 | `roofing` | ✅ Ventas/Inventario | Planchas PVC |
-| 3-5 | TBD | 🔜 | TBD |
+**Líneas de negocio (facturación marzo 2026 + estado en código):**
 
-**Usuarios:** ADMIN, SUPERVISOR, OPERATOR (custom claims en Firebase Auth)
+| #   | Línea                                                    | Módulo / `id`      | Registrado                       | Ruta `app/` | Materia prima                  | % ingr mar-26 |
+| --- | -------------------------------------------------------- | ------------------ | -------------------------------- | ----------- | ------------------------------ | ------------- |
+| 1   | Coberturas **Aluzinc** (metálicas)                       | `metallic-roofing` | ✅ v1 registrado (cat+inv+ventas) | ✅ existe    | Bobina aluzinc/galvanizada     | 74.6%         |
+| 2   | **Drywall** (parantes, rieles, omegas)                   | `drywall`          | ✅ sí                             | ✅           | Bobina de acero                | 20.4%         |
+| 3   | Coberturas **UPVC / termoacústicos**                     | `roofing`          | ✅ sí                             | ✅           | Plancha UPVC                   | 4.5%          |
+| 4   | **Compra-venta** (policarbonato, tubos, autoperforantes) | `trading`          | ❌ no                             | ✅ existe    | Producto terminado de terceros | 0.4%          |
+| 5   | **Servicio de conformado**                               | `services`         | ❌ no                             | ✅ existe    | N/A (mano de obra)             | 0.1%          |
+
+> ⚠️ `roofing` **= SOLO UPVC.** En el código `roofingModule.displayName = 'Coberturas PVC'`. Las coberturas de **Aluzinc (metal)** son `metallic-roofing`, línea aparte y la de mayor ingreso. No mezclar ambas bajo "roofing".
+
+**Dos troncos por materia prima:**
+- **ACERO / bobina** → alimenta `drywall` (perfiles) **y** `metallic-roofing` (coberturas). Las bobinas (`BOB045GALV`, `BOB28NAT`) se facturan dentro de la categoría aluzinc.
+- **PVC** → `roofing`/UPVC (termoacústicos `TC5`).
+
+**Usuarios:** ADMIN, SUPERVISOR, OPERATOR (custom claims en Firebase Auth).
+⚠️ Los roles se aplican hoy solo en UI/middleware, **NO en** `firestore.rules` (ver §5).
 
 ---
 
-## 2. Stack
+## 2. Stack y Comandos
 
 | Capa       | Tech                                                       |
 | ---------- | ---------------------------------------------------------- |
@@ -43,66 +55,48 @@ npm run test:coverage    # Coverage report
 
 ---
 
-## 3. Arquitectura
+## 3. Arquitectura (Estructura Real)
 
 ```
 src/
-├── core/                # Compartido entre TODAS las líneas
-│   ├── auth/
-│   ├── crm/
-│   ├── audit/
-│   ├── settings/
-│   ├── kardex/
-│   ├── reports/
-│   ├── dashboard/
-│   ├── sales/           # Ventas MULTI-LÍNEA
-│   │   ├── services/
-│   │   ├── components/  # ProductSelector con tabs por línea
-│   │   └── strategies/  # StockStrategy por línea
-│   ├── contracts/       # BusinessLineModule, ProductionEngine
-│   └── registry/        # Registro central de módulos
-│
-├── domain/              # Lógica pura SIN Firebase
-│   ├── steel/
-│   ├── pricing/
-│   └── shared/          # Result<T,E>
-│
+├── app/
+│   └── admin/
+│       ├── (core)/        ← audit/ customers/ dashboard/ reports/ sales/ settings/ users/
+│       ├── coils/ inventory/ kardex/ production/   ← drywall (acero)
+│       ├── roofing/                                    ← UPVC ✅ módulo
+│       ├── metallic-roofing/                           ← aluzinc ⚠️ ruta sin módulo
+│       ├── trading/                                    ← reventa  ⚠️ ruta sin módulo
+│       └── services/                                   ← conformado ⚠️ ruta sin módulo
+├── core/                  # Compartido entre líneas
+│   ├── sales/             # Ventas MULTI-LÍNEA (actions, components, services, strategies)
+│   └── contracts/         # BusinessLineModule, ProductionEngine
+├── domain/                # Lógica pura (steel/)
 ├── modules/
-│   ├── drywall/         # ✅ Acero
-│   └── roofing/         # ✅ PVC
-│       ├── components/{catalog,inventory,sales}/
-│       ├── services/
-│       ├── domain/
-│       ├── hooks/
-│       ├── engines/
-│       ├── schemas/
-│       ├── config/
-│       ├── types.ts
-│       └── index.ts
-│
-└── app/admin/
-    ├── (core)/
-    ├── drywall/
-    └── roofing/
+│   ├── drywall/           # Módulo completo
+│   └── roofing/           # Módulo completo
+│       # 🔜 FALTAN: metallic-roofing/, trading/, services/
+├── components/            # UI por dominio
+└── lib/firebase/
 ```
 
 ---
 
-## 4. Colecciones Firestore
+## 4. Colecciones Firestore (Intención vs Realidad)
 
-| Colección                 | Línea   | Escritura                           |
-| ------------------------- | ------- | ----------------------------------- |
-| `coils`                   | drywall | ADMIN/SUPERVISOR                    |
-| `production_logs`         | drywall | ANY create, ADMIN/SUPERVISOR update |
-| `inventory_stock`         | drywall | ADMIN/SUPERVISOR ⚠️ TEMPORAL        |
-| `kardex_movements`        | drywall | ADMIN/SUPERVISOR ⚠️ TEMPORAL        |
-| `roofing_catalog`         | roofing | ADMIN                               |
-| `roofing_stock`           | roofing | ADMIN/SUPERVISOR                    |
-| `roofing_stock_movements` | roofing | ADMIN/SUPERVISOR create, inmutable  |
-| `sales`                   | multi   | ADMIN/SUPERVISOR                    |
-| `audit_logs`              | global  | ANY_ROLE ⚠️ TEMPORAL                |
-| `customers/contacts`      | global  | ADMIN/SUPERVISOR                    |
-| `settings/products`       | global  | ADMIN                               |
+| Colección                 | Línea            | Escritura (intención)               |
+| ------------------------- | ---------------- | ----------------------------------- |
+| `users`                   | global           | dueño del doc (`uid == userId`)     |
+| `coils`                   | drywall/metallic | ADMIN/SUPERVISOR                    |
+| `production_logs`         | drywall          | ANY create, ADMIN/SUPERVISOR update |
+| `inventory_stock`         | drywall          | ADMIN/SUPERVISOR ⚠️ TEMPORAL        |
+| `kardex_movements`        | drywall          | ADMIN/SUPERVISOR ⚠️ TEMPORAL        |
+| `roofing_catalog`         | roofing (UPVC)   | ADMIN                               |
+| `roofing_stock`           | roofing (UPVC)   | ADMIN/SUPERVISOR                    |
+| `roofing_stock_movements` | roofing (UPVC)   | ADMIN/SUPERVISOR create, inmutable  |
+| `sales`                   | multi            | ADMIN/SUPERVISOR                    |
+| `audit_logs`              | global           | ANY_ROLE ⚠️ TEMPORAL                |
+| `customers/contacts`      | global           | ADMIN/SUPERVISOR                    |
+| `settings/products`       | global           | ADMIN                               |
 
 ⚠️ TEMPORAL = migrar a Cloud Functions en Sprint 4.
 
@@ -111,116 +105,58 @@ src/
 ## 5. Reglas no negociables
 
 ### 🔴 Transacciones
-
-- Stock + kardex + ventas → SIEMPRE `runTransaction`
-- **LECTURAS PRIMERO → ESCRITURAS DESPUÉS**
-- Audit log en la misma transacción
+- Stock + kardex + ventas → SIEMPRE `runTransaction`.
+- **LECTURAS PRIMERO → ESCRITURAS DESPUÉS.**
+- Audit log en la misma transacción.
 
 ### 🔴 Multi-línea en ventas
-
-- `SaleItem` tiene `businessLine: 'drywall' | 'roofing'`
-- Usar `getStockStrategy(businessLine)` — NUNCA if/else por línea
-- Una sola transacción aunque haya N líneas
+- `SaleItem.businessLine`: ampliar a `'drywall' | 'roofing' | 'metallic-roofing' | 'trading' | 'services'`.
+- Usar `getStockStrategy(businessLine)` — NUNCA if/else por línea.
+- `services` → estrategia no-op; `trading` → descuenta stock sin producción.
+- Una sola transacción aunque haya N líneas.
 
 ### 🔴 Stock negativo PERMITIDO
+- No bloquear ventas — decisión de negocio. Warning visual cuando stock < 0.
 
-- No bloquear ventas — decisión de negocio
-- Warning visual cuando stock < 0
-- Aplica a todas las líneas
+### 🔴 Seguridad (Deuda Crítica)
+- `firestore.rules` está actualmente **abierto** (`allow read, write: if request.auth != null`).
+- NUNCA abrir rules "para que pase". Priorizar cierre por roles (ADMIN, SUPERVISOR, OPERATOR).
 
-### 🔴 Seguridad
-
-- NUNCA abrir rules "para que pase"
-- 3 lugares sincronizados: layout + firestore.rules + middleware
-- Roles en custom claims: ADMIN, SUPERVISOR, OPERATOR
-
-### 🔴 Tipado
-
-- NUNCA introducir `any` nuevo
-- ~47 any's actuales con justificación
-
-### 🟠 ESLint
-
-- `npm run lint` = 0 errors siempre
-- ~238 warnings aceptables, reducir sprint a sprint
+### 🔴 Tipado y Calidad
+- NUNCA introducir `any` nuevo.
+- `npm run lint` = 0 errors siempre.
 
 ---
 
 ## 6. SKU Conventions
 
-```
-Drywall:  P38, P64, P89, R39, R65, R90, OMG
-Roofing:  [MATERIAL][LARGO]MT[COLOR_SI_NO_ES_ROJO]
-          UPVC6MT, UPVC36MTAZUL, UPVC6MTVERDE...
-```
+- **Drywall:** `P38GALV045`, `R39GALV045`, `OMEGA045`.
+- **Metallic-roofing:** `COB030ROJO`, `PL040X6MT`, `BOB045GALV`.
+- **Roofing (UPVC):** `UPVC6MT`, `UPVC36MTAZUL`.
+- **Trading:** `POLI600`, `ANTI`.
+- **Services:** `CONFORMADO`.
 
 ---
 
 ## 7. Fórmulas críticas
 
-```ts
-// Drywall — piezas máximas
-const totalMeters =
-  weightKg / (thicknessMm * widthMm * (STEEL_DENSITY_G_CM3 / 1000));
-const maxPieces = Math.ceil(
-  Math.floor(totalMeters / pieceLength) * PRODUCTION_TOLERANCE_FACTOR,
-);
-
-// Drywall — costo por mm
-const costPerMm =
-  leftover <= LEFTOVER_THRESHOLD_MM && leftover > 0
-    ? totalCost / totalPlannedWidth
-    : totalCost / masterWidth;
-
-// Roofing — costo promedio ponderado
-newAvgCost =
-  (currentQty * currentAvgCost + newQty * newUnitCost) / (currentQty + newQty);
-```
+- **Drywall piezas:** `totalMeters = weightKg / (thicknessMm * widthMm * (7.85/1000))`.
+- **Costo Promedio:** `newAvgCost = (currentQty * currentAvgCost + newQty * newUnitCost) / (currentQty + newQty)`.
 
 ---
 
-## 8. Strategy Pattern en ventas
+## 8. Contrato BusinessLineModule
 
-```ts
-// ❌ NUNCA if/else por línea
-// ✅ SIEMPRE strategy
-const strategy = getStockStrategy(item.businessLine);
-await strategy.decrementStock(item.sku, item.quantity, transaction);
-```
+Cada línea DEBE implementar `BusinessLineModule` en `src/modules/<id>/`.
+`productionEngine` e `inventoryEngine` son **opcionales** (hacer null-check).
 
 ---
 
-## 9. Trampas conocidas
+## 9. Checklist pre-commit (OBLIGATORIO)
 
-1. Firestore: `where("in")` + rango fechas = error. Ver workaround en inventoryService.
-2. Algolia: Siempre hidratar con getDocs.
-3. runTransaction: No metas side effects — reintenta automáticamente.
-4. Custom claims: Usar `getIdToken(true)` para refrescar.
-5. Coils L58: Validar status solo si viene en payload.
-6. Stock negativo: Feature, no bug.
-7. ESLint: `no-undef` off, `no-unused-vars` off (usar versión TS).
-
----
-
-## 10. Roadmap
-
-| Sprint | Estado | Foco                                    |
-| ------ | ------ | --------------------------------------- |
-| 0-3    | ✅     | Base, drywall, template, roofing ventas |
-| Actual | 🚧     | Mejoras generales + UI/UX               |
-| 4      | 🔜     | Roofing producción                      |
-| 5+     | 🔜     | Líneas 3, 4, 5                          |
-
----
-
-## 11. Checklist pre-commit
-
-- [ ] `npm run lint` → 0 errors
-- [ ] `npm run test` → 0 failing
-- [ ] `npm run build` → sin errores
-- [ ] Transacciones: lecturas antes que escrituras
-- [ ] Stock negativo: warning visual
-- [ ] Multi-línea: Strategy, no if/else
-- [ ] Sin `any` nuevos
-- [ ] Errores en español
-- [ ] Audit log en operaciones sensibles
+- [ ] `npm run lint` → 0 errors.
+- [ ] `npm run test` → 0 failing.
+- [ ] `npm run build` → sin errores.
+- [ ] Transacciones: lecturas antes que escrituras.
+- [ ] `businessLine` cubre las 5 líneas en enum/schemas/strategies.
+- [ ] Audit log en operaciones sensibles.
