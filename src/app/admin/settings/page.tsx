@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import {
   Settings,
-  BookOpen,
   Users,
   Plug,
   AlertTriangle,
@@ -18,7 +17,6 @@ import {
   SystemSettings,
 } from "@/services/settingsService";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
-import { CatalogSettings } from "@/components/settings/CatalogSettings";
 import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
 import { useAuth } from "@/context/AuthContext"; // <-- Necessário para o log de auditoria
 import toast from "react-hot-toast";
@@ -27,7 +25,7 @@ import { fixAllHistoricalCosts } from "@/services/seedService";
 export default function SettingsPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<
-    "general" | "catalog" | "integrations" | "users" | "danger"
+    "general" | "integrations" | "users" | "danger"
   >("general");
 
   const [settingsData, setSettingsData] = useState<SystemSettings | null>(null);
@@ -113,7 +111,7 @@ export default function SettingsPage() {
         </h1>
         <p className="text-gray-500 text-sm font-medium mt-1">
           Administra la identidad corporativa, impuestos, integraciones y
-          catálogos.
+          configuraciones globales.
         </p>
       </div>
 
@@ -125,13 +123,6 @@ export default function SettingsPage() {
             className={`w-full text-left p-4 rounded-xl font-bold flex items-center gap-3 transition ${activeTab === "general" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "bg-white text-gray-600 hover:bg-gray-50"}`}
           >
             <Settings size={18} /> General y Operaciones
-          </button>
-
-          <button
-            onClick={() => setActiveTab("catalog")}
-            className={`w-full text-left p-4 rounded-xl font-bold flex items-center gap-3 transition ${activeTab === "catalog" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-          >
-            <BookOpen size={18} /> Catálogo de Perfiles
           </button>
 
           <button
@@ -169,8 +160,6 @@ export default function SettingsPage() {
                   isSaving={isSaving}
                 />
               )}
-
-              {activeTab === "catalog" && <CatalogSettings />}
 
               {activeTab === "integrations" && (
                 <IntegrationsSettings

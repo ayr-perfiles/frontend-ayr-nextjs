@@ -2,9 +2,15 @@ import type { MenuItem } from '@/core/contracts';
 
 export const drywallSidebarItems: MenuItem[] = [
   {
+    label: 'Catálogo',
+    href: '/admin/catalog',
+    icon: 'BookOpen',
+    roles: ['ADMIN', 'SUPERVISOR'],
+  },
+  {
     label: 'Inventario',
     href: '/admin/inventory',
-    icon: 'Database',
+    icon: 'Warehouse',
     roles: ['ADMIN', 'SUPERVISOR'],
   },
   {

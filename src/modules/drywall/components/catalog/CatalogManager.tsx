@@ -19,7 +19,7 @@ import {
 import { PRODUCT_CATALOG } from "@/config/products";
 import toast from "react-hot-toast";
 
-export function CatalogSettings() {
+export function CatalogManager() {
   const [products, setProducts] = useState<ProductConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -50,10 +50,9 @@ export function CatalogSettings() {
       for (const [sku, data] of Object.entries(PRODUCT_CATALOG)) {
         await saveProduct({
           sku,
-          name: (data as any).name,
-          stripWidth: (data as any).stripWidth || 0,
-          standardWeight:
-            (data as any).standardWeight || (data as any).weight || 0,
+          name: data.name,
+          stripWidth: data.stripWidth || 0,
+          standardWeight: data.standardWeight || 0,
           lengthMeters: 3.0,
           isActive: true,
         });

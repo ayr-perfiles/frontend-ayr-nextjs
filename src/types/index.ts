@@ -50,7 +50,7 @@ export interface StockSummary {
   lastUpdate: any;
 }
 
-export type BusinessLine = 'drywall' | 'roofing' | 'metallic-roofing';
+export type BusinessLine = 'drywall' | 'roofing' | 'metallic-roofing' | 'trading' | 'services';
 
 export interface SaleItem {
   sku: string;

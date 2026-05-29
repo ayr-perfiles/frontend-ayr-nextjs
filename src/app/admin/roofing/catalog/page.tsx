@@ -6,8 +6,7 @@ import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import { useRoofingCatalog } from "@/modules/roofing/hooks/useRoofingCatalog";
 import ProductCatalogTable from "@/modules/roofing/components/catalog/ProductCatalogTable";
-import AddProductModal from "@/modules/roofing/components/catalog/AddProductModal";
-import EditProductModal from "@/modules/roofing/components/catalog/EditProductModal";
+import ProductModal from "@/modules/roofing/components/catalog/ProductModal";
 import {
   deactivateProduct,
   reactivateProduct,
@@ -207,7 +206,8 @@ export default function RoofingCatalogPage() {
 
       {/* Add modal */}
       {showAddModal && (
-        <AddProductModal
+        <ProductModal
+          mode="create"
           onClose={() => setShowAddModal(false)}
           onSuccess={refresh}
         />
@@ -215,7 +215,8 @@ export default function RoofingCatalogPage() {
 
       {/* Edit modal */}
       {editingProduct && (
-        <EditProductModal
+        <ProductModal
+          mode="edit"
           product={editingProduct}
           onClose={() => setEditingProduct(null)}
           onSuccess={() => {

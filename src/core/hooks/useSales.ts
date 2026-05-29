@@ -8,7 +8,7 @@ import { fetchSales } from "@/core/sales/services/salesService";
 export interface SalesFilters {
   pageSize: number;
   statusFilter: string;
-  businessLine: "ALL" | "drywall" | "roofing" | "metallic-roofing";
+  businessLine: "ALL" | "drywall" | "roofing" | "metallic-roofing" | "trading" | "services";
   searchTerm: string;
   startDate: string;
   endDate: string;

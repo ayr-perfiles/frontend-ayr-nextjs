@@ -6,8 +6,7 @@ import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import { useMetallicCatalog } from "@/modules/metallic-roofing/hooks/useMetallicCatalog";
 import ProductCatalogTable from "@/modules/metallic-roofing/components/catalog/ProductCatalogTable";
-import AddProductModal from "@/modules/metallic-roofing/components/catalog/AddProductModal";
-import EditProductModal from "@/modules/metallic-roofing/components/catalog/EditProductModal";
+import ProductModal from "@/modules/metallic-roofing/components/catalog/ProductModal";
 import {
   deactivateProduct,
   reactivateProduct,
@@ -202,11 +201,12 @@ export default function MetallicRoofingCatalogPage() {
 
       {/* Modals */}
       {showAddModal && (
-        <AddProductModal onClose={() => setShowAddModal(false)} onSuccess={refresh} />
+        <ProductModal mode="create" onClose={() => setShowAddModal(false)} onSuccess={refresh} />
       )}
 
       {editingProduct && (
-        <EditProductModal
+        <ProductModal
+          mode="edit"
           product={editingProduct}
           onClose={() => setEditingProduct(null)}
           onSuccess={() => { setEditingProduct(null); refresh(); }}

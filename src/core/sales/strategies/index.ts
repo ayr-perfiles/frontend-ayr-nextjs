@@ -282,6 +282,130 @@ export const metallicRoofingStockStrategy: StockStrategy = {
   },
 };
 
+// ─── Trading (reventa) ────────────────────────────────────────────────────────
+// colección: trading_stock  campo: quantity
+// movimientos: trading_stock_movements
+
+export const tradingStockStrategy: StockStrategy = {
+  stockCollection: 'trading_stock',
+  movementsCollection: 'trading_stock_movements',
+
+  getStockRef(sku) {
+    return doc(db, 'trading_stock', sku);
+  },
+
+  extractQuantity(snap) {
+    if (!snap.exists()) return 0;
+    return (snap.data().quantity as number) ?? 0;
+  },
+
+  extractAvgCost(snap) {
+    if (!snap.exists()) return 0;
+    return (snap.data().avgCost as number) ?? 0;
+  },
+
+  writeSaleDecrement({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx) {
+    const stockRef = doc(db, 'trading_stock', sku);
+    const currentAvgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
+    const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
+
+    if (snap?.exists()) {
+      tx.update(stockRef, {
+        quantity: newBalance,
+        totalValue: Number((newBalance * currentAvgCost).toFixed(2)),
+        lastUpdate: serverTimestamp(),
+      });
+    } else {
+      tx.set(stockRef, {
+        sku,
+        productName,
+        quantity: newBalance,
+        avgCost: 0,
+        totalValue: 0,
+        lastUpdate: serverTimestamp(),
+      });
+    }
+
+    tx.set(doc(collection(db, 'trading_stock_movements')), {
+      sku,
+      type: 'SALIDA',
+      quantity,
+      costPerUnit: currentAvgCost,
+      reason: `Venta ${saleId} — ${customerName}`,
+      businessLine: 'trading',
+      createdBy: sellerId,
+      createdAt: serverTimestamp(),
+    });
+  },
+
+  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx) {
+    const stockRef = doc(db, 'trading_stock', sku);
+    const avgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
+    const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
+
+    if (snap?.exists()) {
+      tx.update(stockRef, {
+        quantity: newBalance,
+        totalValue: Number((newBalance * avgCost).toFixed(2)),
+        lastUpdate: serverTimestamp(),
+      });
+    } else {
+      tx.set(stockRef, {
+        sku,
+        productName,
+        quantity: newBalance,
+        avgCost: 0,
+        totalValue: 0,
+        lastUpdate: serverTimestamp(),
+      });
+    }
+
+    tx.set(doc(collection(db, 'trading_stock_movements')), {
+      sku,
+      type: 'ENTRADA',
+      quantity,
+      costPerUnit: avgCost,
+      reason: `Anulación Venta ${saleId} — ${customerName}`,
+      businessLine: 'trading',
+      createdBy: sellerId,
+      createdAt: serverTimestamp(),
+    });
+  },
+};
+
+// ─── Services (mano de obra, sin stock) — NO-OP ───────────────
+// colección: ninguna
+// movimientos: ninguno
+
+export const servicesStockStrategy: StockStrategy = {
+  stockCollection: '',
+  movementsCollection: '',
+
+  getStockRef(sku) {
+    // Retorna una referencia dummy para no romper `tx.get(ref)`
+    // Documentación: No inventar side-effects ni cambiar a null,
+    // el core de ventas hará una lectura inútil que fallará gracefully.
+    return doc(db, '_noop_stock', sku);
+  },
+
+  extractQuantity() {
+    // Los servicios nunca se quedan sin stock
+    return Number.POSITIVE_INFINITY;
+  },
+
+  extractAvgCost() {
+    return 0;
+  },
+
+  writeSaleDecrement() {
+    // no-op: los servicios no descuentan inventario
+  },
+
+  writeSaleReversal() {
+    // no-op: los servicios no reingresan inventario
+  },
+};
+
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
 export function getStockStrategy(businessLine: BusinessLine | string): StockStrategy {
@@ -292,6 +416,10 @@ export function getStockStrategy(businessLine: BusinessLine | string): StockStra
       return roofingStockStrategy;
     case 'metallic-roofing':
       return metallicRoofingStockStrategy;
+    case 'trading':
+      return tradingStockStrategy;
+    case 'services':
+      return servicesStockStrategy;
     default:
       throw new Error(`Línea de negocio no soportada: ${businessLine}`);
   }

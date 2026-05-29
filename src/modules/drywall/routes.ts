@@ -2,6 +2,12 @@ import type { RouteConfig } from '@/core/contracts';
 
 export const drywallRoutes: RouteConfig[] = [
   {
+    path: '/admin/catalog',
+    component: 'modules/drywall/routes/catalog/page',
+    protected: true,
+    roles: ['ADMIN', 'SUPERVISOR'],
+  },
+  {
     path: '/admin/inventory',
     component: 'modules/drywall/routes/inventory/page',
     protected: true,
