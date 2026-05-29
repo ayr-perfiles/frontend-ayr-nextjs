@@ -1,14 +1,8 @@
-# CLAUDE.md — AYR Steel ERP
+# GEMINI.md — AYR Steel ERP
 
-> **Versión:** 6.0 | **Sprint actual:** Producción Metallic (Sprint 6)
-> **v6.0:** 5 líneas registradas (`drywall`, `roofing`, `metallic-roofing`, `trading`, `services`). Sprint 6A cerrado (Bobinas a Core). Build: 100% VERDE (0 errores). Lint: 0 errors, 241 warnings. Tests: 257/272 passed (15 fallos de integración requieren emulador).
->
-> **Cambios v5→v6 (validados contra código real):**
->
-> 1.  **Bobinas a Core:** La gestión de bobinas salió de `drywall` hacia `src/core/coils/`. Es ahora materia prima compartida.
-> 2.  **Acabados Gestionables:** Nueva colección `coil_finishes`. Las bobinas ahora requieren un `finish` (GALVANIZADO, ALUZINC, etc.) que determina su compatibilidad con cada línea.
-> 3.  **Build Limpio:** Se resolvió el error histórico en `coils/page.js` y errores de tipos en Clientes y Reportes. El build ahora pasa sin excepciones.
-> 4.  **Testing Proactivo:** Suites de Fase 1 (unitarios) y Fase 2 (integración con emulador) implementadas.
+> **Versión:** 6.1 | **Sprint actual:** Producción Metallic (Sprint 6)
+> **v6.1:** 5 líneas registradas (`drywall`, `roofing`, `metallic-roofing`, `trading`, `services`). Sprint 6A (Bobinas a Core + Dashboard/Reports) cerrado. Build: 100% VERDE (0 errores). Lint: 0 errors, 241 warnings. Tests: 257/272 passed (15 fallos de integración porque no detecta el emulador corriendo; suite unitaria limpia).
+> Documento Funcional ejecutivo v6.0 disponible para el cliente.
 
 ---
 
@@ -30,8 +24,10 @@ ERP de empresa que vende productos derivados de **acero** (bobina galvanizada/al
 
 **Materia Prima Compartida (Bobinas):**
 - Gestionada en `src/core/coils/`.
-- Pool único line-agnostic. Las líneas consumen vía `coilConsumptionService`.
-- Filtro por acabado: cada línea solo ve/usa bobinas compatibles según `coil_finishes`.
+- Pool único line-agnostic. Las líneas consumen vía `coilConsumptionService` filtrado por acabado (validación COIL_FINISH_MISMATCH, defensa en profundidad).
+- `listAvailableCoils(line)` filtra por acabado activo.
+- Producción YA NO arranca desde el inventario de bobina, sino desde la pantalla de cada línea.
+- Campo nuevo `coils.finish` (string). Colección NUEVA `coil_finishes` { id, label, active, lines: BusinessLine[] }, seed GALVANIZADO->drywall, ALUZINC/NATURAL->metallic, CRUD en /admin/coils/finishes.
 
 ---
 
@@ -44,20 +40,29 @@ ERP de empresa que vende productos derivados de **acero** (bobina galvanizada/al
 | UI         | lucide-react, react-hot-toast, recharts                    |
 | Testing    | Vitest (Unitarios + Integración con emuladores)            |
 | Validación | Zod                                                        |
-| Lint       | ESLint v9 flat config — 0 errors, ~240 warnings aceptables |
+| Lint       | ESLint v9 flat config — 0 errors, ~241 warnings aceptables |
 
 ```bash
 npm run dev              # :3000
 npm run emulate          # Firebase emulators + dev juntos
 npm run build            # Build producción (DEBE SER 0 ERRORS)
-npm run lint             # ESLint (0 errors)
+npm run lint             # ESLint
 npm run test             # Vitest (Unitarios)
 npm run test:integration # Vitest (Integración, requiere emulador arriba)
 ```
 
 ---
 
-## 3. Arquitectura (real — `find src -maxdepth 3 -type d`)
+## 3. UI y Rutas Principales
+
+- `/admin` = **Dashboard ejecutivo** (5 líneas + materia prima), reemplazó al reporte viejo de 2 líneas. (`/admin/dashboard` redirige aquí).
+- `/admin/reports` = **Centro de Reportes**. Usa arquitectura de REGISTRO (`core/reports`: ReportDefinition + ReportRunner genérico). Para agregar un reporte nuevo, se añade una definición en el registry, no una página nueva. Categorías: Ventas, Inventario, Materia Prima/Bobinas, Producción, Ejecutivo.
+- `/admin/catalog` = catálogo drywall (movido de Settings).
+- `/admin/coils` = Gestión global de materia prima, bajo el grupo de sidebar "Materia Prima / Almacén".
+
+---
+
+## 4. Arquitectura (real — `find src -maxdepth 3 -type d`)
 
 ```
 src/
@@ -65,11 +70,14 @@ src/
 │   ├── admin/
 │   │   ├── coils/         ← Gestión global de materia prima (Core)
 │   │   ├── catalog/       ← Catálogo Drywall (products)
+│   │   ├── reports/       ← Centro de Reportes centralizado
 │   │   ├── [módulos]/     ← Rutas de cada línea de negocio
 │
 ├── core/                  # Compartido y Transversal
 │   ├── coils/             # GESTIÓN DE BOBINAS (CRUD + Consumo Atómico)
 │   ├── sales/             # Ventas MULTI-LÍNEA (Strategies)
+│   ├── reports/           # Arquitectura del Centro de Reportes
+│   ├── import/            # Dispatcher de importación de excel
 │   ├── contracts/         # BusinessLineModule contract
 │   ├── registry/          # Registro central de módulos
 │
@@ -84,7 +92,7 @@ src/
 
 ---
 
-## 4. Colecciones Firestore
+## 5. Colecciones Firestore
 
 | Colección                | Propósito                                      | Nota                                     |
 | ------------------------ | ---------------------------------------------- | ---------------------------------------- |
@@ -93,14 +101,15 @@ src/
 | `production_logs`        | Historial de transformación de materia prima   | Ahora incluye campo `line`               |
 | `products`               | Catálogo Drywall                               | Retrocompatibilidad de naming            |
 | `inventory_stock`        | Stock de perfiles (Drywall)                    |                                          |
-| `[line]_catalog`         | Catálogo por línea (roofing, metallic, etc.)   |                                          |
+| `[line]_catalog`         | Catálogo por línea (roofing, metallic, trading, services) |                                          |
 | `[line]_stock`           | Stock de productos terminados por línea        |                                          |
+| `[line]_stock_movements` | Historial de movimientos (kardex) por línea    |                                          |
 | `sales`                  | Ventas multi-línea                             |                                          |
 | `audit_logs`             | Auditoría de acciones sensibles                |                                          |
 
 ---
 
-## 5. Reglas no negociables
+## 6. Reglas no negociables
 
 ### 🔴 Transacciones y Stock
 
@@ -110,9 +119,9 @@ src/
 
 ### 🔴 Multi-línea y Extensibilidad
 
-- Usar `getStockStrategy(businessLine)` para operaciones de stock — **NUNCA if/else**.
+- Usar `getStockStrategy(businessLine)` para operaciones de stock — **NUNCA if/else**. Cubre las 5 líneas.
+- Strategy `services` = NO-OP (no descuenta stock). `trading` sí descuenta.
 - Los módulos deben cumplir el contrato `BusinessLineModule`.
-- `services` usa estrategia NO-OP (no mueve stock).
 
 ### 🔴 Seguridad (Deuda Crítica — Sprint 7)
 
@@ -122,29 +131,28 @@ src/
 ### 🔴 Calidad de Código
 
 - `npm run lint` = 0 errors siempre.
-- `npm run build` = 0 errors siempre.
+- `npm run build` = 0 errors siempre. (Excepciones erradicadas).
 - No introducir `any` nuevos sin justificación extrema.
 
 ---
 
-## 6. Testing
+## 7. Testing
 
-- **Fase 1 (Unitarios):** Lógica pura, parsers, validación Zod, registry. Se corre con `npm run test`.
-- **Fase 2 (Integración):** Requiere `firebase emulators:start --only firestore`. Valida transacciones, concurrencia y ruteo a DB real. Se corre con `npm run test:integration`.
-
----
-
-## 7. Roadmap Próximo
-
-1.  **Sprint 6B:** Motor de producción `metallic-roofing` (conformado desde bobina).
-    *   *Bloqueo:* Pendiente definir métrica de consumo (Kg vs Metros) y flujo de merma.
-2.  **Sprint 7:** Cierre de seguridad de Firestore y migración de escrituras críticas a Cloud Functions.
+- **Fase 1 (Unitarios):** `npm run test` -> Lógica pura: strategies (incl. services no-op), finishCompat, classifier/parsers import, schemas Zod, registry/contrato, import dispatch idempotente.
+- **Fase 2 (Integración):** `npm run test:integration` (Requiere `firebase emulators:start --only firestore`). Valida: coilConsumptionService (consume, finish-mismatch, concurrencia, stock negativo), producción drywall (regresión), listAvailableCoils, strategies contra DB real, E2E (ciclo drywall, venta multi-línea, venta directa bobina, services sin stock, retrocompat).
 
 ---
 
-## 8. Log de Decisiones v6.0
+## 8. Roadmap
 
-1.  **Bobina como Core:** Se determinó que la bobina no es un producto de Drywall sino una materia prima compartida. Su gestión se centralizó para permitir que `metallic-roofing` también la consuma.
-2.  **Acabados Dinámicos:** Se evitó el uso de `z.enum` para acabados de bobina. Se creó `coil_finishes` en Firestore para que el usuario gestione sus propios materiales y compatibilidades.
-3.  **Desacoplamiento de Producción:** El inventario de bobinas ya no "lanza" la producción. Cada línea de negocio tiene su propio botón "Iniciar Producción" que filtra solo las bobinas que puede procesar.
-4.  **Build Resuelto:** Se eliminó el directorio huérfano `src/app/admin/inventory` y se corrigieron tipos en Clientes y Reportes, logrando un build 100% limpio.
+1.  **HECHO:** trading+services, catálogos sembrados (marzo), import masivo multi-línea, 6A (bobina->core + acabados + filtro + desacople), suites test Fase 1+2, build cerrado al 100%, dashboard /admin rediseñado, centro de reportes con registro.
+2.  **PRÓXIMO: Sprint 6B** = motor de producción `metallic-roofing` (conformado consumiendo el pool vía coilConsumptionService).
+    *   *BLOQUEADO* esperando respuesta del cliente: (a) cómo se mide consumo (kg reportado / metros×peso / piezas×peso), (b) plan previo vs directa, (c) merma sí/no.
+3.  **Sprint 7 🔴:** Cierre de seguridad de Firestore (`firestore.rules` por colección+rol) y migración de writes del cliente (`inventory_stock`/kardex/audit/coils) a Cloud Functions. (Sigue 100% abierta = deuda crítica, NO marcar resuelta.)
+
+---
+
+## 9. Log de Decisiones v6.1
+
+- **v6.1:** Dashboard `/admin` reemplaza reporte de 2 líneas; Centro de Reportes implementado con arquitectura de registro; Build `coils/page.js` cerrado.
+- **v6.0:** Bobina compartida (pool único + acabados gestionables + consumo filtrado por acabado); catálogo drywall a `/admin/catalog`; import multi-línea con exclusiones (drywall vía PRODUCT_CATALOG, BOB->coils, ANTI->skip); ProductModal unificado (add+edit).

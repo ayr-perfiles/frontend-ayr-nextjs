@@ -6,7 +6,12 @@ const nextConfig: NextConfig = {
       {
         source: "/",
         destination: "/admin",
-        permanent: false, // Usa 'true' solo si la raíz nunca tendrá contenido público
+        permanent: false,
+      },
+      {
+        source: "/admin/dashboard",
+        destination: "/admin",
+        permanent: true,
       },
     ];
   },

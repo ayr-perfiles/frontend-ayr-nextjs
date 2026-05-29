@@ -47,7 +47,7 @@ const MATERIAL_MAP: Record<string, 'acero' | 'pvc'> = {
 // Badges hardcoded en 0; los componentes reales los inyectarán via props.
 
 const CROSS_ITEMS: NavLeafItem[] = [
-  { id: 'dashboard', label: 'Panel',    icon: 'LayoutDashboard', path: '/admin/dashboard' },
+  { id: 'dashboard', label: 'Panel',    icon: 'LayoutDashboard', path: '/admin' },
   { id: 'sales',     label: 'Ventas',   icon: 'Receipt',         path: '/admin/sales' },
   { id: 'customers', label: 'Clientes', icon: 'Users',           path: '/admin/customers' },
   { id: 'reports',   label: 'Reportes', icon: 'BarChart3',       path: '/admin/reports' },
@@ -96,7 +96,7 @@ export const NAV: NavSection = {
 // ── ROUTE_TITLES ──────────────────────────────────────────────────────────
 
 export const ROUTE_TITLES: Record<string, RouteTitle> = {
-  '/admin/dashboard':  { title: 'Panel general',  crumb: null },
+  '/admin':            { title: 'Panel general',  crumb: null },
   '/admin/sales':      { title: 'Ventas',         crumb: null },
   '/admin/customers':  { title: 'Clientes',       crumb: null },
   '/admin/reports':    { title: 'Reportes',       crumb: null },

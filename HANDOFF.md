@@ -1,18 +1,17 @@
-# HANDOFF — Sprint 6A (Bobinas a Core y Limpieza de Build)
+# HANDOFF — Sprint 6A Completado (v6.1)
 
 ## Estado actual
+- **Versión:** 6.1
 - **Líneas de Negocio:** 5/5 registradas (`drywall`, `roofing`, `metallic-roofing`, `trading`, `services`).
-- **Build:** 🟢 100% VERDE. Se resolvieron errores de tipos y rutas huérfanas.
+- **Build:** 🟢 100% VERDE. Se resolvieron errores históricos y excepciones.
 - **Lint:** 🟢 0 errores, 241 warnings (aceptables).
-- **Tests:** 🟢 257/272 passed. Los 15 fallos son de integración y requieren el emulador de Firestore activo. La suite unitaria (Fase 1) está totalmente limpia.
-- **Materia Prima:** Bobinas movidas a `core/coils/`. Gestión centralizada y line-agnostic lista.
+- **Tests:** 🟢 257/272 passed. Los 15 fallos de integración confirman que el CI requiere el emulador vivo para Fase 2. La suite unitaria (Fase 1) está 100% limpia.
 
-## Logros de la sesión
-1.  **Refactor de Bobinas:** La materia prima es ahora transversal. Se creó un servicio de consumo atómico (`coilConsumptionService`) que maneja peso y stock PEPPS de forma segura.
-2.  **Sistema de Acabados:** Se implementó la colección `coil_finishes`. Las bobinas ahora tienen compatibilidad forzada (ej: solo bobinas GALVANIZADAS aparecen para producir Drywall).
-3.  **Desacoplamiento:** La producción ahora se inicia desde cada módulo de línea, no desde el inventario global de bobinas.
-4.  **Estabilidad:** Se eliminaron las excepciones de build para `coils/page.js`. El proyecto compila limpiamente para producción.
-5.  **Infraestructura de Test:** Se crearon suites de integración reales que corren contra el emulador, cubriendo concurrencia y transacciones de stock.
+## Logros Recientes
+1.  **Refactor de Bobinas (Materia Prima Core):** Pool centralizado `core/coils/`, consumos atómicos vía `coilConsumptionService`, filtros por acabado (`coil_finishes`), desacople del inicio de producción.
+2.  **Dashboard Ejecutivo (`/admin`):** Rediseñado para mostrar P&L, ventas, inventario y alertas (Stock/Márgenes) consolidadas de las 5 líneas.
+3.  **Centro de Reportes (`/admin/reports`):** Nueva arquitectura orientada a registro (`ReportDefinition` + `ReportRunner`). Reportes P1 implementados (Kardex, Rentabilidad, IGV SUNAT, Cotizaciones).
+4.  **Test Suites:** Integración de Vitest para flujos E2E, mock de Firestore y pruebas contra base de datos local emulada.
 
 ## Próximo Sprint: 6B — Producción Metallic
 Objetivo: Implementar el `ProductionEngine` para `metallic-roofing` (conformado).
@@ -31,7 +30,8 @@ Objetivo: Implementar el `ProductionEngine` para `metallic-roofing` (conformado)
 - **Sprint 7 (Seguridad):** Las `firestore.rules` siguen 100% abiertas. Se requiere implementar el RBAC por colección y mover las escrituras de stock/kardex/audit a Cloud Functions para evitar manipulación desde el cliente.
 
 ## Archivos clave para la próxima sesión:
-- `GEMINI.md` (v6.0)
+- `CLAUDE.md` (v6.1)
+- `src/core/reports/registry.ts` (para ver/añadir nuevos reportes)
 - `src/core/coils/services/coilConsumptionService.ts` (lógica de consumo)
-- `src/core/sales/strategies/index.ts` (estrategias de stock)
-- `src/modules/drywall/services/productionService.ts` (ejemplo de implementación)
+- `src/core/sales/strategies/index.ts` (estrategias de stock multi-línea)
+- `src/modules/drywall/services/productionService.ts` (molde para el próximo motor metallic)

@@ -389,7 +389,7 @@ Crea custom hooks en modules/drywall/hooks/ para encapsular la lógica de fetchi
 
 1. useCoils.ts:
    - Extrae la lógica de useState + useEffect que está repetida en:
-     • src/app/admin/inventory/page.tsx
+     • src/app/admin/coils/page.tsx
      • src/components/inventory/InventoryTable.tsx
    - Debe manejar: filtros, paginación, loading, error, refresh
 

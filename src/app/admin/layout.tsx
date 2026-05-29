@@ -14,12 +14,12 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/admin/setup": ["ADMIN"],
   "/admin/users": ["ADMIN"],
   "/admin/reports": ["ADMIN", "SUPERVISOR"],
-  "/admin/inventory": ["ADMIN", "SUPERVISOR"],
+  "/admin/coils": ["ADMIN", "SUPERVISOR"],
   "/admin/production": ["ADMIN", "SUPERVISOR"],
   "/admin/roofing": ["ADMIN", "SUPERVISOR"],
   "/admin/metallic-roofing": ["ADMIN", "SUPERVISOR"],
   "/admin/operator": ["ADMIN", "SUPERVISOR", "OPERATOR"],
-  "/admin": ["ADMIN"],
+  "/admin": ["ADMIN", "SUPERVISOR"],
 };
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -45,7 +45,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
           if (role === "OPERATOR") {
             router.push("/admin/operator");
           } else if (role === "SUPERVISOR") {
-            router.push("/admin/inventory");
+            router.push("/admin");
           } else {
             router.push("/login");
           }
