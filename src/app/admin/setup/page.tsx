@@ -127,6 +127,29 @@ export default function SetupPage() {
           )}
         </div>
       </div>
+
+      {/* ── Tarjeta: Importación Masiva Multi-Línea ─────────────────────────────────────── */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="flex items-center gap-4 p-6 border-b border-slate-100">
+          <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+            <PackagePlus size={20} className="text-blue-600" />
+          </div>
+          <div>
+            <h2 className="font-black text-slate-900">Catálogos — Importación Masiva</h2>
+            <p className="text-sm text-slate-500 font-medium">
+              Sube el archivo Excel de facturación para poblar automáticamente los catálogos de todas las líneas.
+            </p>
+          </div>
+        </div>
+        <div className="p-6 bg-slate-50">
+          <a
+            href="/admin/setup/catalog-import"
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition active:scale-95 shadow-md shadow-blue-200"
+          >
+            Ir a Herramienta de Importación
+          </a>
+        </div>
+      </div>
     </div>
   );
 }

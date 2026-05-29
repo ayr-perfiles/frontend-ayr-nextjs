@@ -103,8 +103,8 @@ export function CustomersReportTab({
                   border: "none",
                   boxShadow: "0 10px 25px -5px rgb(0 0 0 / 0.1)",
                 }}
-                formatter={(value: number) => [
-                  `S/ ${Number(value).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+                formatter={(value: any) => [
+                  `S/ ${Number(value || 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
                   "",
                 ]}
               />

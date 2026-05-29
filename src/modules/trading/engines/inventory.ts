@@ -3,11 +3,19 @@ import { fetchInventory, getStock, getStockMovements } from '../services/invento
 import { adjustStock } from '../services/stockAdjustmentService';
 
 export const tradingInventoryEngine: InventoryEngine = {
-  fetchInventory: async (filters) => {
-    // Adapt filters if necessary
-    return fetchInventory(filters as any);
+  getInventoryView: async (filters) => {
+    const result = await fetchInventory(filters as any);
+    return {
+      items: result,
+      totalCount: result.length,
+    };
   },
-  getStock: async (sku) => getStock(sku),
-  getStockMovements: async (sku, filters) => getStockMovements(sku, filters),
-  adjustStock: async (input) => adjustStock(input as any),
+  calculateMetrics: async (sku) => {
+    const stock = await getStock(sku);
+    if (!stock) return { totalQuantity: 0, totalValue: 0 };
+    return {
+      totalQuantity: stock.quantity || 0,
+      totalValue: stock.totalValue || 0,
+    };
+  },
 };

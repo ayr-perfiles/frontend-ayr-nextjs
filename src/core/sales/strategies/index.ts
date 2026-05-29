@@ -22,6 +22,17 @@ export interface StockWriteParams {
   avgCost?: number;
 }
 
+export interface ProductionIncrementParams {
+  sku: string;
+  quantity: number;
+  newBalance: number;
+  newAverageCost: number;
+  newWeight?: number;
+  reference: string;
+  operatorId: string;
+  description?: string;
+}
+
 export interface StockStrategy {
   stockCollection: string;
   movementsCollection: string;
@@ -32,6 +43,8 @@ export interface StockStrategy {
   writeSaleDecrement(params: StockWriteParams, snap: DocumentSnapshot | null, tx: Transaction): void;
   /** Devuelve stock al anular una venta */
   writeSaleReversal(params: StockWriteParams, snap: DocumentSnapshot | null, tx: Transaction): void;
+  /** Incrementa stock por producción */
+  writeProductionIncrement(params: ProductionIncrementParams, snap: DocumentSnapshot | null, tx: Transaction): void;
 }
 
 // ─── Drywall (perfiles) ───────────────────────────────────────────────────────
@@ -98,7 +111,36 @@ export const drywallStockStrategy: StockStrategy = {
       user: sellerId,
     });
   },
+
+  writeProductionIncrement({ sku, quantity, newBalance, newAverageCost, newWeight, reference, operatorId, description }, snap, tx) {
+    const stockRef = doc(db, 'inventory_stock', sku);
+    const currentWeightStock = snap?.exists() ? (snap.data().totalWeight || 0) : 0;
+
+    tx.set(
+      stockRef,
+      {
+        sku,
+        totalQuantity: newBalance,
+        totalWeight: currentWeightStock + (newWeight || 0),
+        lastCostPerPiece: Number(newAverageCost.toFixed(6)),
+        lastUpdate: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    tx.set(doc(collection(db, 'kardex_movements')), {
+      sku,
+      date: serverTimestamp(),
+      type: 'IN',
+      quantity,
+      balance: newBalance,
+      reference,
+      description: description || 'Ingreso por Producción',
+      user: operatorId,
+    });
+  },
 };
+
 
 // ─── Roofing (PVC) ────────────────────────────────────────────────────────────
 // colección: roofing_stock  campo: quantity
@@ -189,7 +231,37 @@ export const roofingStockStrategy: StockStrategy = {
       createdAt: serverTimestamp(),
     });
   },
+
+  writeProductionIncrement({ sku, quantity, newBalance, newAverageCost, reference, operatorId, description }, snap, tx) {
+    const stockRef = doc(db, 'roofing_stock', sku);
+    const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
+
+    tx.set(
+      stockRef,
+      {
+        sku,
+        productName,
+        quantity: newBalance,
+        avgCost: Number(newAverageCost.toFixed(6)),
+        totalValue: Number((newBalance * newAverageCost).toFixed(2)),
+        lastUpdate: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    tx.set(doc(collection(db, 'roofing_stock_movements')), {
+      sku,
+      type: 'ENTRADA',
+      quantity,
+      costPerUnit: newAverageCost,
+      reason: description || 'Ingreso por Producción',
+      businessLine: 'roofing',
+      createdBy: operatorId,
+      createdAt: serverTimestamp(),
+    });
+  },
 };
+
 
 // ─── Metallic-Roofing (coberturas aluzinc) ────────────────────────────────────
 // colección: metallic_roofing_stock  campo: quantity
@@ -277,6 +349,35 @@ export const metallicRoofingStockStrategy: StockStrategy = {
       reason: `Anulación Venta ${saleId} — ${customerName}`,
       businessLine: 'metallic-roofing',
       createdBy: sellerId,
+      createdAt: serverTimestamp(),
+    });
+  },
+
+  writeProductionIncrement({ sku, quantity, newBalance, newAverageCost, reference, operatorId, description }, snap, tx) {
+    const stockRef = doc(db, 'metallic_roofing_stock', sku);
+    const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
+
+    tx.set(
+      stockRef,
+      {
+        sku,
+        productName,
+        quantity: newBalance,
+        avgCost: Number(newAverageCost.toFixed(6)),
+        totalValue: Number((newBalance * newAverageCost).toFixed(2)),
+        lastUpdate: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    tx.set(doc(collection(db, 'metallic_roofing_stock_movements')), {
+      sku,
+      type: 'ENTRADA',
+      quantity,
+      costPerUnit: newAverageCost,
+      reason: description || 'Ingreso por Producción',
+      businessLine: 'metallic-roofing',
+      createdBy: operatorId,
       createdAt: serverTimestamp(),
     });
   },
@@ -371,7 +472,37 @@ export const tradingStockStrategy: StockStrategy = {
       createdAt: serverTimestamp(),
     });
   },
+
+  writeProductionIncrement({ sku, quantity, newBalance, newAverageCost, reference, operatorId, description }, snap, tx) {
+    const stockRef = doc(db, 'trading_stock', sku);
+    const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
+
+    tx.set(
+      stockRef,
+      {
+        sku,
+        productName,
+        quantity: newBalance,
+        avgCost: Number(newAverageCost.toFixed(6)),
+        totalValue: Number((newBalance * newAverageCost).toFixed(2)),
+        lastUpdate: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    tx.set(doc(collection(db, 'trading_stock_movements')), {
+      sku,
+      type: 'ENTRADA',
+      quantity,
+      costPerUnit: newAverageCost,
+      reason: description || 'Ingreso por Compra/Ajuste',
+      businessLine: 'trading',
+      createdBy: operatorId,
+      createdAt: serverTimestamp(),
+    });
+  },
 };
+
 
 // ─── Services (mano de obra, sin stock) — NO-OP ───────────────
 // colección: ninguna
@@ -403,6 +534,10 @@ export const servicesStockStrategy: StockStrategy = {
 
   writeSaleReversal() {
     // no-op: los servicios no reingresan inventario
+  },
+
+  writeProductionIncrement() {
+    // no-op: los servicios no se producen en el sentido físico de stock
   },
 };
 

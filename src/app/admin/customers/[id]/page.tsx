@@ -8,6 +8,7 @@ import {
   saveContact,
   unlinkContact,
   linkExistingContact,
+  type CustomerProfile,
 } from "@/services/crmService";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -21,11 +22,7 @@ export default function CustomerProfilePage() {
   const router = useRouter();
   const documentNumber = params.id as string;
 
-  const [profile, setProfile] = useState<{
-    customerData: { name: string; id: string; address?: string };
-    contacts: { id: string; name: string; phone?: string; email?: string; role?: string }[];
-    salesHistory: { id: string; timestamp?: { toDate: () => Date }; status: string; totalAmount?: number; paymentStatus?: string }[];
-  } | null>(null);
+  const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);

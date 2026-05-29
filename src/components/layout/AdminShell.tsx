@@ -12,8 +12,8 @@ import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Receipt, Users, BarChart3, Layers, Factory, Home,
   ShoppingCart, Wrench, UserCog, ScrollText, Settings, ChevronRight,
-  Search, Bell, PanelLeft, Package, BookOpen, Truck, Clipboard, Cog,
-  User, LogOut, Database, Warehouse, Smartphone, Menu,
+  PanelLeft, Package, BookOpen, Truck, Clipboard, Cog,
+  User, LogOut, Database, Warehouse, Smartphone, Menu, Tag,
 } from 'lucide-react';
 
 type Viewport = 'lg' | 'md' | 'sm';
@@ -23,8 +23,8 @@ type Viewport = 'lg' | 'md' | 'sm';
 const ICON_MAP: Record<string, LucideIcon> = {
   LayoutDashboard, Receipt, Users, BarChart3, Layers, Factory, Home,
   ShoppingCart, Wrench, UserCog, ScrollText, Settings, ChevronRight,
-  Search, Bell, PanelLeft, Package, BookOpen, Truck, Clipboard, Cog,
-  User, LogOut, Database, Warehouse, Smartphone,
+  PanelLeft, Package, BookOpen, Truck, Clipboard, Cog,
+  User, LogOut, Database, Warehouse, Smartphone, Tag,
 };
 
 function getIcon(name: string): LucideIcon {
@@ -39,6 +39,7 @@ function filterNavForRole(nav: NavSection, role: UserRole): NavSection {
 
   // OPERATOR: dashboard + sales only; lines filtered by item roles
   const cross = nav.cross.filter((i) => i.id === 'dashboard' || i.id === 'sales');
+  const rawMaterial = nav.rawMaterial.filter((i) => !i.roles || i.roles.includes('OPERATOR'));
   const lines = nav.lines
     .map((line) => ({
       ...line,
@@ -48,7 +49,7 @@ function filterNavForRole(nav: NavSection, role: UserRole): NavSection {
     }))
     .filter((line) => line.children.length > 0);
 
-  return { cross, lines, admin: [] };
+  return { cross, rawMaterial, lines, admin: [] };
 }
 
 // ── NavLeaf ───────────────────────────────────────────────────────────────
@@ -388,6 +389,30 @@ function SidebarComponent({
           </div>
         )}
 
+        {nav.rawMaterial.length > 0 && (
+          <div className="mb-3.5">
+            {!collapsed && (
+              <p
+                className="text-[11px] font-medium uppercase px-2.5 pb-1 pt-1.5"
+                style={{ letterSpacing: '0.08em', color: 'var(--color-fg-subtle)' }}
+              >
+                Materia Prima / Almacén
+              </p>
+            )}
+            <div className="flex flex-col gap-0.5">
+              {nav.rawMaterial.map((item) => (
+                <NavLeaf
+                  key={item.id}
+                  item={item}
+                  active={item.path === pathname}
+                  collapsed={collapsed}
+                  onClick={() => onNavigate(item.path)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {nav.lines.length > 0 && (
           <div className="mb-3.5">
             {!collapsed && (
@@ -451,7 +476,7 @@ function SidebarComponent({
           fontFamily: 'var(--font-mono)',
         }}
       >
-        {!collapsed && <span>v3.12.0</span>}
+        {!collapsed && <span>v1.2</span>}
         {env !== 'prod' && (
           <span
             className="inline-flex items-center px-1.5 py-0.5 rounded-[var(--radius-sm)] text-[11px] font-semibold uppercase text-white"
@@ -622,6 +647,7 @@ function HeaderComponent({
       </div>
 
       {/* Search - hidden on mobile small, shown as icon or compact on md */}
+      {/* 
       <div
         ref={searchRef}
         className={`${viewport === 'sm' ? 'hidden' : 'relative'} flex items-center h-9 rounded-[var(--radius-md)] transition-all`}
@@ -718,6 +744,11 @@ function HeaderComponent({
           </div>
         )}
       </div>
+      */}
+
+      {/* Spacer when search is hidden */}
+      {!isLg && <div className="flex-1" />}
+      {isLg && <div />}
 
       {/* Right — role + bell + avatar */}
       <div className="flex items-center gap-2 justify-end flex-nowrap">
@@ -738,11 +769,14 @@ function HeaderComponent({
           {isLg ? roleLabel : role.slice(0, 3)}
         </span>
 
+        {/* 
         {isLg && (
           <IconBtn label="Notificaciones">
             <Bell size={18} />
           </IconBtn>
         )}
+        */}
+
 
         <div ref={menuRef} className="relative shrink-0">
           <div

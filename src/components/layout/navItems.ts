@@ -24,6 +24,7 @@ export type NavGroupItem = {
 
 export type NavSection = {
   cross: NavLeafItem[];
+  rawMaterial: NavLeafItem[];
   lines: NavGroupItem[];
   admin: NavLeafItem[];
 };
@@ -50,6 +51,11 @@ const CROSS_ITEMS: NavLeafItem[] = [
   { id: 'sales',     label: 'Ventas',   icon: 'Receipt',         path: '/admin/sales' },
   { id: 'customers', label: 'Clientes', icon: 'Users',           path: '/admin/customers' },
   { id: 'reports',   label: 'Reportes', icon: 'BarChart3',       path: '/admin/reports' },
+];
+
+const RAW_MATERIAL_ITEMS: NavLeafItem[] = [
+  { id: 'coils-inv', label: 'Inventario Bobinas', icon: 'Layers', path: '/admin/coils' },
+  { id: 'coils-fin', label: 'Acabados Bobina',    icon: 'Tag',    path: '/admin/coils/finishes' },
 ];
 
 // ── Admin items (ADMIN only) ──────────────────────────────────────────────
@@ -82,6 +88,7 @@ const LINE_GROUPS: NavGroupItem[] = businessLines.map((mod) => ({
 
 export const NAV: NavSection = {
   cross: CROSS_ITEMS,
+  rawMaterial: RAW_MATERIAL_ITEMS,
   lines: LINE_GROUPS,
   admin: ADMIN_ITEMS,
 };
@@ -93,6 +100,8 @@ export const ROUTE_TITLES: Record<string, RouteTitle> = {
   '/admin/sales':      { title: 'Ventas',         crumb: null },
   '/admin/customers':  { title: 'Clientes',       crumb: null },
   '/admin/reports':    { title: 'Reportes',       crumb: null },
+  '/admin/coils':      { title: 'Inventario de Bobinas', crumb: ['Materia Prima'] },
+  '/admin/coils/finishes': { title: 'Acabados de Bobina', crumb: ['Materia Prima'] },
   '/admin/users':      { title: 'Usuarios',       crumb: ['Administración'] },
   '/admin/audit':      { title: 'Auditoría',      crumb: ['Administración'] },
   '/admin/settings':   { title: 'Configuración',  crumb: ['Administración'] },

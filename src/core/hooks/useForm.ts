@@ -10,7 +10,7 @@ export function useForm<T>(schema: z.ZodSchema<T>, initialValues: T) {
     const result = schema.safeParse(values);
     if (!result.success) {
       const fieldErrors: typeof errors = {};
-      result.error.errors.forEach(e => {
+      result.error.issues.forEach(e => {
         const field = e.path[0] as keyof T;
         fieldErrors[field] = e.message;
       });

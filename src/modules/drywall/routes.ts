@@ -8,12 +8,6 @@ export const drywallRoutes: RouteConfig[] = [
     roles: ['ADMIN', 'SUPERVISOR'],
   },
   {
-    path: '/admin/inventory',
-    component: 'modules/drywall/routes/inventory/page',
-    protected: true,
-    roles: ['ADMIN', 'SUPERVISOR'],
-  },
-  {
     path: '/admin/production',
     component: 'modules/drywall/routes/production/page',
     protected: true,

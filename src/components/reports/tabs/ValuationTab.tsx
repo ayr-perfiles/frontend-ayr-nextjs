@@ -112,8 +112,8 @@ export function ValuationTab({
                 nameKey="sku"
               />
               <RechartsTooltip
-                formatter={(value: number) => [
-                  `S/ ${Number(value).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+                formatter={(value: any) => [
+                  `S/ ${Number(value || 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
                   "Valorización",
                 ]}
                 contentStyle={{

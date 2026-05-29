@@ -1,14 +1,17 @@
-import { ShoppingCart } from 'lucide-react';
+import type { RouteConfig } from '@/core/contracts';
 
-export const tradingRoutes = [
+export const tradingRoutes: RouteConfig[] = [
   {
     path: '/admin/trading/catalog',
-    name: 'Catálogo Reventa',
-    icon: ShoppingCart,
+    component: 'modules/trading/routes/catalog/page',
+    protected: true,
+    roles: ['ADMIN', 'SUPERVISOR'],
   },
   {
     path: '/admin/trading/inventory',
-    name: 'Inventario Reventa',
-    icon: ShoppingCart,
+    component: 'modules/trading/routes/inventory/page',
+    protected: true,
+    roles: ['ADMIN', 'SUPERVISOR'],
   },
 ];
+

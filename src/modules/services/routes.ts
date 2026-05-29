@@ -1,9 +1,11 @@
-import { Wrench } from 'lucide-react';
+import type { RouteConfig } from '@/core/contracts';
 
-export const servicesRoutes = [
+export const servicesRoutes: RouteConfig[] = [
   {
     path: '/admin/services/catalog',
-    name: 'Catálogo de Servicios',
-    icon: Wrench,
+    component: 'modules/services/routes/catalog/page',
+    protected: true,
+    roles: ['ADMIN', 'SUPERVISOR'],
   },
 ];
+

@@ -17,6 +17,7 @@ export interface Coil {
   currentWeight: number;
   masterWidth?: number;
   thickness?: number;
+  finish?: string; // ID del acabado (materia prima)
   pricePerKg: number;
   status: CoilStatus;
   plannedStrips?: PlannedStrip[];

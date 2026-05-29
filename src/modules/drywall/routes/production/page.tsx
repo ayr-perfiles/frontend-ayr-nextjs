@@ -20,11 +20,19 @@ import toast from "react-hot-toast";
 
 import { ProductionFilters } from "@/modules/drywall/components/production/ProductionFilters";
 import { ProductionTable } from "@/modules/drywall/components/production/ProductionTable";
+import { StartProductionModal } from "@/modules/drywall/components/production/StartProductionModal";
+import { ProductionForm } from "@/modules/drywall/components/forms/ProductionForm";
+import { ConsumeStripForm } from "@/modules/drywall/components/forms/ConsumeStripForm";
+import { Coil } from "@/types";
 
 export default function ProductionPage() {
   const { user, role } = useAuth();
 
   const { stock } = useProduction();
+
+  // PRODUCCION FLOW
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [selectedCoil, setSelectedCoil] = useState<Coil | null>(null);
 
   // FILTROS DE PRODUCCIÓN
   const [searchTerm, setSearchTerm] = useState("");
@@ -50,6 +58,15 @@ export default function ProductionPage() {
   }, [error]);
 
   // ACCIONES
+  const handleSelectCoil = (coil: Coil) => {
+    setSelectedCoil(coil);
+    setShowStartModal(false);
+  };
+
+  const handleCloseProduction = () => {
+    setSelectedCoil(null);
+    refresh();
+  };
   const handleVoidLog = async (logId: string, pieces: number) => {
     if (
       confirm(
@@ -111,13 +128,46 @@ export default function ProductionPage() {
             Control de inventario valorizado y trazabilidad de máquina.
           </p>
         </div>
-        <button
-          onClick={exportStockToExcel}
-          className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-700 transition active:scale-95 shadow-md shadow-emerald-200 font-black uppercase tracking-widest text-xs"
-        >
-          <Download size={18} /> Exportar Stock
-        </button>
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <button
+            onClick={() => setShowStartModal(true)}
+            className="bg-blue-600 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition active:scale-95 shadow-md shadow-blue-200 font-black uppercase tracking-widest text-xs"
+          >
+            <Factory size={18} /> Iniciar Producción
+          </button>
+          <button
+            onClick={exportStockToExcel}
+            className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-700 transition active:scale-95 shadow-md shadow-emerald-200 font-black uppercase tracking-widest text-xs"
+          >
+            <Download size={18} /> Exportar Stock
+          </button>
+        </div>
       </div>
+
+      {showStartModal && (
+        <StartProductionModal
+          onClose={() => setShowStartModal(false)}
+          onSelect={handleSelectCoil}
+        />
+      )}
+
+      {selectedCoil && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95">
+            {selectedCoil.status === "AVAILABLE" ? (
+              <ProductionForm
+                coil={selectedCoil}
+                onClose={handleCloseProduction}
+              />
+            ) : (
+              <ConsumeStripForm
+                coil={selectedCoil}
+                onClose={handleCloseProduction}
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       <section>
         <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">

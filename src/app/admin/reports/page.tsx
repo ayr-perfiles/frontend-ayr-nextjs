@@ -13,6 +13,7 @@ import {
   getSlowMovingStockReport,
   getKardexMovementsReport,
   ExtendedLog,
+  type KardexMovement,
 } from "@/services/reportsService";
 
 import { ReportsTabs, ReportTab } from "@/components/reports/ReportsTabs";
@@ -65,9 +66,7 @@ export default function MasterReportsPage() {
     items: { sku: string; name: string; daysStagnant: number; quantity: number; totalValue: number }[];
     totalCapital: number;
   }>({ items: [], totalCapital: 0 });
-  const [kardexData, setKardexData] = useState<
-    { id: string; date: { toLocaleString: (l: string) => string }; sku: string; type: "IN" | "OUT"; quantity: number; balance: number; reference: string; description: string; user: string }[]
-  >([]);
+  const [kardexData, setKardexData] = useState<KardexMovement[]>([]);
 
   const [salesPage, setSalesPage] = useState(1);
   const [salesPageSize, setSalesPageSize] = useState(10);

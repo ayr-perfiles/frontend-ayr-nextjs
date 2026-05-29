@@ -4,6 +4,7 @@ import {
   runTransaction,
   serverTimestamp,
   collection,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -91,6 +92,8 @@ export const saveCuttingPlan = async (
   }
 };
 
+import { consumeCoil } from "@/core/coils/services/coilConsumptionService";
+
 // FASE 2: PROCESAR UN FLEJE (CONFORMADORA)
 export const processSingleStrip = async (
   coilId: string,
@@ -99,146 +102,110 @@ export const processSingleStrip = async (
   operatorId: string,
 ) => {
   const coilRef = doc(db, "coils", coilId);
-  const stockRef = doc(db, "inventory_stock", sku);
-  const logRef = doc(collection(db, "production_logs"));
   const prodRef = doc(db, "products", sku);
 
   try {
-    await runTransaction(db, async (transaction) => {
-      const coilDoc = await transaction.get(coilRef);
-      const stockDoc = await transaction.get(stockRef);
-      const prodDoc = await transaction.get(prodRef);
+    const coilSnap = await getDoc(coilRef);
+    const prodSnap = await getDoc(prodRef);
 
-      if (!coilDoc.exists()) throw new Error("Bobina no existe");
-      if (!prodDoc.exists())
-        throw new Error(`El producto ${sku} no está en el catálogo.`);
+    if (!coilSnap.exists()) throw new Error("Bobina no existe");
+    if (!prodSnap.exists())
+      throw new Error(`El producto ${sku} no está en el catálogo.`);
 
-      const coil = coilDoc.data() as Coil;
-      const product = prodDoc.data();
+    const coil = coilSnap.data() as Coil;
+    const product = prodSnap.data();
 
-      const stripIndex = coil.plannedStrips?.findIndex(
-        (s) => s.sku === sku && s.pendingCount > 0,
+    const stripIndex = coil.plannedStrips?.findIndex(
+      (s) => s.sku === sku && s.pendingCount > 0,
+    );
+    if (stripIndex === undefined || stripIndex === -1)
+      throw new Error("No hay flejes disponibles");
+
+    const activeStrip = coil.plannedStrips![stripIndex];
+
+    validateCoilData(coil);
+
+    if (!coil.thickness) {
+      throw new Error(
+        "Data corrupta: La bobina seleccionada no tiene espesor.",
       );
-      if (stripIndex === undefined || stripIndex === -1)
-        throw new Error("No hay flejes disponibles");
+    }
 
-      const activeStrip = coil.plannedStrips![stripIndex];
+    const weightPerMm = coil.initialWeight / coil.masterWidth!;
+    const theoreticalStripWeight = activeStrip.width * weightPerMm;
 
-      validateCoilData(coil);
+    const pieceLength = product.lengthMeters || DEFAULT_PIECE_LENGTH_M;
 
-      if (!coil.thickness) {
-        throw new Error(
-          "Data corrupta: La bobina seleccionada no tiene espesor.",
-        );
-      }
+    validateProductionInput({
+      requestedPieces: pieces,
+      stripWeight: theoreticalStripWeight,
+      stripWidth: activeStrip.width,
+      thickness: coil.thickness,
+      pieceLength,
+    });
 
-      const weightPerMm = coil.initialWeight / coil.masterWidth!;
-      const theoreticalStripWeight = activeStrip.width * weightPerMm;
+    const standardWeight = product.standardWeight || 0;
+    const reportedProductionWeight = pieces * standardWeight;
 
-      const pieceLength = product.lengthMeters || DEFAULT_PIECE_LENGTH_M;
+    const stockRef = doc(db, "inventory_stock", sku);
+    const stockDoc = await getDoc(stockRef);
+    const currentQty = stockDoc.exists() ? stockDoc.data().totalQuantity || 0 : 0;
+    const currentAverageCost = stockDoc.exists() ? stockDoc.data().lastCostPerPiece || 0 : 0;
 
-      validateProductionInput({
-        requestedPieces: pieces,
-        stripWeight: theoreticalStripWeight,
-        stripWidth: activeStrip.width,
-        thickness: coil.thickness,
-        pieceLength,
-      });
+    const costOfThisBatch = activeStrip.costPerStrip / pieces;
+    const newAverageCost = calculateWeightedAverageCost({
+      currentQty,
+      currentAverageCost,
+      batchTotalCost: activeStrip.costPerStrip,
+      newPieces: pieces,
+    });
 
-      // Mantenemos el peso estándar para la valorización del Kardex
-      const standardWeight = product.standardWeight || 0;
-      const reportedProductionWeight = pieces * standardWeight;
+    const scrapPerStrip = calculateScrapPerStrip(
+      coil.masterWidth!,
+      coil.plannedStrips!,
+    );
 
-      const currentQty = stockDoc.exists()
-        ? stockDoc.data().totalQuantity || 0
-        : 0;
-      const currentWeightStock = stockDoc.exists()
-        ? stockDoc.data().totalWeight || 0
-        : 0;
-      const currentAverageCost = stockDoc.exists()
-        ? stockDoc.data().lastCostPerPiece || 0
-        : 0;
+    const updatedStrips = [...coil.plannedStrips!];
+    updatedStrips[stripIndex].pendingCount -= 1;
+    const totalPending = updatedStrips.reduce(
+      (sum, s) => sum + s.pendingCount,
+      0,
+    );
 
-      const costOfThisBatch = activeStrip.costPerStrip / pieces;
-      const newAverageCost = calculateWeightedAverageCost({
-        currentQty,
-        currentAverageCost,
-        batchTotalCost: activeStrip.costPerStrip,
-        newPieces: pieces,
-      });
-
-      const scrapPerStrip = calculateScrapPerStrip(
-        coil.masterWidth!,
-        coil.plannedStrips!,
-      );
-
-      const newCurrentWeight = Math.max(
-        0,
-        (coil.currentWeight || coil.initialWeight) - theoreticalStripWeight,
-      );
-
-      const updatedStrips = [...coil.plannedStrips!];
-      updatedStrips[stripIndex].pendingCount -= 1;
-      const totalPending = updatedStrips.reduce(
-        (sum, s) => sum + s.pendingCount,
-        0,
-      );
-
-      transaction.update(coilRef, {
-        plannedStrips: updatedStrips,
-        status: totalPending === 0 ? "PROCESSED" : "IN_PROGRESS",
-        currentWeight:
-          totalPending === 0 ? 0 : Number(newCurrentWeight.toFixed(2)),
-        updatedAt: serverTimestamp(),
-      });
-
-      const newKardexBalance = currentQty + pieces;
-
-      transaction.set(
-        stockRef,
-        {
-          sku,
-          totalQuantity: newKardexBalance,
-          totalWeight: currentWeightStock + reportedProductionWeight,
-          lastCostPerPiece: Number(newAverageCost.toFixed(6)),
-          lastUpdate: serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      transaction.set(logRef, {
-        parentCoilId: coilId,
-        sku,
-        piecesProduced: pieces,
+    await consumeCoil({
+      coilId,
+      line: 'drywall',
+      sku,
+      pieces,
+      weightConsumed: theoreticalStripWeight,
+      operatorId,
+      additionalLogData: {
         totalUsedWidth: activeStrip.width,
         scrapWidth: Number(scrapPerStrip.toFixed(2)),
         stripCost: activeStrip.costPerStrip,
         costPerPiece: Number(costOfThisBatch.toFixed(6)),
         averageCostAfter: Number(newAverageCost.toFixed(6)),
         reportedWeight: reportedProductionWeight,
-        operatorId,
-        status: "ACTIVE",
-        timestamp: serverTimestamp(),
-      });
-
-      const kardexRef = doc(collection(db, "kardex_movements"));
-      transaction.set(kardexRef, {
-        sku: sku,
-        date: serverTimestamp(),
-        type: "IN",
-        quantity: pieces,
-        balance: newKardexBalance,
-        reference: coilId,
-        description: "Ingreso por Producción",
-        user: operatorId,
-      });
+      },
+      additionalCoilUpdates: {
+        plannedStrips: updatedStrips,
+        status: totalPending === 0 ? "PROCESSED" : "IN_PROGRESS",
+        // Note: consumeCoil will update currentWeight and status based on weightConsumed, 
+        // but we override status here if totalPending is 0.
+      },
+      additionalStockParams: {
+        newAverageCost,
+        newWeight: reportedProductionWeight,
+      }
     });
+
     return { success: true };
   } catch (e: unknown) {
     console.error("Error en Fase 2:", e);
     throw new Error(e instanceof Error ? e.message : "Error al procesar el fleje.");
   }
 };
+
 
 // FASE 3: REVERTIR REGISTRO
 export const revertProductionLog = async (logId: string, userEmail: string) => {
@@ -377,100 +344,6 @@ export const revertProductionLog = async (logId: string, userEmail: string) => {
   } catch (error: unknown) {
     console.error("Error revirtiendo registro:", error);
     throw new Error(error instanceof Error ? error.message : "Error al anular el registro.");
-  }
-};
-
-// ANULAR BOBINA MADRE
-export const voidCoil = async (coilId: string, userEmail: string) => {
-  const coilRef = doc(db, "coils", coilId);
-  const auditRef = doc(collection(db, "audit_logs"));
-
-  try {
-    await runTransaction(db, async (transaction) => {
-      const coilDoc = await transaction.get(coilRef);
-      if (!coilDoc.exists()) throw new Error("La bobina no existe.");
-
-      if (coilDoc.data().status !== "AVAILABLE") {
-        throw new Error(
-          "Solo se pueden anular bobinas DISPONIBLES. Si ya tiene cortes, anula los cortes primero.",
-        );
-      }
-
-      transaction.update(coilRef, {
-        status: "VOIDED",
-        voidedBy: userEmail,
-        voidedAt: serverTimestamp(),
-      });
-
-      transaction.set(auditRef, {
-        action: "VOID_COIL",
-        entityId: coilId,
-        userEmail: userEmail,
-        details: `Se anuló el ingreso de la bobina madre: ${coilId}`,
-        timestamp: serverTimestamp(),
-      });
-    });
-    return { success: true };
-  } catch (error: unknown) {
-    throw new Error(error instanceof Error ? error.message : "Error desconocido al anular.");
-  }
-};
-
-// EDITAR BOBINA MADRE
-export const updateCoil = async (
-  coilId: string,
-  updates: CoilUpdates,
-  userEmail: string,
-) => {
-  const coilRef = doc(db, "coils", coilId);
-  const auditRef = doc(collection(db, "audit_logs"));
-
-  try {
-    await runTransaction(db, async (transaction) => {
-      const coilDoc = await transaction.get(coilRef);
-      if (!coilDoc.exists()) throw new Error("La bobina no existe.");
-
-      if (coilDoc.data().status !== "AVAILABLE") {
-        throw new Error(
-          "Solo puedes editar bobinas DISPONIBLES para no corromper los costos actuales.",
-        );
-      }
-
-      const finalInvoiceDate = updates.invoiceDate
-        ? new Date(`${updates.invoiceDate}T12:00:00`)
-        : null;
-
-      const updatePayload: Record<string, unknown> = {
-        initialWeight: updates.initialWeight,
-        currentWeight: updates.currentWeight,
-        masterWidth: updates.masterWidth,
-        thickness: updates.thickness,
-        pricePerKg: updates.pricePerKg,
-        "metadata.providerName": updates.providerName,
-        "metadata.provider": updates.providerName,
-        "metadata.providerDoc": updates.providerDoc,
-        "metadata.providerDocType": updates.providerDocType,
-        "metadata.invoiceNumber": updates.invoiceNumber,
-        updatedAt: serverTimestamp(),
-      };
-
-      if (finalInvoiceDate) {
-        updatePayload["metadata.invoiceDate"] = finalInvoiceDate;
-      }
-
-      transaction.update(coilRef, updatePayload);
-
-      transaction.set(auditRef, {
-        action: "EDIT_COIL",
-        entityId: coilId,
-        userEmail: userEmail,
-        details: `Editó bobina: Peso ${updates.initialWeight}kg, Espesor ${updates.thickness}mm, Valor /Kg S/ ${updates.pricePerKg}.`,
-        timestamp: serverTimestamp(),
-      });
-    });
-    return { success: true };
-  } catch (error: unknown) {
-    throw new Error(error instanceof Error ? error.message : "Error al editar.");
   }
 };
 

@@ -50,6 +50,17 @@ describe('calculateCuttingPlan', () => {
     expect(result.effectiveCostPerMm).toBeCloseTo(5000 / 976, 4);
   });
 
+  it('aplica regla de sobrante exacto = 40mm al costo por mm', () => {
+    // 8 × 120mm = 960, leftover = 40 ≤ 40 → usa totalPlannedWidth 960
+    const result = calculateCuttingPlan({
+      totalCoilCost: 5000,
+      masterWidth: 1000,
+      items: [{ sku: 'P38', quantity: 8, stripWidth: 120 }],
+    });
+    expect(result.leftoverWidth).toBe(40);
+    expect(result.effectiveCostPerMm).toBeCloseTo(5000 / 960, 4);
+  });
+
   it('lanza error cuando el ancho total supera el masterWidth', () => {
     expect(() =>
       calculateCuttingPlan({
