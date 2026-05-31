@@ -7,6 +7,7 @@ import {
   Trash2,
   AlertCircle,
   RotateCcw,
+  Scissors,
 } from "lucide-react";
 import { Coil } from "@/types";
 
@@ -17,6 +18,7 @@ interface InventoryActionsProps {
   onEdit: () => void;
   onVoid: () => void;
   onCancelPlan: () => void;
+  onSendToCut?: () => void;
 }
 
 export default function InventoryActions({
@@ -26,6 +28,7 @@ export default function InventoryActions({
   onEdit,
   onVoid,
   onCancelPlan,
+  onSendToCut,
 }: InventoryActionsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
@@ -109,8 +112,23 @@ export default function InventoryActions({
                 </button>
               )}
 
+              {role === "ADMIN" && coil.status === "EN_TERCERO" && (
+                <div className="px-4 py-2 text-xs font-bold text-slate-400 italic bg-slate-50 flex items-center gap-2">
+                   <AlertCircle size={14} /> En corte externo
+                </div>
+              )}
+
               {role === "ADMIN" && coil.status === "AVAILABLE" && (
                 <>
+                  <button
+                    onClick={() => {
+                      setIsOpen(false);
+                      onSendToCut?.();
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 font-black flex items-center gap-2 transition"
+                  >
+                    <Scissors size={16} /> Enviar a Corte
+                  </button>
                   <button
                     onClick={() => {
                       setIsOpen(false);

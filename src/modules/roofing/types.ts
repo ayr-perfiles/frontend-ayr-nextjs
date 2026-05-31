@@ -10,15 +10,15 @@ export type StockMovementType = 'ENTRADA' | 'SALIDA' | 'AJUSTE';
 export interface RoofingProduct {
   sku: string;
   displayName: string;
-  /** Modelo: 'TC5' (5 ondas) */
   family: string;
   material: RoofingMaterial;
-  /** Default: ROJO. Otros: AZUL, VERDE, BLANCO, GRIS */
-  color: string;
-  thickness: number;  // mm
-  width: number;      // mm
-  length: number;     // metros (ej: 6.0, 3.6, 4.8)
-  /** Peso por unidad en kg */
+  color?: string;
+  /** Especificación técnica (ej: '3.6m x 1.10m') */
+  spec?: string;
+  /** Obligatorio para descripción y cálculos */
+  thickness: number;
+  width: number;
+  length: number;
   weight?: number;
   unit: RoofingUnit;
   active: boolean;

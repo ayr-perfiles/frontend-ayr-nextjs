@@ -20,10 +20,9 @@ import toast from "react-hot-toast";
 
 import { ProductionFilters } from "@/modules/drywall/components/production/ProductionFilters";
 import { ProductionTable } from "@/modules/drywall/components/production/ProductionTable";
-import { StartProductionModal } from "@/modules/drywall/components/production/StartProductionModal";
-import { ProductionForm } from "@/modules/drywall/components/forms/ProductionForm";
-import { ConsumeStripForm } from "@/modules/drywall/components/forms/ConsumeStripForm";
-import { Coil } from "@/types";
+import { StripsProductionModal } from "../../components/production/StripsProductionModal";
+import { OutsourcedProductionForm } from "../../components/forms/OutsourcedProductionForm";
+import { StripStock } from "@/types";
 
 export default function ProductionPage() {
   const { user, role } = useAuth();
@@ -32,7 +31,7 @@ export default function ProductionPage() {
 
   // PRODUCCION FLOW
   const [showStartModal, setShowStartModal] = useState(false);
-  const [selectedCoil, setSelectedCoil] = useState<Coil | null>(null);
+  const [selectedStrip, setSelectedStrip] = useState<StripStock | null>(null);
 
   // FILTROS DE PRODUCCIÓN
   const [searchTerm, setSearchTerm] = useState("");
@@ -58,19 +57,20 @@ export default function ProductionPage() {
   }, [error]);
 
   // ACCIONES
-  const handleSelectCoil = (coil: Coil) => {
-    setSelectedCoil(coil);
+  const handleSelectStrip = (strip: StripStock) => {
+    setSelectedStrip(strip);
     setShowStartModal(false);
   };
 
   const handleCloseProduction = () => {
-    setSelectedCoil(null);
+    setSelectedStrip(null);
     refresh();
   };
+
   const handleVoidLog = async (logId: string, pieces: number) => {
     if (
       confirm(
-        `¿Estás seguro de ANULAR este corte de ${pieces} piezas? El inventario se restará y el fleje volverá a la bobina.`,
+        `¿Estás seguro de ANULAR este registro de ${pieces} piezas? El inventario se restará y se ajustará el costo.`,
       )
     ) {
       try {
@@ -125,7 +125,7 @@ export default function ProductionPage() {
             <Factory className="text-blue-600" /> Producción y Costos
           </h1>
           <p className="text-slate-500 font-medium mt-1">
-            Control de inventario valorizado y trazabilidad de máquina.
+            Control de inventario valorizado y trazabilidad de máquina (Drywall).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
@@ -145,26 +145,19 @@ export default function ProductionPage() {
       </div>
 
       {showStartModal && (
-        <StartProductionModal
+        <StripsProductionModal
           onClose={() => setShowStartModal(false)}
-          onSelect={handleSelectCoil}
+          onSelect={handleSelectStrip}
         />
       )}
 
-      {selectedCoil && (
+      {selectedStrip && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95">
-            {selectedCoil.status === "AVAILABLE" ? (
-              <ProductionForm
-                coil={selectedCoil}
-                onClose={handleCloseProduction}
-              />
-            ) : (
-              <ConsumeStripForm
-                coil={selectedCoil}
-                onClose={handleCloseProduction}
-              />
-            )}
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl overflow-hidden animate-in fade-in zoom-in-95">
+            <OutsourcedProductionForm
+              strip={selectedStrip}
+              onClose={handleCloseProduction}
+            />
           </div>
         </div>
       )}
@@ -276,7 +269,7 @@ export default function ProductionPage() {
           <div className="w-full sm:w-1/3 flex justify-center sm:justify-start">
             <div className="flex flex-col">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Cortes encontrados
+                Registros encontrados
               </p>
               <p className="text-sm font-black text-blue-600">
                 {filteredTotal} {filteredTotal === 1 ? "registro" : "registros"}

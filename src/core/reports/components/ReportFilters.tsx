@@ -28,12 +28,40 @@ export function ReportFilters({ specs, values, onChange, onClear }: ReportFilter
               onChange={(e) => onChange(spec.id, e.target.value)}
               className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-sm font-bold outline-none focus:border-blue-500 transition-all shadow-sm"
             >
+              <option value="HISTORICO">Histórico (Todo)</option>
               <option value="HOY">Hoy</option>
               <option value="SEMANA">Esta Semana</option>
               <option value="MES">Este Mes</option>
               <option value="MES_ANTERIOR">Mes Anterior</option>
               <option value="CUSTOM">Rango Personalizado</option>
             </select>
+          )}
+
+          {spec.type === 'LINE' && (
+            <select
+              value={values[spec.id]}
+              onChange={(e) => onChange(spec.id, e.target.value)}
+              className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-sm font-bold outline-none focus:border-blue-500 transition-all shadow-sm"
+            >
+              <option value="all">Todas las líneas</option>
+              <option value="drywall">Drywall</option>
+              <option value="roofing">Roofing (UPVC)</option>
+              <option value="metallic-roofing">Metallic Roofing</option>
+              <option value="trading">Trading</option>
+              <option value="services">Services</option>
+            </select>
+          )}
+
+          {spec.type === 'BOOLEAN' && (
+            <div className="flex items-center h-[42px] px-2">
+              <input
+                type="checkbox"
+                checked={!!values[spec.id]}
+                onChange={(e) => onChange(spec.id, e.target.checked)}
+                className="w-5 h-5 rounded-lg border-slate-200 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="ml-2 text-xs font-bold text-slate-600">SÍ</span>
+            </div>
           )}
 
           {spec.type === 'TEXT' && (

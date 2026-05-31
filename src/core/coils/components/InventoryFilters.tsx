@@ -21,6 +21,10 @@ interface InventoryFiltersProps {
   setStatusFilter: (val: string) => void;
   finishFilter: string;
   setFinishFilter: (val: string) => void;
+  currencyFilter: string;
+  setCurrencyFilter: (val: string) => void;
+  providerFilter: string;
+  setProviderFilter: (val: string) => void;
   startDate: string;
   setStartDate: (val: string) => void;
   endDate: string;
@@ -36,6 +40,10 @@ export function InventoryFilters({
   setStatusFilter,
   finishFilter,
   setFinishFilter,
+  currencyFilter,
+  setCurrencyFilter,
+  providerFilter,
+  setProviderFilter,
   startDate,
   setStartDate,
   endDate,
@@ -65,7 +73,9 @@ export function InventoryFilters({
     (startDate ? 1 : 0) + 
     (endDate ? 1 : 0) + 
     (statusFilter !== "ALL" ? 1 : 0) +
-    (finishFilter !== "ALL" ? 1 : 0);
+    (finishFilter !== "ALL" ? 1 : 0) +
+    (currencyFilter !== "ALL" ? 1 : 0) +
+    (providerFilter !== "" ? 1 : 0);
 
   const handleClearAll = () => {
     onClear();
@@ -77,7 +87,7 @@ export function InventoryFilters({
       className="flex flex-col sm:flex-row gap-3 relative z-30"
       ref={menuRef}
     >
-      {/* 1. BARRA DE BÚSQUEDA PRINCIPAL (Siempre visible y ocupa el mayor espacio) */}
+      {/* 1. BARRA DE BÚSQUEDA PRINCIPAL */}
       <div className="relative flex-1">
         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
           {isSearching ? (
@@ -131,7 +141,7 @@ export function InventoryFilters({
           />
         </button>
 
-        {/* 3. MENÚ DESPLEGABLE (POPOVER) */}
+        {/* 3. MENÚ DESPLEGABLE */}
         {isOpen && (
           <div className="absolute right-0 sm:left-auto left-0 top-full mt-2 w-full sm:w-80 bg-white border border-slate-100 rounded-2xl shadow-2xl p-5 animate-in fade-in zoom-in-95 overflow-y-auto max-h-[80vh]">
             <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -139,7 +149,7 @@ export function InventoryFilters({
             </h4>
 
             <div className="space-y-5">
-              {/* Filtro de Estado */}
+              {/* Estado */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 uppercase mb-2">
                   Estado de Bobina
@@ -148,6 +158,7 @@ export function InventoryFilters({
                   {[
                     { id: "ALL", label: "Todas las Activas" },
                     { id: "AVAILABLE", label: "Solo Disponibles" },
+                    { id: "EN_TERCERO", label: "En Corte Externo" },
                     { id: "IN_PROGRESS", label: "En Producción" },
                     { id: "PROCESSED", label: "Ya Procesadas" },
                   ].map((status) => (
@@ -169,26 +180,56 @@ export function InventoryFilters({
                 </div>
               </div>
 
-              {/* Filtro de Acabado */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
-                  <Layers size={12} /> Acabado / Material
-                </label>
-                <select
-                  value={finishFilter}
-                  onChange={(e) => setFinishFilter(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition"
-                >
-                  <option value="ALL">Todos los acabados</option>
-                  {finishes.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.label}
-                    </option>
-                  ))}
-                </select>
+              {/* Acabado y Moneda */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+                    <Layers size={12} /> Acabado
+                  </label>
+                  <select
+                    value={finishFilter}
+                    onChange={(e) => setFinishFilter(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition"
+                  >
+                    <option value="ALL">Todos</option>
+                    {finishes.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+                    Moneda
+                  </label>
+                  <select
+                    value={currencyFilter}
+                    onChange={(e) => setCurrencyFilter(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition"
+                  >
+                    <option value="ALL">Todas</option>
+                    <option value="PEN">Soles (PEN)</option>
+                    <option value="USD">Dólares (USD)</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Filtro de Fechas */}
+              {/* Proveedor */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-2">
+                  Proveedor
+                </label>
+                <input 
+                  type="text"
+                  placeholder="Ej: IMRED, ACEROS..."
+                  value={providerFilter}
+                  onChange={(e) => setProviderFilter(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition"
+                />
+              </div>
+
+              {/* Fechas */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
                   <Calendar size={12} /> Rango de Fechas
@@ -233,7 +274,7 @@ export function InventoryFilters({
               </div>
             </div>
 
-            {/* Footer del Menú */}
+            {/* Footer */}
             <div className="mt-6 pt-4 border-t border-slate-100 flex gap-2">
               <button
                 onClick={() => setIsOpen(false)}

@@ -133,7 +133,7 @@ function setupMocks() {
     return store.makeRef(col, id) as unknown as ReturnType<typeof doc>;
   });
 
-  vi.mocked(where).mockImplementation((field: string, op: string, value: unknown) =>
+  vi.mocked(where).mockImplementation((field: any, op: any, value: unknown) =>
     ({ _where: { field, op, value } }) as unknown as ReturnType<typeof where>,
   );
 
@@ -189,6 +189,8 @@ const MIN_PRODUCT_INPUT = {
   category: 'POLICARBONATO' as const,
   displayName: 'POLICARBONATO 600',
   unit: 'PIEZA' as const,
+  active: true,
+  avgCost: 0,
 };
 
 function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {

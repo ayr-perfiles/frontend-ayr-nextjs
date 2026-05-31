@@ -9,15 +9,23 @@ import {
   where,
 } from "firebase/firestore";
 import { getCatalog, type ProductConfig } from "@/services/catalogService";
-import { listProducts } from "@/modules/roofing/services/catalogService";
+import { listProducts as listRoofing } from "@/modules/roofing/services/catalogService";
+import { listProducts as listMetallic } from "@/modules/metallic-roofing/services/catalogService";
+import { listProducts as listTrading } from "@/modules/trading/services/catalogService";
+import { listProducts as listServices } from "@/modules/services/services/catalogService";
+
 import type { StockSummary, SaleItem, BusinessLine } from "@/types";
 import type { RoofingProduct, RoofingStock } from "@/modules/roofing/types";
+import type { MetallicProduct, MetallicStock } from "@/modules/metallic-roofing/types";
+import type { TradingProduct, TradingStock } from "@/modules/trading/types";
+import type { ServiceProduct } from "@/modules/services/types";
+
 import type { SystemSettings } from "@/services/settingsService";
-import { AlertTriangle, Factory, Home, Package, Plus } from "lucide-react";
+import { AlertTriangle, Factory, Home, Package, Plus, ShoppingBag, Wrench } from "lucide-react";
 
 export type CartItem = SaleItem;
 
-type ActiveTab = "drywall" | "roofing" | "coils";
+type ActiveTab = BusinessLine | "coils";
 
 interface Props {
   cartItems: CartItem[];
@@ -44,13 +52,27 @@ export default function ProductSelector({ cartItems, settings, onAdd }: Props) {
   const [roofingCatalog, setRoofingCatalog] = useState<RoofingProduct[]>([]);
   const [roofingStock, setRoofingStock] = useState<RoofingStock[]>([]);
 
+  // ── Metallic data ──────────────────────────────────────────────────────────
+  const [metallicCatalog, setMetallicCatalog] = useState<MetallicProduct[]>([]);
+  const [metallicStock, setMetallicStock] = useState<MetallicStock[]>([]);
+
+  // ── Trading data ───────────────────────────────────────────────────────────
+  const [tradingCatalog, setTradingCatalog] = useState<TradingProduct[]>([]);
+  const [tradingStock, setTradingStock] = useState<TradingStock[]>([]);
+
+  // ── Services data ──────────────────────────────────────────────────────────
+  const [servicesCatalog, setServicesCatalog] = useState<ServiceProduct[]>([]);
+
   // ── Coils data ─────────────────────────────────────────────────────────────
   const [availableCoils, setAvailableCoils] = useState<Record<string, unknown>[]>([]);
 
   // ── Load on mount ──────────────────────────────────────────────────────────
   useEffect(() => {
     getCatalog().then((c) => setDrywallCatalog(c.filter((p) => p.isActive)));
-    listProducts({ active: true }).then(setRoofingCatalog);
+    listRoofing({ active: true }).then(setRoofingCatalog);
+    listMetallic({ active: true }).then(setMetallicCatalog);
+    listTrading({ active: true }).then(setTradingCatalog);
+    listServices({ active: true }).then(setServicesCatalog);
   }, []);
 
   // Real-time stock subscriptions
@@ -63,29 +85,46 @@ export default function ProductSelector({ cartItems, settings, onAdd }: Props) {
       setRoofingStock(snap.docs.map((d) => ({ sku: d.id, ...d.data() } as RoofingStock)));
     });
 
+    const unsubMetallic = onSnapshot(collection(db, "metallic_roofing_stock"), (snap) => {
+      setMetallicStock(snap.docs.map((d) => ({ sku: d.id, ...d.data() } as MetallicStock)));
+    });
+
+    const unsubTrading = onSnapshot(collection(db, "trading_stock"), (snap) => {
+      setTradingStock(snap.docs.map((d) => ({ sku: d.id, ...d.data() } as TradingStock)));
+    });
+
     const unsubCoils = onSnapshot(
       query(collection(db, "coils"), where("status", "==", "AVAILABLE")),
       (snap) => setAvailableCoils(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
 
-    return () => { unsubDrywall(); unsubRoofing(); unsubCoils(); };
+    return () => { 
+      unsubDrywall(); 
+      unsubRoofing(); 
+      unsubMetallic();
+      unsubTrading();
+      unsubCoils(); 
+    };
   }, []);
 
   return (
     <div className="bg-white rounded-3xl shadow-sm border border-gray-100">
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-gray-100">
+      <div className="flex flex-wrap gap-0 border-b border-gray-100">
         {(
           [
-            { id: "drywall", label: "Perfiles Drywall", icon: <Package size={14} />, color: "text-blue-600" },
-            { id: "roofing", label: "Coberturas PVC", icon: <Home size={14} />, color: "text-emerald-600" },
-            { id: "coils", label: "Bobinas M.P.", icon: <Factory size={14} />, color: "text-orange-600" },
+            { id: "drywall", label: "Drywall", icon: <Package size={14} />, color: "text-blue-600" },
+            { id: "roofing", label: "PVC", icon: <Home size={14} />, color: "text-emerald-600" },
+            { id: "metallic-roofing", label: "Aluzinc", icon: <Factory size={14} />, color: "text-zinc-600" },
+            { id: "trading", label: "Reventa", icon: <ShoppingBag size={14} />, color: "text-amber-600" },
+            { id: "services", label: "Servicios", icon: <Wrench size={14} />, color: "text-violet-600" },
+            { id: "coils", label: "Bobinas", icon: <Factory size={14} />, color: "text-orange-600" },
           ] as const
         ).map(({ id, label, icon, color }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={`flex items-center gap-2 px-5 py-4 text-xs font-black uppercase tracking-widest border-b-2 transition ${
+            className={`flex items-center gap-2 px-4 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition ${
               tab === id
                 ? `border-current ${color}`
                 : "border-transparent text-gray-400 hover:text-gray-600"
@@ -111,6 +150,32 @@ export default function ProductSelector({ cartItems, settings, onAdd }: Props) {
           <RoofingTab
             catalog={roofingCatalog}
             stock={roofingStock}
+            cartItems={cartItems}
+            settings={settings}
+            onAdd={onAdd}
+          />
+        )}
+        {tab === "metallic-roofing" && (
+          <MetallicTab
+            catalog={metallicCatalog}
+            stock={metallicStock}
+            cartItems={cartItems}
+            settings={settings}
+            onAdd={onAdd}
+          />
+        )}
+        {tab === "trading" && (
+          <TradingTab
+            catalog={tradingCatalog}
+            stock={tradingStock}
+            cartItems={cartItems}
+            settings={settings}
+            onAdd={onAdd}
+          />
+        )}
+        {tab === "services" && (
+          <ServicesTab
+            catalog={servicesCatalog}
             cartItems={cartItems}
             settings={settings}
             onAdd={onAdd}
@@ -210,10 +275,10 @@ function DrywallTab({
         >
           {catalog.map((p) => {
             const s = stock.find((st) => st.sku === p.sku);
-            const qty = s?.totalQuantity ?? 0;
+            const qtyDisp = s?.totalQuantity ?? 0;
             return (
               <option key={p.sku} value={p.sku}>
-                {p.sku} — {p.name} | Disp: {qty}
+                {p.sku} — {p.name} | Disp: {qtyDisp}
               </option>
             );
           })}
@@ -306,10 +371,10 @@ function RoofingTab({
         >
           {catalog.map((p) => {
             const s = stock.find((st) => st.sku === p.sku);
-            const qty = s?.quantity ?? 0;
+            const qtyDisp = s?.quantity ?? 0;
             return (
               <option key={p.sku} value={p.sku}>
-                {p.sku} — {p.displayName} | Disp: {qty} pzs
+                {p.sku} — {p.displayName} | Disp: {qtyDisp} pzs
               </option>
             );
           })}
@@ -319,6 +384,254 @@ function RoofingTab({
       <QtyInput value={qty} onChange={setQty} label="Cant. (pzas)" />
       <PriceInput value={price} onChange={setPrice} baseCost={baseCost} />
       <AddButton onClick={handleAdd} disabled={!qty || !price} color="emerald" />
+    </div>
+  );
+}
+
+// ─── Metallic tab ─────────────────────────────────────────────────────────────
+
+function MetallicTab({
+  catalog,
+  stock,
+  cartItems,
+  settings,
+  onAdd,
+}: {
+  catalog: MetallicProduct[];
+  stock: MetallicStock[];
+  cartItems: CartItem[];
+  settings: SystemSettings | null;
+  onAdd: (item: CartItem) => void;
+}) {
+  const [selectedSku, setSelectedSku] = useState(catalog[0]?.sku ?? "");
+  const [qty, setQty] = useState<number | "">("");
+  const [price, setPrice] = useState<number | "">("");
+
+  useEffect(() => {
+    if (catalog.length > 0 && !selectedSku) setSelectedSku(catalog[0].sku);
+  }, [catalog, selectedSku]);
+
+  const stockItem = stock.find((s) => s.sku === selectedSku);
+  const product = catalog.find((p) => p.sku === selectedSku);
+  const baseCost = stockItem?.avgCost ?? product?.avgCost ?? 0;
+  const currentStock = stockItem?.quantity ?? 0;
+  const alreadyInCart = cartItems.filter((i) => i.sku === selectedSku && i.businessLine === "metallic-roofing").reduce((s, i) => s + i.quantity, 0);
+  const willBeNegative = currentStock - alreadyInCart - Number(qty || 0) < 0;
+
+  useEffect(() => {
+    if (!selectedSku) return;
+    const p = catalog.find((c) => c.sku === selectedSku);
+    const s = stock.find((st) => st.sku === selectedSku);
+    const cost = s?.avgCost ?? p?.avgCost ?? 0;
+    setPrice(cost > 0 ? suggestedPrice(cost, settings?.minMarginPercent ?? 20) : "");
+    setQty("");
+  }, [selectedSku, catalog, stock, settings]);
+
+  function handleAdd() {
+    if (!selectedSku || !qty || !price) return;
+    const numQty = Number(qty);
+    const numPrice = Number(price);
+    const unitValue = numPrice / (1 + IGV_RATE);
+
+    if (unitValue < baseCost) {
+      if (!confirm(`⚠️ ALERTA: Precio sin IGV < costo. ¿Continuar?`)) return;
+    }
+
+    onAdd({
+      sku: selectedSku,
+      businessLine: "metallic-roofing",
+      productName: product?.displayName ?? selectedSku,
+      quantity: numQty,
+      unitPrice: numPrice,
+      unitValue,
+      baseCost,
+      unitWeight: 0,
+      isCoil: false,
+    });
+
+    setQty("");
+  }
+
+  return (
+    <div className="flex flex-col md:flex-row items-end gap-4">
+      <div className="flex-1 w-full">
+        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Cobertura Metálica (Aluzinc)</label>
+        <select
+          value={selectedSku}
+          onChange={(e) => setSelectedSku(e.target.value)}
+          className="w-full p-4 bg-gray-50 border border-zinc-200 rounded-xl font-bold text-gray-800 outline-none h-[56px]"
+        >
+          {catalog.map((p) => {
+            const s = stock.find((st) => st.sku === p.sku);
+            const qtyDisp = s?.quantity ?? 0;
+            return (
+              <option key={p.sku} value={p.sku}>
+                {p.sku} — {p.displayName} | Disp: {qtyDisp}
+              </option>
+            );
+          })}
+        </select>
+        {willBeNegative && Number(qty) > 0 && <StockWarning />}
+      </div>
+      <QtyInput value={qty} onChange={setQty} label="Cant." />
+      <PriceInput value={price} onChange={setPrice} baseCost={baseCost} />
+      <AddButton onClick={handleAdd} disabled={!qty || !price} color="blue" />
+    </div>
+  );
+}
+
+// ─── Trading tab ──────────────────────────────────────────────────────────────
+
+function TradingTab({
+  catalog,
+  stock,
+  cartItems,
+  settings,
+  onAdd,
+}: {
+  catalog: TradingProduct[];
+  stock: TradingStock[];
+  cartItems: CartItem[];
+  settings: SystemSettings | null;
+  onAdd: (item: CartItem) => void;
+}) {
+  const [selectedSku, setSelectedSku] = useState(catalog[0]?.sku ?? "");
+  const [qty, setQty] = useState<number | "">("");
+  const [price, setPrice] = useState<number | "">("");
+
+  useEffect(() => {
+    if (catalog.length > 0 && !selectedSku) setSelectedSku(catalog[0].sku);
+  }, [catalog, selectedSku]);
+
+  const stockItem = stock.find((s) => s.sku === selectedSku);
+  const product = catalog.find((p) => p.sku === selectedSku);
+  const baseCost = stockItem?.avgCost ?? product?.avgCost ?? 0;
+  const currentStock = stockItem?.quantity ?? 0;
+  const alreadyInCart = cartItems.filter((i) => i.sku === selectedSku && i.businessLine === "trading").reduce((s, i) => s + i.quantity, 0);
+  const willBeNegative = currentStock - alreadyInCart - Number(qty || 0) < 0;
+
+  useEffect(() => {
+    if (!selectedSku) return;
+    const p = catalog.find((c) => c.sku === selectedSku);
+    const s = stock.find((st) => st.sku === selectedSku);
+    const cost = s?.avgCost ?? p?.avgCost ?? 0;
+    setPrice(cost > 0 ? suggestedPrice(cost, settings?.minMarginPercent ?? 20) : "");
+    setQty("");
+  }, [selectedSku, catalog, stock, settings]);
+
+  function handleAdd() {
+    if (!selectedSku || !qty || !price) return;
+    const numQty = Number(qty);
+    const numPrice = Number(price);
+    const unitValue = numPrice / (1 + IGV_RATE);
+
+    onAdd({
+      sku: selectedSku,
+      businessLine: "trading",
+      productName: product?.displayName ?? selectedSku,
+      quantity: numQty,
+      unitPrice: numPrice,
+      unitValue,
+      baseCost,
+      unitWeight: 0,
+      isCoil: false,
+    });
+
+    setQty("");
+  }
+
+  return (
+    <div className="flex flex-col md:flex-row items-end gap-4">
+      <div className="flex-1 w-full">
+        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Producto Reventa (Trading)</label>
+        <select
+          value={selectedSku}
+          onChange={(e) => setSelectedSku(e.target.value)}
+          className="w-full p-4 bg-amber-50 border border-amber-200 rounded-xl font-bold text-gray-800 outline-none h-[56px]"
+        >
+          {catalog.map((p) => {
+            const s = stock.find((st) => st.sku === p.sku);
+            const qtyDisp = s?.quantity ?? 0;
+            return (
+              <option key={p.sku} value={p.sku}>
+                {p.sku} — {p.displayName} | Disp: {qtyDisp}
+              </option>
+            );
+          })}
+        </select>
+        {willBeNegative && Number(qty) > 0 && <StockWarning />}
+      </div>
+      <QtyInput value={qty} onChange={setQty} label="Cant." />
+      <PriceInput value={price} onChange={setPrice} baseCost={baseCost} />
+      <AddButton onClick={handleAdd} disabled={!qty || !price} color="orange" />
+    </div>
+  );
+}
+
+// ─── Services tab ─────────────────────────────────────────────────────────────
+
+function ServicesTab({
+  catalog,
+  cartItems,
+  settings,
+  onAdd,
+}: {
+  catalog: ServiceProduct[];
+  cartItems: CartItem[];
+  settings: SystemSettings | null;
+  onAdd: (item: CartItem) => void;
+}) {
+  const [selectedSku, setSelectedSku] = useState(catalog[0]?.sku ?? "");
+  const [qty, setQty] = useState<number | "">("");
+  const [price, setPrice] = useState<number | "">("");
+
+  useEffect(() => {
+    if (catalog.length > 0 && !selectedSku) setSelectedSku(catalog[0].sku);
+  }, [catalog, selectedSku]);
+
+  const product = catalog.find((p) => p.sku === selectedSku);
+  const baseCost = 0;
+
+  function handleAdd() {
+    if (!selectedSku || !qty || !price) return;
+    const numQty = Number(qty);
+    const numPrice = Number(price);
+    const unitValue = numPrice / (1 + IGV_RATE);
+
+    onAdd({
+      sku: selectedSku,
+      businessLine: "services",
+      productName: product?.displayName ?? selectedSku,
+      quantity: numQty,
+      unitPrice: numPrice,
+      unitValue,
+      baseCost: 0,
+      unitWeight: 0,
+      isCoil: false,
+    });
+
+    setQty("");
+  }
+
+  return (
+    <div className="flex flex-col md:flex-row items-end gap-4">
+      <div className="flex-1 w-full">
+        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Servicio / Mano de Obra</label>
+        <select
+          value={selectedSku}
+          onChange={(e) => setSelectedSku(e.target.value)}
+          className="w-full p-4 bg-violet-50 border border-violet-200 rounded-xl font-bold text-gray-800 outline-none h-[56px]"
+        >
+          {catalog.map((p) => (
+            <option key={p.sku} value={p.sku}>
+              {p.sku} — {p.displayName}
+            </option>
+          ))}
+        </select>
+      </div>
+      <QtyInput value={qty} onChange={setQty} label="Cantidad" />
+      <PriceInput value={price} onChange={setPrice} baseCost={baseCost} />
+      <AddButton onClick={handleAdd} disabled={!qty || !price} color="blue" />
     </div>
   );
 }

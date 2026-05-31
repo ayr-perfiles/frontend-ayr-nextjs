@@ -1,7 +1,7 @@
 /**
  * Estados posibles de una bobina de acero
  */
-export type CoilStatus = "AVAILABLE" | "IN_PROGRESS" | "PROCESSED" | "VOIDED";
+export type CoilStatus = "AVAILABLE" | "IN_PROGRESS" | "PROCESSED" | "VOIDED" | "EN_TERCERO";
 
 export interface PlannedStrip {
   sku: string;
@@ -41,6 +41,81 @@ export interface Coil {
     isManualEntry?: boolean;
     observations?: string;
   };
+}
+
+export interface CutOrder {
+  id?: string;
+  tercero: {
+    nombre: string;
+    ruc?: string;
+  };
+  status: 'ENVIADO' | 'RECIBIDO' | 'ANULADA';
+  coils: {
+    coilId: string;
+    sentWeight: number;
+    cutPlan: { widthMm: number; count: number }[];
+  }[];
+  sentWeightTotal: number;
+  sentAt: any;
+  sentBy: string;
+  voidedAt?: any;
+  voidedBy?: string;
+  voidReason?: string;
+  invoice?: {
+    number: string;
+    date: any;
+    currency: 'USD' | 'PEN';
+    exchangeRate: number;
+    gravada: number;
+    igv: number;
+    detraccionPct?: number;
+    detraccionAmount?: number;
+    total: number;
+    voided?: boolean; // Nota: implicancia tributaria se maneja fuera
+  };
+  serviceCostPEN?: number;
+  receivedWeightTotal?: number;
+  externalScrapWeight?: number;
+  receivedAt?: any;
+  receivedBy?: string;
+  receivedStrips?: {
+    coilId: string;
+    widthMm: number;
+    count: number;
+    weight: number;
+  }[];
+}
+
+export interface StripStock {
+  id?: string; // key = widthMm (as string) or targetSku
+  widthMm: number;
+  targetSku?: string;
+  totalStrips: number;
+  totalWeight: number;
+  avgCostPerKg: number;
+  lastUpdate: any;
+}
+
+export interface StripMovement {
+  id?: string;
+  type: 'ENTRADA' | 'SALIDA' | 'AJUSTE';
+  widthMm: number;
+  quantity: number;
+  weight: number;
+  costPerKg: number;
+  referenceId: string; // cutOrderId or productionLogId
+  description: string;
+  timestamp: any;
+  user: string;
+}
+
+export interface ProductConfig {
+  sku: string;
+  name: string;
+  stripWidth: number; // Ancho de banda (mm)
+  standardWeight: number; // Peso logístico/estándar (kg)
+  lengthMeters?: number; // Largo del producto (ej: 3.00, 2.44)
+  isActive: boolean; // Para poder desactivar productos viejos sin borrarlos
 }
 
 export interface StockSummary {
@@ -97,7 +172,8 @@ export interface Sale {
 
 export interface ProductionLog {
   id?: string;
-  parentCoilId: string;
+  parentCoilId?: string; // Optional for outsourced
+  stripWidth?: number;   // New for outsourced
   sku: string;
   piecesProduced: number;
   totalUsedWidth: number;
@@ -119,7 +195,12 @@ export interface AuditLog {
     | "VOID_SALE"
     | "SYSTEM_RESET"
     | "VOID_COIL"
-    | "EDIT_COIL";
+    | "EDIT_COIL"
+    | "SEND_TO_CUT"
+    | "RECEIVE_STRIPS"
+    | "VOID_CUT_ORDER"
+    | "EDIT_CUT_ORDER"
+    | "CANCEL_CUTTING_PLAN";
   entityId: string;
   userEmail: string;
   details: string;

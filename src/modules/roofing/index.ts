@@ -1,5 +1,4 @@
 import type { BusinessLineModule } from '@/core/contracts';
-import { roofingProductionEngine } from './engines/production';
 import { roofingInventoryEngine } from './engines/inventory';
 import { RoofingProductSchema } from './schemas/catalog';
 import { roofingRoutes } from './routes';
@@ -11,7 +10,7 @@ export const roofingModule: BusinessLineModule = {
   displayName: 'Coberturas PVC',
   icon: 'Home',
 
-  productionEngine: roofingProductionEngine,
+  productionEngine: undefined, // No production for PVC anymore
   inventoryEngine: roofingInventoryEngine,
   catalogSchema: RoofingProductSchema,
 

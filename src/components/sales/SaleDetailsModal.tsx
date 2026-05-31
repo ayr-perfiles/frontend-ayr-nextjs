@@ -229,6 +229,7 @@ export function SaleDetailsModal({
                 <table className="w-full text-left text-sm">
                   <thead className="bg-gray-50 border-b border-gray-100 text-[10px] font-black text-gray-500 uppercase">
                     <tr>
+                      <th className="p-3 text-center">Línea</th>
                       <th className="p-3">SKU</th>
                       <th className="p-3 text-center">Cant.</th>
                       <th className="p-3 text-right">Precio Unit.</th>
@@ -236,22 +237,39 @@ export function SaleDetailsModal({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {items.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50/50 transition">
-                        <td className="p-3 font-bold text-gray-800">
-                          {item.sku}
-                        </td>
-                        <td className="p-3 text-center font-medium text-gray-600">
-                          {item.quantity}
-                        </td>
-                        <td className="p-3 text-right text-gray-600">
-                          {formatMoney(item.unitPrice)}
-                        </td>
-                        <td className="p-3 text-right font-bold text-gray-800">
-                          {formatMoney(item.quantity * item.unitPrice)}
-                        </td>
-                      </tr>
-                    ))}
+                    {items.map((item, idx) => {
+                      const line = item.businessLine || "drywall";
+                      const lineConfig: Record<string, { label: string; cls: string }> = {
+                        drywall: { label: "DRY", cls: "bg-blue-50 text-blue-600 border-blue-100" },
+                        roofing: { label: "PVC", cls: "bg-emerald-50 text-emerald-600 border-emerald-100" },
+                        "metallic-roofing": { label: "ALU", cls: "bg-zinc-50 text-zinc-600 border-zinc-100" },
+                        trading: { label: "TRD", cls: "bg-amber-50 text-amber-600 border-amber-100" },
+                        services: { label: "SRV", cls: "bg-violet-50 text-violet-600 border-violet-100" },
+                      };
+                      const conf = lineConfig[line] || { label: "???", cls: "bg-gray-50 text-gray-400" };
+                      
+                      return (
+                        <tr key={idx} className="hover:bg-gray-50/50 transition">
+                          <td className="p-3 text-center">
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${conf.cls}`}>
+                              {conf.label}
+                            </span>
+                          </td>
+                          <td className="p-3 font-bold text-gray-800">
+                            {item.sku}
+                          </td>
+                          <td className="p-3 text-center font-medium text-gray-600">
+                            {item.quantity}
+                          </td>
+                          <td className="p-3 text-right text-gray-600">
+                            {formatMoney(item.unitPrice)}
+                          </td>
+                          <td className="p-3 text-right font-bold text-gray-800">
+                            {formatMoney(item.quantity * item.unitPrice)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

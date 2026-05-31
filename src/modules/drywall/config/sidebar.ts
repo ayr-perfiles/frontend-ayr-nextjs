@@ -3,19 +3,19 @@ import type { MenuItem } from '@/core/contracts';
 export const drywallSidebarItems: MenuItem[] = [
   {
     label: 'Catálogo',
-    href: '/admin/catalog',
+    href: '/admin/lines/drywall/catalog',
     icon: 'BookOpen',
     roles: ['ADMIN', 'SUPERVISOR'],
   },
   {
     label: 'Producción',
-    href: '/admin/production',
+    href: '/admin/lines/drywall/production',
     icon: 'Factory',
     roles: ['ADMIN', 'SUPERVISOR'],
   },
   {
     label: 'Terminal Móvil',
-    href: '/admin/operator',
+    href: '/admin/lines/drywall/operator',
     icon: 'Smartphone',
     roles: ['ADMIN', 'SUPERVISOR', 'OPERATOR'],
   },

@@ -11,6 +11,8 @@ export interface CoilFilters {
   searchTerm: string;
   statusFilter: string;
   finishFilter?: string;
+  currencyFilter?: string;
+  providerFilter?: string;
   startDate: string;
   endDate: string;
   pageSize: number;
@@ -49,7 +51,16 @@ type FetchInventoryResult =
     };
 
 export function useCoils(filters: CoilFilters): UseCoilsResult {
-  const { searchTerm, statusFilter, finishFilter, startDate, endDate, pageSize } = filters;
+  const { 
+    searchTerm, 
+    statusFilter, 
+    finishFilter, 
+    currencyFilter,
+    providerFilter,
+    startDate, 
+    endDate, 
+    pageSize 
+  } = filters;
 
   const [coils, setCoils] = useState<Coil[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +89,8 @@ export function useCoils(filters: CoilFilters): UseCoilsResult {
           pageSize,
           statusFilter,
           finishFilter,
+          currencyFilter,
+          providerFilter,
           searchTerm: debouncedSearch,
           startDate,
           endDate,
@@ -112,7 +125,7 @@ export function useCoils(filters: CoilFilters): UseCoilsResult {
         setLoading(false);
       }
     },
-    [pageSize, statusFilter, finishFilter, debouncedSearch, startDate, endDate],
+    [pageSize, statusFilter, finishFilter, currencyFilter, providerFilter, debouncedSearch, startDate, endDate],
   );
 
   useEffect(() => {

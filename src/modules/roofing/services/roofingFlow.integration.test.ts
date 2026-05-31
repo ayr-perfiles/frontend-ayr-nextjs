@@ -150,7 +150,7 @@ function setupMocks() {
     return store.makeRef(col, id) as unknown as ReturnType<typeof doc>;
   });
 
-  vi.mocked(where).mockImplementation((field: string, op: string, value: unknown) =>
+  vi.mocked(where).mockImplementation((field: any, op: any, value: any) =>
     ({ _where: { field, op, value } }) as unknown as ReturnType<typeof where>,
   );
 
@@ -202,6 +202,8 @@ function setupMocks() {
 const SKU = 'UPVC6MT';
 
 const MIN_PRODUCT_INPUT = {
+  sku: SKU,
+  displayName: 'TC5 UPVC ROJO 6MT',
   material:  'UPVC'  as const,
   color:     'ROJO',
   thickness: 1.5,

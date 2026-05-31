@@ -14,15 +14,35 @@ import {
   collection,
   writeBatch,
   doc,
+  getDoc,
   getDocs,
   serverTimestamp,
-  increment,
   query,
   where,
+  DocumentSnapshot,
 } from "firebase/firestore";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
-import { StockSummary } from "@/types";
+import { BusinessLine } from "@/types";
+import { classifyLine } from "@/core/import/catalogImport";
+import { getStockStrategy } from "@/core/sales/strategies";
+
+interface CatalogRef {
+  sku: string;
+  businessLine: BusinessLine;
+  standardWeight?: number;
+  weight?: number;
+  displayName: string;
+}
+
+interface StockRef {
+  sku: string;
+  businessLine: BusinessLine;
+  totalQuantity?: number;
+  quantity?: number;
+  lastCostPerPiece?: number;
+  avgCost?: number;
+}
 
 export function BulkUploadSales() {
   const { user } = useAuth();
@@ -34,23 +54,51 @@ export function BulkUploadSales() {
     Record<string, number>
   >({});
 
-  const [catalogRef, setCatalogRef] = useState<any[]>([]);
-  const [stockRef, setStockRef] = useState<StockSummary[]>([]);
+  const [catalogRef, setCatalogRef] = useState<CatalogRef[]>([]);
+  const [stockRef, setStockRef] = useState<StockRef[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchReferences = async () => {
       try {
-        const prodSnap = await getDocs(collection(db, "products"));
-        const stockSnap = await getDocs(collection(db, "inventory_stock"));
-        setCatalogRef(prodSnap.docs.map((d) => ({ sku: d.id, ...d.data() })));
-        setStockRef(
-          stockSnap.docs.map(
-            (d) => ({ sku: d.id, ...d.data() }) as StockSummary,
-          ),
-        );
+        const [
+          drywallProd, drywallStock,
+          roofingProd, roofingStock,
+          metallicProd, metallicStock,
+          tradingProd, tradingStock,
+          servicesProd
+        ] = await Promise.all([
+          getDocs(collection(db, "products")),
+          getDocs(collection(db, "inventory_stock")),
+          getDocs(collection(db, "roofing_catalog")),
+          getDocs(collection(db, "roofing_stock")),
+          getDocs(collection(db, "metallic_roofing_catalog")),
+          getDocs(collection(db, "metallic_roofing_stock")),
+          getDocs(collection(db, "trading_catalog")),
+          getDocs(collection(db, "trading_stock")),
+          getDocs(collection(db, "services_catalog"))
+        ]);
+
+        const catalogs: CatalogRef[] = [
+          ...drywallProd.docs.map(d => ({ sku: d.id, businessLine: 'drywall' as const, ...d.data() } as any)),
+          ...roofingProd.docs.map(d => ({ sku: d.id, businessLine: 'roofing' as const, ...d.data() } as any)),
+          ...metallicProd.docs.map(d => ({ sku: d.id, businessLine: 'metallic-roofing' as const, ...d.data() } as any)),
+          ...tradingProd.docs.map(d => ({ sku: d.id, businessLine: 'trading' as const, ...d.data() } as any)),
+          ...servicesProd.docs.map(d => ({ sku: d.id, businessLine: 'services' as const, ...d.data() } as any)),
+        ];
+
+        const stocks: StockRef[] = [
+          ...drywallStock.docs.map(d => ({ sku: d.id, businessLine: 'drywall' as const, ...d.data() } as any)),
+          ...roofingStock.docs.map(d => ({ sku: d.id, businessLine: 'roofing' as const, ...d.data() } as any)),
+          ...metallicStock.docs.map(d => ({ sku: d.id, businessLine: 'metallic-roofing' as const, ...d.data() } as any)),
+          ...tradingStock.docs.map(d => ({ sku: d.id, businessLine: 'trading' as const, ...d.data() } as any)),
+        ];
+
+        setCatalogRef(catalogs);
+        setStockRef(stocks);
       } catch (error) {
-        console.error("Error cargando referencias:", error);
+        console.error("Error cargando referencias multi-línea:", error);
+        toast.error("Error cargando catálogos de productos.");
       }
     };
     fetchReferences();
@@ -126,6 +174,13 @@ export function BulkUploadSales() {
         )
           return;
 
+        const sku = String(row["CÓDIGO PRODUCTO"] || "GENERIC").trim().toUpperCase();
+        const productName = String(row["NOMBRE PRODUCTO"] || "Sin nombre").trim();
+        const targetLine = classifyLine(sku, productName);
+
+        // 6. CASOS ESPECIALES: ANTI (anticipos) -> EXCLUIR
+        if (targetLine === "skip") return;
+
         const rawCustomer = String(row["CLIENTE"] || "");
         let rucStr = "00000000000";
         let nameStr = "Consumidor Final";
@@ -158,20 +213,37 @@ export function BulkUploadSales() {
         const precioVentaSoles = rawPrecioVenta * exchangeRate;
         const cantidad = parseNum(row["CANTIDAD"]);
 
-        const sku = row["CÓDIGO PRODUCTO"] || "GENERIC";
-        const productInfo = catalogRef.find((p) => p.sku === sku);
-        const stockInfo = stockRef.find((s) => s.sku === sku);
-        const unitWeight = productInfo?.standardWeight || 0;
-        const baseCost = stockInfo?.lastCostPerPiece || 0;
+        // CLASIFICACIÓN FINAL para businessLine
+        let bLine: BusinessLine = "drywall";
+        if (["drywall", "roofing", "metallic-roofing", "trading", "services"].includes(targetLine)) {
+          bLine = targetLine as BusinessLine;
+        }
+
+        // LOOKUP DE REFERENCIAS
+        const productInfo = catalogRef.find((p) => p.sku === sku && p.businessLine === bLine);
+        const stockInfo = stockRef.find((s) => s.sku === sku && s.businessLine === bLine);
+
+        const flags: string[] = [];
+        if (!productInfo && targetLine !== "coil") flags.push("sin catálogo");
+        if (targetLine === "coil") flags.push("bobina (requiere ajuste manual)");
+        
+        // baseCost & unitWeight POR LÍNEA
+        const unitWeight = productInfo?.standardWeight || productInfo?.weight || 0;
+        const baseCost = stockInfo?.lastCostPerPiece || stockInfo?.avgCost || 0;
+        
+        if (baseCost === 0 && bLine !== "services" && targetLine !== "coil") flags.push("sin costo");
 
         const saleItem = {
           sku: sku,
-          productName: row["NOMBRE PRODUCTO"] || "Sin nombre",
+          productName: productName,
           quantity: cantidad,
           unitPrice: cantidad > 0 ? precioVentaSoles / cantidad : 0,
           unitValue: cantidad > 0 ? valorVentaSoles / cantidad : 0,
           baseCost: baseCost,
           unitWeight: unitWeight,
+          businessLine: bLine,
+          isCoil: targetLine === "coil",
+          flags
         };
 
         if (!salesMap.has(serieNumero)) {
@@ -183,7 +255,7 @@ export function BulkUploadSales() {
             sellerId: row["VENDEDOR"] || "SISTEMA",
             currency: isUSD ? "USD" : "PEN",
             exchangeRateApplied: exchangeRate,
-            originalCurrencyAmount: 0, // Inicia en 0 y se suma abajo
+            originalCurrencyAmount: 0,
             timestamp:
               row["F. EMISIÓN"] instanceof Date
                 ? new Date(row["F. EMISIÓN"].setHours(12, 0, 0))
@@ -194,6 +266,8 @@ export function BulkUploadSales() {
             totalProfit: 0,
             totalWeight: 0,
             paymentStatus: "PAID",
+            businessLines: new Set<BusinessLine>(),
+            allFlags: new Set<string>()
           });
         }
 
@@ -201,15 +275,21 @@ export function BulkUploadSales() {
         sale.items.push(saleItem);
         sale.totalAmount += precioVentaSoles;
         sale.totalCost += cantidad * baseCost;
-        sale.totalProfit += valorVentaSoles - cantidad * baseCost;
+        sale.totalProfit += valorVentaSoles - (cantidad * baseCost);
         sale.totalWeight += cantidad * unitWeight;
+        sale.businessLines.add(bLine);
+        saleItem.flags.forEach(f => sale.allFlags.add(f));
 
         if (isUSD) {
           sale.originalCurrencyAmount += rawPrecioVenta;
         }
       });
 
-      let sortedSales = Array.from(salesMap.values()).sort((a, b) => {
+      let sortedSales = Array.from(salesMap.values()).map(s => ({
+        ...s,
+        businessLines: Array.from(s.businessLines),
+        allFlags: Array.from(s.allFlags)
+      })).sort((a, b) => {
         const d = a.timestamp.getTime() - b.timestamp.getTime();
         return d === 0
           ? a.documentNumber.localeCompare(b.documentNumber, undefined, {
@@ -244,9 +324,13 @@ export function BulkUploadSales() {
   };
 
   const syncKardexForSkus = async (skus: string[]) => {
-    setStatusMessage("Sincronizando Kardex de forma escalable...");
+    setStatusMessage("Sincronizando Kardex matemático (solo Drywall)...");
     for (const sku of skus) {
       if (!sku || sku === "GENERIC") continue;
+
+      // Solo sincronizar Kardex para productos de Drywall
+      const product = catalogRef.find((p) => p.sku === sku);
+      if (product?.businessLine !== "drywall") continue;
 
       const prodSnap = await getDocs(
         query(collection(db, "production_logs"), where("sku", "==", sku)),
@@ -333,7 +417,7 @@ export function BulkUploadSales() {
   const handleUploadToFirebase = async () => {
     if (parsedSales.length === 0) return;
     setLoading(true);
-    setStatusMessage("Guardando ventas y actualizando stock...");
+    setStatusMessage("Guardando ventas y actualizando stock por estrategia...");
 
     try {
       const uniqueSkus = new Set<string>();
@@ -349,6 +433,7 @@ export function BulkUploadSales() {
         }
       };
 
+      // 1. Clientes
       for (const customer of parsedCustomers) {
         checkLimit(1);
         currentBatch.set(
@@ -359,8 +444,16 @@ export function BulkUploadSales() {
         opCount++;
       }
 
+      // 2. Ventas e Items (Stock)
       for (const sale of parsedSales) {
-        checkLimit(1 + sale.items.length);
+        // --- IDEMPOTENCY CHECK ---
+        const existingSaleSnap = await getDoc(doc(db, "sales", sale.documentNumber));
+        if (existingSaleSnap.exists()) {
+          console.log(`Venta ${sale.documentNumber} ya existe. Omitiendo.`);
+          continue;
+        }
+
+        checkLimit(1 + (sale.items.length * 2));
 
         const skusArray = Array.from(
           new Set(sale.items.map((i: any) => i.sku)),
@@ -385,16 +478,50 @@ export function BulkUploadSales() {
         for (const item of sale.items) {
           if (item.sku && item.sku !== "GENERIC") {
             uniqueSkus.add(item.sku);
-            currentBatch.set(
-              doc(db, "inventory_stock", item.sku),
-              {
-                sku: item.sku,
-                totalQuantity: increment(-item.quantity),
-                lastUpdate: serverTimestamp(),
-              },
-              { merge: true },
-            );
-            opCount++;
+            
+            // 4. DESCUENTO de stock por STRATEGY
+            if (!item.isCoil) {
+              const strategy = getStockStrategy(item.businessLine);
+              const stockEntry = stockRef.find(s => s.sku === item.sku && s.businessLine === item.businessLine);
+              
+              const mockSnap = stockEntry ? {
+                exists: () => true,
+                data: () => ({ ...stockEntry })
+              } : {
+                exists: () => false,
+                data: () => ({})
+              };
+
+              const currentQty = strategy.extractQuantity(mockSnap as DocumentSnapshot);
+              const newBalance = currentQty - item.quantity;
+
+              if (stockEntry) {
+                if (stockEntry.totalQuantity !== undefined) stockEntry.totalQuantity = newBalance;
+                if (stockEntry.quantity !== undefined) stockEntry.quantity = newBalance;
+              } else {
+                stockRef.push({ 
+                  sku: item.sku, 
+                  businessLine: item.businessLine, 
+                  quantity: newBalance,
+                  totalQuantity: newBalance 
+                } as any);
+              }
+
+              strategy.writeSaleDecrement(
+                {
+                  sku: item.sku,
+                  quantity: item.quantity,
+                  newBalance,
+                  saleId: sale.documentNumber,
+                  customerName: sale.customerName,
+                  sellerId: sale.sellerId,
+                  avgCost: item.baseCost
+                },
+                mockSnap as any,
+                currentBatch as any
+              );
+              opCount += 2;
+            }
           }
         }
       }
@@ -402,12 +529,14 @@ export function BulkUploadSales() {
       if (opCount > 0) batches.push(currentBatch);
       await Promise.all(batches.map((b) => b.commit()));
 
+      // 5. KARDEX (Solo Drywall)
       await syncKardexForSkus(Array.from(uniqueSkus));
 
-      toast.success("✅ ¡Migración y Kardex completados con éxito!");
+      toast.success("✅ ¡Carga masiva multi-línea completada!");
       setParsedSales([]);
       setParsedCustomers([]);
     } catch (error) {
+      console.error(error);
       toast.error("Error en la subida masiva.");
     } finally {
       setLoading(false);
@@ -474,6 +603,7 @@ export function BulkUploadSales() {
                 <tr>
                   <th className="p-3">Documento</th>
                   <th className="p-3">Cliente</th>
+                  <th className="p-3">Líneas / Alertas</th>
                   <th className="p-3 text-center">Hora Asignada</th>
                   <th className="p-3 text-right">Peso Total</th>
                   <th className="p-3 text-right">Total Contable</th>
@@ -486,8 +616,26 @@ export function BulkUploadSales() {
                     <td className="p-3 font-bold text-gray-800">
                       {s.documentNumber}
                     </td>
-                    <td className="p-3 text-gray-600 font-medium truncate max-w-[200px]">
+                    <td className="p-3 text-gray-600 font-medium truncate max-w-[150px]">
                       {s.customerName}
+                    </td>
+                    <td className="p-3">
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {s.businessLines.map((bl: string) => (
+                          <span key={bl} className="text-[9px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-bold uppercase border border-blue-100">
+                            {bl}
+                          </span>
+                        ))}
+                      </div>
+                      {s.allFlags && s.allFlags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {s.allFlags.map((f: string) => (
+                            <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-bold border border-amber-100 italic">
+                              ⚠ {f}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="p-3 text-center font-bold text-blue-600">
                       {s.timestamp.toLocaleTimeString("es-PE")}

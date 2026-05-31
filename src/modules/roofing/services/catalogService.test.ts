@@ -219,9 +219,9 @@ describe('createProduct', () => {
     expect(txSet).toHaveBeenCalledTimes(2);
   });
 
-  it('throws on Zod validation failure (missing unit)', async () => {
-    const badInput = { material: 'UPVC', color: 'ROJO', thickness: 1.5, width: 1.075, length: 6.0 };
-    await expect(createProduct(badInput as RoofingProductInput)).rejects.toThrow();
+  it('throws on Zod validation failure (invalid material)', async () => {
+    const badInput = { material: 'INVALID', color: 'ROJO', thickness: 1.5, width: 1.075, length: 6.0 };
+    await expect(createProduct(badInput as any)).rejects.toThrow();
   });
 
   it('throws Zod error in Spanish when color missing for UPVC', async () => {

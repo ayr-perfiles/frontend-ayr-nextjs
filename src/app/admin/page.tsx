@@ -361,7 +361,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <Link href="/admin/production" className="mt-8 flex items-center justify-center gap-2 w-full py-4 bg-gray-50 hover:bg-gray-100 text-gray-600 font-black text-sm rounded-2xl transition-all uppercase tracking-widest">
+          <Link href="/admin/lines/drywall/production" className="mt-8 flex items-center justify-center gap-2 w-full py-4 bg-gray-50 hover:bg-gray-100 text-gray-600 font-black text-sm rounded-2xl transition-all uppercase tracking-widest">
             Ir a Taller <ArrowUpRight size={18} />
           </Link>
         </div>

@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { getSystemSettings } from "@/services/settingsService";
 import { ReportResult } from "../types";
+import { Sale, SaleItem } from "@/types";
 
 /**
  * UTILS
@@ -18,7 +19,10 @@ const getPeriodDates = (period: string, startDate?: string, endDate?: string) =>
   let start = new Date();
   let end = new Date();
 
-  if (period === 'HOY') {
+  if (period === 'HISTORICO') {
+    start = new Date(2020, 0, 1); // Way back
+    end = new Date(2100, 0, 1); // Way forward
+  } else if (period === 'HOY') {
     start.setHours(0, 0, 0, 0);
     end.setHours(23, 59, 59, 999);
   } else if (period === 'SEMANA') {
@@ -515,4 +519,119 @@ export const runMargenBruto = async (params: any): Promise<ReportResult> => {
   })).filter(r => r.sales > 0);
 
   return { rows };
+};
+
+/**
+ * P2: VENTAS POR PRODUCTO / SKU (DETALLADO)
+ */
+export const runVentasPorProducto = async (params: {
+  period: string;
+  startDate?: string;
+  endDate?: string;
+  line?: string;
+  search?: string;
+  includeVoided?: boolean;
+}): Promise<ReportResult> => {
+  const { period, startDate, endDate, line, search, includeVoided } = params;
+  const { start, end } = getPeriodDates(period, startDate, endDate);
+
+  const salesSnap = await getDocs(query(
+    collection(db, "sales"),
+    where("timestamp", ">=", Timestamp.fromDate(start)),
+    where("timestamp", "<=", Timestamp.fromDate(end))
+  ));
+
+  const stats: Record<string, {
+    sku: string;
+    productName: string;
+    line: string;
+    quantity: number;
+    amount: number;
+    profit: number;
+    salesCount: number;
+    customers: Set<string>;
+  }> = {};
+
+  salesSnap.forEach(doc => {
+    const sale = doc.data() as Sale;
+    
+    // Status Filter
+    const isVoided = ['VOIDED', 'CANCELLED'].includes(sale.status);
+    if (!includeVoided && isVoided) return;
+    if (sale.status === 'QUOTATION') return;
+
+    sale.items?.forEach((item: SaleItem) => {
+      const itemLine = item.businessLine || 'drywall';
+      
+      // Line Filter
+      if (line && line !== 'all' && itemLine !== line) return;
+
+      // Search Filter
+      const sku = item.sku || 'GENERIC';
+      const productName = item.productName || 'Producto sin nombre';
+      if (search && 
+          !sku.toLowerCase().includes(search.toLowerCase()) && 
+          !productName.toLowerCase().includes(search.toLowerCase())) {
+        return;
+      }
+
+      if (!stats[sku]) {
+        stats[sku] = {
+          sku,
+          productName,
+          line: itemLine,
+          quantity: 0,
+          amount: 0,
+          profit: 0,
+          salesCount: 0,
+          customers: new Set()
+        };
+      }
+
+      const qty = item.quantity || 0;
+      // Formula: monto = quantity * (unitValue ?? unitPrice)
+      // cost = quantity * (baseCost ?? unitCost ?? 0)
+      const itemAmount = qty * (item.unitValue ?? item.unitPrice ?? (item.subtotal ? item.subtotal / qty : 0));
+      const itemCost = qty * (item.baseCost ?? item.unitCost ?? 0);
+      
+      let itemProfit = itemAmount - itemCost;
+      // Retrocompatibilidad: si ya traía profit calculado y no hay unitValue/Price
+      if (item.profit !== undefined && !item.unitValue && !item.unitPrice) {
+        itemProfit = item.profit;
+      }
+
+      stats[sku].quantity += qty;
+      stats[sku].amount += itemAmount;
+      stats[sku].profit += itemProfit;
+      stats[sku].salesCount += 1;
+      stats[sku].customers.add(sale.customerName || sale.documentNumber || 'Anónimo');
+    });
+  });
+
+  const rows = Object.values(stats).map(s => ({
+    sku: s.sku,
+    productName: s.productName,
+    line: s.line,
+    quantity: s.quantity,
+    amount: s.amount,
+    profit: s.profit,
+    margin: (s.profit / (s.amount || 1)) * 100,
+    numSales: s.salesCount,
+    numCustomers: s.customers.size
+  })).sort((a, b) => b.amount - a.amount);
+
+  return {
+    rows,
+    totals: {
+      amount: rows.reduce((acc, r) => acc + r.amount, 0),
+      profit: rows.reduce((acc, r) => acc + r.profit, 0),
+      quantity: rows.reduce((acc, r) => acc + r.quantity, 0)
+    },
+    series: [
+      { 
+        name: 'Ventas (Monto)', 
+        data: rows.slice(0, 10).map(r => ({ label: r.sku, value: r.amount })) 
+      }
+    ]
+  };
 };

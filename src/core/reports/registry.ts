@@ -231,15 +231,40 @@ export const REPORT_REGISTRY: ReportDefinition[] = [
   },
   // --- P2 PLACEHOLDERS ---
   {
-    id: 'ventas-producto',
-    title: 'Ventas por Producto (Lentos)',
+    id: 'ventas-por-producto',
+    title: 'Ventas por Producto (SKU)',
     category: 'VENTAS',
-    description: 'Identifica productos con baja rotación o estancados.',
+    description: 'Acumulado vendido por cada producto: cantidad, monto, margen, # ventas y # clientes.',
     icon: Package,
-    filters: [{ id: 'days', label: 'Días sin movimiento', type: 'DAYS', defaultValue: 60 }],
-    run: async () => ({ rows: [] }), // TODO: Implement
-    columns: [],
-    exports: ['xlsx'],
+    filters: [
+      { id: 'period', label: 'Período', type: 'PERIOD', defaultValue: 'HISTORICO' },
+      { id: 'line', label: 'Línea de Negocio', type: 'LINE', defaultValue: 'all' },
+      { id: 'search', label: 'Buscar SKU/Nombre', type: 'TEXT' },
+      { id: 'includeVoided', label: 'Incluir Anuladas', type: 'BOOLEAN', defaultValue: false }
+    ],
+    run: functions.runVentasPorProducto,
+    columns: [
+      { label: 'SKU', key: 'sku', format: 'string' },
+      { label: 'Producto', key: 'productName', format: 'string' },
+      { label: 'Línea', key: 'line', format: 'badge', badgeStyle: (v) => {
+        const styles: Record<string, string> = {
+          drywall: 'bg-blue-100 text-blue-700',
+          roofing: 'bg-green-100 text-green-700',
+          'metallic-roofing': 'bg-slate-100 text-slate-700',
+          trading: 'bg-purple-100 text-purple-700',
+          services: 'bg-orange-100 text-orange-700'
+        };
+        return styles[v] || 'bg-slate-100 text-slate-700';
+      }},
+      { label: 'Cant. Total', key: 'quantity', format: 'number' },
+      { label: 'Monto (S/)', key: 'amount', format: 'currency' },
+      { label: 'Utilidad (S/)', key: 'profit', format: 'currency', roles: ['ADMIN', 'SUPERVISOR'] },
+      { label: 'Margen %', key: 'margin', format: 'percent', roles: ['ADMIN', 'SUPERVISOR'], badgeStyle: (v) => v < 10 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700' },
+      { label: 'N° Ventas', key: 'numSales', format: 'number' },
+      { label: 'N° Clientes', key: 'numCustomers', format: 'number' },
+    ],
+    chart: { type: 'bar', xKey: 'sku', yKeys: ['amount'] },
+    exports: ['xlsx', 'csv'],
   },
   {
     id: 'ventas-cliente',

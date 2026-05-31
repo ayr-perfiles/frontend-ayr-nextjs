@@ -23,9 +23,11 @@ export type NavGroupItem = {
 };
 
 export type NavSection = {
-  cross: NavLeafItem[];
-  rawMaterial: NavLeafItem[];
-  lines: NavGroupItem[];
+  comercial: NavLeafItem[];
+  produccion: NavLeafItem[];
+  abastecimiento: NavLeafItem[];
+  materiaPrima: NavLeafItem[];
+  lineas: NavLeafItem[];
   admin: NavLeafItem[];
 };
 
@@ -34,19 +36,26 @@ export type RouteTitle = {
   crumb: string[] | null;
 };
 
-// ── Material map ──────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────
 
-const MATERIAL_MAP: Record<string, 'acero' | 'pvc'> = {
-  drywall: 'acero',
-  'metallic-roofing': 'acero',
-  roofing: 'pvc',
-  // trading / services: sin materia prima
+const isProductionItem = (label: string) => {
+  const l = label.toLowerCase();
+  return l.includes('producción') || l.includes('terminal') || l.includes('operador') || l.includes('corte');
 };
 
-// ── Cross-line items ──────────────────────────────────────────────────────
-// Badges hardcoded en 0; los componentes reales los inyectarán via props.
+const isCatalogItem = (label: string) => {
+  const l = label.toLowerCase();
+  return l.includes('catálogo') || l.includes('inventario') || l.includes('stock');
+};
 
-const CROSS_ITEMS: NavLeafItem[] = [
+const isCommercialItem = (label: string) => {
+  const l = label.toLowerCase();
+  return l.includes('ventas') || l.includes('cotización');
+};
+
+// ── Item generation ───────────────────────────────────────────────────────
+
+const COMERCIAL_ITEMS: NavLeafItem[] = [
   { id: 'dashboard', label: 'Panel',    icon: 'LayoutDashboard', path: '/admin' },
   { id: 'sales',     label: 'Ventas',   icon: 'Receipt',         path: '/admin/sales' },
   { id: 'customers', label: 'Clientes', icon: 'Users',           path: '/admin/customers' },
@@ -56,41 +65,57 @@ const CROSS_ITEMS: NavLeafItem[] = [
 const RAW_MATERIAL_ITEMS: NavLeafItem[] = [
   { id: 'coils-inv', label: 'Inventario Bobinas', icon: 'Layers', path: '/admin/coils' },
   { id: 'coils-fin', label: 'Acabados Bobina',    icon: 'Tag',    path: '/admin/coils/finishes' },
+  { id: 'strips-inv', label: 'Inventario Flejes', icon: 'Boxes',    path: '/admin/coils/strips' },
 ];
 
-// ── Admin items (ADMIN only) ──────────────────────────────────────────────
+const ABASTECIMIENTO_ITEMS: NavLeafItem[] = [
+  { id: 'purchases',  label: 'Compras',           icon: 'Truck',    path: '/admin/purchases' },
+  { id: 'cut-orders', label: 'Órdenes de Corte',  icon: 'Scissors', path: '/admin/coils/cut-orders' },
+];
 
-const ADMIN_ITEMS: NavLeafItem[] = [
+const ADMIN_ITEMS_BASE: NavLeafItem[] = [
   { id: 'users',    label: 'Usuarios',      icon: 'UserCog',    path: '/admin/users',    roles: ['ADMIN'] },
   { id: 'audit',    label: 'Auditoría',     icon: 'ScrollText', path: '/admin/audit',    roles: ['ADMIN'] },
   { id: 'settings', label: 'Configuración', icon: 'Settings',   path: '/admin/settings', roles: ['ADMIN'] },
 ];
 
-// ── Line groups from registry ─────────────────────────────────────────────
-// Only registered modules appear. trading/services will appear here
-// automatically once their modules are registered in businessLineRegistry.ts.
+// ── Distribution from modules ─────────────────────────────────────────────
 
-const LINE_GROUPS: NavGroupItem[] = businessLines.map((mod) => ({
-  id: mod.id,
-  label: mod.displayName,
-  icon: mod.icon,
-  material: MATERIAL_MAP[mod.id],
-  children: mod.sidebarItems.map((item) => ({
-    id: item.href.split('/').pop() ?? item.href,
-    label: item.label,
-    icon: item.icon,
-    path: item.href,
-    roles: item.roles as UserRole[] | undefined,
-  })),
-}));
+const produccion: NavLeafItem[] = [];
+const catalogos: NavLeafItem[] = [];
+const comercialExtra: NavLeafItem[] = [];
+
+businessLines.forEach((mod) => {
+  mod.sidebarItems.forEach((item) => {
+    const leaf: NavLeafItem = {
+      id: `${mod.id}-${item.href.split('/').pop() ?? item.href}`,
+      label: item.label === 'Catálogo' || item.label === 'Inventario' 
+        ? `${item.label} ${mod.displayName.split(' ')[0]}` // Ej: "Catálogo Drywall"
+        : item.label,
+      icon: item.icon,
+      path: item.href,
+      roles: item.roles as UserRole[] | undefined,
+    };
+
+    if (mod.productionEngine && isProductionItem(item.label)) {
+      produccion.push(leaf);
+    } else if (isCatalogItem(item.label)) {
+      catalogos.push(leaf);
+    } else if (isCommercialItem(item.label)) {
+      comercialExtra.push(leaf);
+    }
+  });
+});
 
 // ── NAV ───────────────────────────────────────────────────────────────────
 
 export const NAV: NavSection = {
-  cross: CROSS_ITEMS,
-  rawMaterial: RAW_MATERIAL_ITEMS,
-  lines: LINE_GROUPS,
-  admin: ADMIN_ITEMS,
+  comercial: [...COMERCIAL_ITEMS, ...comercialExtra],
+  produccion,
+  abastecimiento: ABASTECIMIENTO_ITEMS,
+  materiaPrima: RAW_MATERIAL_ITEMS,
+  lineas: catalogos,
+  admin: ADMIN_ITEMS_BASE,
 };
 
 // ── ROUTE_TITLES ──────────────────────────────────────────────────────────
@@ -100,15 +125,23 @@ export const ROUTE_TITLES: Record<string, RouteTitle> = {
   '/admin/sales':      { title: 'Ventas',         crumb: null },
   '/admin/customers':  { title: 'Clientes',       crumb: null },
   '/admin/reports':    { title: 'Reportes',       crumb: null },
+  '/admin/purchases':  { title: 'Compras',        crumb: ['Abastecimiento'] },
+  '/admin/purchases/new': { title: 'Nueva Compra', crumb: ['Abastecimiento', 'Compras'] },
   '/admin/coils':      { title: 'Inventario de Bobinas', crumb: ['Materia Prima'] },
   '/admin/coils/finishes': { title: 'Acabados de Bobina', crumb: ['Materia Prima'] },
+  '/admin/coils/cut-orders': { title: 'Órdenes de Corte', crumb: ['Materia Prima'] },
+  '/admin/coils/strips': { title: 'Inventario de Flejes', crumb: ['Materia Prima'] },
   '/admin/users':      { title: 'Usuarios',       crumb: ['Administración'] },
   '/admin/audit':      { title: 'Auditoría',      crumb: ['Administración'] },
   '/admin/settings':   { title: 'Configuración',  crumb: ['Administración'] },
 };
 
-for (const line of LINE_GROUPS) {
-  for (const child of line.children) {
-    ROUTE_TITLES[child.path] = { title: child.label, crumb: [line.label] };
-  }
+for (const item of catalogos) {
+  ROUTE_TITLES[item.path] = { title: item.label, crumb: ['Líneas de Negocio'] };
+}
+for (const item of produccion) {
+  ROUTE_TITLES[item.path] = { title: item.label, crumb: ['Producción'] };
+}
+for (const item of comercialExtra) {
+  ROUTE_TITLES[item.path] = { title: item.label, crumb: ['Comercial'] };
 }

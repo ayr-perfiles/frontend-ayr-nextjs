@@ -1,50 +1,67 @@
 import { 
-  getFirestore, 
-  connectFirestoreEmulator, 
   collection, 
-  doc, 
-  setDoc, 
-  deleteDoc, 
+  doc,
+  setDoc,
+  deleteDoc,
   getDocs,
   query,
-  terminate,
   Firestore
 } from "firebase/firestore";
-import { initializeApp, deleteApp, getApps, FirebaseApp } from "firebase/app";
+import { 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut
+} from "firebase/auth";
+import { db, auth } from "@/lib/firebase/clientApp";
+import { vi } from 'vitest';
+
+vi.unmock('@/lib/firebase/clientApp');
 
 const PROJECT_ID = "test-project";
 
 export async function setupIntegrationTest() {
-  const config = {
-    apiKey: "test-api-key",
-    authDomain: `${PROJECT_ID}.firebaseapp.com`,
-    projectId: PROJECT_ID,
-    storageBucket: `${PROJECT_ID}.appspot.com`,
-    messagingSenderId: "123456789",
-    appId: "1:123456789:web:abc123",
-  };
+  // Create and sign in a test user to satisfy firestore.rules (request.auth != null)
+  const email = `test-integration@example.com`;
+  const password = "password123";
+  try {
+    await createUserWithEmailAndPassword(auth, email, password);
+  } catch (e: any) {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (e2: any) {
+      // ignore
+    }
+  }
 
-  const app = initializeApp(config, `test-app-${Date.now()}`);
-  const db = getFirestore(app);
-  connectFirestoreEmulator(db, "127.0.0.1", 8080);
-  
-  return { app, db };
+  return { app: null as any, db, auth };
 }
 
-export async function clearFirestore(projectId: string = PROJECT_ID) {
-  const url = `http://127.0.0.1:8080/emulator/v1/projects/${projectId}/databases/(default)/documents`;
+import { execSync } from "child_process";
+
+export async function clearFirestore(projectIdOrDb: string | Firestore = PROJECT_ID) {
+  let actualProjectId = typeof projectIdOrDb === 'string' ? projectIdOrDb : PROJECT_ID;
+  if (typeof projectIdOrDb !== 'string' && projectIdOrDb.app && projectIdOrDb.app.options.projectId) {
+    actualProjectId = projectIdOrDb.app.options.projectId;
+  }
+  
+  const url = `http://127.0.0.1:8080/emulator/v1/projects/${actualProjectId}/databases/(default)/documents`;
   try {
-    await fetch(url, { method: "DELETE" });
+    // Usar curl para mayor fiabilidad en el entorno de Node/Vitest
+    execSync(`curl -X DELETE "${url}"`);
   } catch (error) {
-    console.error("Error clearing Firestore emulator:", error);
+    console.error(`Error clearing Firestore emulator (${actualProjectId}) via curl:`, error);
+    // fallback a fetch si curl falla
+    try {
+      await fetch(url, { method: "DELETE" });
+    } catch (e) {
+      console.error(`Error clearing Firestore emulator (${actualProjectId}) via fetch fallback:`, e);
+    }
   }
 }
 
-export async function cleanupIntegrationTest(app: FirebaseApp, db: Firestore) {
-  await terminate(db);
-  await deleteApp(app);
+export async function cleanupIntegrationTest(_app: any, _db: Firestore) {
+  await signOut(auth);
 }
-
 // Fixtures
 export async function seedCoil(db: any, data: any) {
   const id = data.id || `BOB-${Date.now()}`;

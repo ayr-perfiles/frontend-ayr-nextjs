@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
+import { useAuth } from '@/context/AuthContext';
 
 interface ReportRunnerProps {
   report: ReportDefinition;
@@ -27,6 +28,15 @@ interface ReportRunnerProps {
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'];
 
 export function ReportRunner({ report, onBack }: ReportRunnerProps) {
+  const { role } = useAuth();
+  
+  const visibleColumns = useMemo(() => {
+    return report.columns.filter(col => {
+      if (!col.roles) return true;
+      return role && col.roles.includes(role);
+    });
+  }, [report.columns, role]);
+
   const [filters, setFilters] = useState<any>(() => {
     const initial: any = {};
     report.filters.forEach(f => {
@@ -132,7 +142,8 @@ export function ReportRunner({ report, onBack }: ReportRunnerProps) {
           {data.totals && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {Object.entries(data.totals).map(([key, val]) => {
-                 const col = report.columns.find(c => c.key === key);
+                 const col = visibleColumns.find(c => c.key === key);
+                 if (!col && (key === 'profit' || key === 'margin')) return null; // Safety for sensitive totals
                  return (
                    <div key={key} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total {key}</p>
@@ -174,7 +185,9 @@ export function ReportRunner({ report, onBack }: ReportRunnerProps) {
                              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
                              <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }} />
                              <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                             {report.chart.yKeys.map((key, i) => (
+                             {report.chart.yKeys
+                              .filter(key => visibleColumns.some(c => c.key === key))
+                              .map((key, i) => (
                                <Line key={key} type="monotone" dataKey={key} stroke={COLORS[i % COLORS.length]} strokeWidth={3} dot={{ r: 4 }} />
                              ))}
                           </LineChart>
@@ -185,7 +198,9 @@ export function ReportRunner({ report, onBack }: ReportRunnerProps) {
                              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
                              <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }} />
                              <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                             {report.chart.yKeys.map((key, i) => (
+                             {report.chart.yKeys
+                              .filter(key => visibleColumns.some(c => c.key === key))
+                              .map((key, i) => (
                                <Bar key={key} dataKey={key} fill={COLORS[i % COLORS.length]} radius={[4, 4, 0, 0]} />
                              ))}
                           </BarChart>
@@ -212,7 +227,7 @@ export function ReportRunner({ report, onBack }: ReportRunnerProps) {
                     <table className="w-full text-left">
                        <thead>
                           <tr className="border-b border-slate-50">
-                             {report.columns.map(col => (
+                             {visibleColumns.map(col => (
                                <th key={col.key} className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest px-4">{col.label}</th>
                              ))}
                           </tr>
@@ -220,7 +235,7 @@ export function ReportRunner({ report, onBack }: ReportRunnerProps) {
                        <tbody className="divide-y divide-slate-50">
                           {paginatedRows.map((row, i) => (
                             <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                               {report.columns.map(col => (
+                               {visibleColumns.map(col => (
                                  <td key={col.key} className="py-4 px-4">
                                     {col.format === 'badge' ? (
                                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${col.badgeStyle?.(row[col.key])}`}>

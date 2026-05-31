@@ -1,20 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { db } from "@/lib/firebase/clientApp";
 import * as XLSX from "xlsx";
 import {
   collection,
   query,
   where,
-  getCountFromServer,
-  getAggregateFromServer,
-  sum,
   doc,
   getDoc,
+  getDocs,
+  orderBy,
 } from "firebase/firestore";
-import { Coil } from "@/types";
-import { Plus } from "lucide-react";
+import { Coil, CutOrder } from "@/types";
+import { Plus, Scissors } from "lucide-react";
 import toast from "react-hot-toast";
 import { useCoils } from "@/core/coils/hooks/useCoils";
 
@@ -35,23 +34,58 @@ import { HeaderOptions } from "@/core/coils/components/HeaderOptions";
 import { InventoryMetrics } from "@/core/coils/components/InventoryMetrics";
 import { InventoryPagination } from "@/core/coils/components/InventoryPagination";
 import { InventoryModals } from "@/core/coils/components/InventoryModals";
+import SendToCutModal from "@/core/coils/components/SendToCutModal";
 
 export default function CoilsPage() {
   const { user, role } = useAuth();
-
-  const [metrics, setMetrics] = useState({
-    available: 0,
-    inProgress: 0,
-    totalWeight: 0,
-  });
-
+  
+  // 1. Estados de UI y Filtros
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showCutModal, setShowCutModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [finishFilter, setFinishFilter] = useState<string>("ALL");
+  const [currencyFilter, setCurrencyFilter] = useState<string>("ALL");
+  const [providerFilter, setProviderFilter] = useState<string>("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [pageSize, setPageSize] = useState(10);
 
+  const [metrics, setMetrics] = useState({
+    byFinish: {} as Record<string, number>,
+    enTercero: 0,
+    totalValuePEN: 0,
+    totalAvailableKg: 0,
+    alerts: {
+      noFinish: 0,
+      lowWeight: 0,
+    },
+  });
+
+  const [orderMapping, setOrderMapping] = useState<Record<string, string>>({});
+
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingCoil, setEditingCoil] = useState<Coil | null>(null);
+  const [editData, setEditData] = useState<EditData>({
+    initialWeight: 0,
+    currentWeight: 0,
+    masterWidth: 1200,
+    thickness: 0.45,
+    finish: "",
+    pricePerKg: 0,
+    currency: "PEN",
+    exchangeRate: 3.80,
+    providerDocType: "LOCAL",
+    providerDoc: "",
+    providerName: "",
+    invoiceNumber: "",
+    invoiceDate: "",
+  });
+  const [viewingCoil, setViewingCoil] = useState<Coil | null>(null);
+  const [showXmlModal, setShowXmlModal] = useState(false);
+  const [showExcelModal, setShowExcelModal] = useState(false);
+
+  // 2. Data Hook
   const {
     coils,
     loading,
@@ -64,53 +98,114 @@ export default function CoilsPage() {
     nextPage,
     prevPage,
     refresh,
-  } = useCoils({ searchTerm, statusFilter, finishFilter, startDate, endDate, pageSize });
+  } = useCoils({ 
+    searchTerm, 
+    statusFilter, 
+    finishFilter, 
+    currencyFilter, 
+    providerFilter, 
+    startDate, 
+    endDate, 
+    pageSize 
+  });
 
+  // 3. Computed
+  const selectedCoils = coils.filter(c => selectedIds.includes(c.id));
+
+  // 4. Effects
   useEffect(() => {
     if (error) toast.error(error);
   }, [error]);
 
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [editingCoil, setEditingCoil] = useState<Coil | null>(null);
-  const [editData, setEditData] = useState<EditData>({
-    initialWeight: 0,
-    currentWeight: 0,
-    masterWidth: 1200,
-    thickness: 0.45,
-    finish: "",
-    pricePerKg: 0,
-    providerDocType: "LOCAL",
-    providerDoc: "",
-    providerName: "",
-    invoiceNumber: "",
-    invoiceDate: "",
-  });
-  const [viewingCoil, setViewingCoil] = useState<Coil | null>(null);
-  const [showXmlModal, setShowXmlModal] = useState(false);
-  const [showExcelModal, setShowExcelModal] = useState(false);
-
+  // Cargar órdenes activas para el mapeo
   useEffect(() => {
-    const fetchMetrics = async () => {
+    const fetchActiveOrders = async () => {
       try {
-        const collRef = collection(db, "coils");
-        const availableQ = query(collRef, where("status", "==", "AVAILABLE"));
-        const progressQ = query(collRef, where("status", "==", "IN_PROGRESS"));
-        const [availableSnap, progressSnap, weightSnap] = await Promise.all([
-          getCountFromServer(availableQ),
-          getCountFromServer(progressQ),
-          getAggregateFromServer(availableQ, { totalWeight: sum("currentWeight") }),
-        ]);
-        setMetrics({
-          available: availableSnap.data().count,
-          inProgress: progressSnap.data().count,
-          totalWeight: weightSnap.data().totalWeight,
+        const q = query(collection(db, "cut_orders"), where("status", "==", "ENVIADO"));
+        const snap = await getDocs(q);
+        const mapping: Record<string, string> = {};
+        snap.docs.forEach(doc => {
+          const data = doc.data() as CutOrder;
+          data.coils.forEach(c => {
+            mapping[c.coilId] = doc.id;
+          });
         });
+        setOrderMapping(mapping);
       } catch (err) {
-        console.error("Error al cargar métricas", err);
+        console.error("Error al cargar mapeo de órdenes", err);
       }
     };
-    fetchMetrics();
+    fetchActiveOrders();
   }, [coils]);
+
+  // Métricas que respetan filtros
+  useEffect(() => {
+    const fetchFullMetrics = async () => {
+      try {
+        const collRef = collection(db, "coils");
+        let constraints = [];
+        
+        if (statusFilter === "ALL") {
+          constraints.push(where("status", "in", ["AVAILABLE", "IN_PROGRESS", "PROCESSED", "EN_TERCERO"]));
+        } else {
+          constraints.push(where("status", "==", statusFilter));
+        }
+
+        if (finishFilter !== "ALL") constraints.push(where("finish", "==", finishFilter));
+        if (currencyFilter !== "ALL") constraints.push(where("metadata.currency", "==", currencyFilter));
+        if (providerFilter) constraints.push(where("metadata.provider", "==", providerFilter.trim()));
+        
+        const q = query(collRef, ...constraints);
+        const snap = await getDocs(q);
+        
+        const summary = {
+          byFinish: {} as Record<string, number>,
+          enTercero: 0,
+          totalValuePEN: 0,
+          totalAvailableKg: 0,
+          alerts: {
+            noFinish: 0,
+            lowWeight: 0,
+          },
+        };
+
+        snap.docs.forEach(doc => {
+          const coil = doc.data() as Coil;
+          const weight = coil.currentWeight || 0;
+          const valPEN = weight * (coil.pricePerKg || 0);
+          
+          if (coil.status === 'EN_TERCERO') summary.enTercero += weight;
+          if (coil.status === 'AVAILABLE') summary.totalAvailableKg += weight;
+          
+          summary.totalValuePEN += valPEN;
+
+          if (!coil.finish) {
+            summary.alerts.noFinish++;
+          } else {
+            summary.byFinish[coil.finish] = (summary.byFinish[coil.finish] || 0) + weight;
+          }
+
+          if (coil.status === 'AVAILABLE' && weight < 500) {
+            summary.alerts.lowWeight++;
+          }
+        });
+
+        setMetrics(summary);
+      } catch (err) {
+        console.error("Error al calcular métricas completas", err);
+      }
+    };
+    fetchFullMetrics();
+  }, [searchTerm, statusFilter, finishFilter, currencyFilter, providerFilter, startDate, endDate, coils]);
+
+  // 5. Handlers
+  const handleSelect = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const handleSelectAll = (ids: string[]) => {
+    setSelectedIds(ids);
+  };
 
   const handleOpenEdit = async (coil: Coil) => {
     try {
@@ -134,6 +229,8 @@ export default function CoilsPage() {
           thickness: fullCoil.thickness || 0.45,
           finish: fullCoil.finish || "",
           pricePerKg: fullCoil.pricePerKg || 0,
+          currency: fullCoil.metadata?.currency || "PEN",
+          exchangeRate: fullCoil.metadata?.exchangeRate || 3.80,
           providerDocType: fullCoil.metadata?.providerDocType || "LOCAL",
           providerDoc: fullCoil.metadata?.providerDoc || "",
           providerName: fullCoil.metadata?.provider || "",
@@ -190,6 +287,8 @@ export default function CoilsPage() {
     setEndDate("");
     setStatusFilter("ALL");
     setFinishFilter("ALL");
+    setCurrencyFilter("ALL");
+    setProviderFilter("");
   };
 
   const exportToExcel = async () => {
@@ -247,7 +346,7 @@ export default function CoilsPage() {
     <div className="space-y-6 relative pb-10">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight">
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
             Inventario Global de Bobinas
           </h1>
           <p className="text-gray-500 font-medium mt-1">
@@ -267,18 +366,14 @@ export default function CoilsPage() {
           />
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="bg-blue-600 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition active:scale-95 shadow-md shadow-blue-200 font-black flex-1 md:flex-none"
+            className="bg-blue-600 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition active:scale-95 shadow-md shadow-blue-200 font-black flex-1 md:flex-none uppercase tracking-tighter"
           >
             <Plus size={20} /> Nueva Bobina
           </button>
         </div>
       </div>
 
-      <InventoryMetrics
-        available={metrics.available}
-        inProgress={metrics.inProgress}
-        totalWeight={metrics.totalWeight}
-      />
+      <InventoryMetrics metrics={metrics} />
 
       <InventoryFilters
         searchTerm={searchTerm}
@@ -288,6 +383,10 @@ export default function CoilsPage() {
         setStatusFilter={setStatusFilter}
         finishFilter={finishFilter}
         setFinishFilter={setFinishFilter}
+        currencyFilter={currencyFilter}
+        setCurrencyFilter={setCurrencyFilter}
+        providerFilter={providerFilter}
+        setProviderFilter={setProviderFilter}
         startDate={startDate}
         setStartDate={setStartDate}
         endDate={endDate}
@@ -297,21 +396,57 @@ export default function CoilsPage() {
 
       <div className="relative">
         {loading && coils.length === 0 ? (
-          <TableSkeleton rows={8} columns={6} />
+          <TableSkeleton rows={8} columns={11} />
         ) : (
           <>
+            {selectedIds.length > 0 && (
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-[2rem] flex justify-between items-center animate-in slide-in-from-top-4 duration-300 shadow-sm">
+                <div className="flex items-center gap-4 ml-2">
+                   <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-100">
+                      <Scissors size={20} />
+                   </div>
+                   <p className="text-sm font-black text-blue-900 uppercase tracking-tighter">
+                     {selectedIds.length} Bobinas seleccionadas para corte
+                   </p>
+                </div>
+                <div className="flex gap-2">
+                   <button 
+                    onClick={() => setSelectedIds([])}
+                    className="px-6 py-2 text-slate-400 font-black text-xs uppercase tracking-widest hover:text-slate-600 transition"
+                   >
+                     Cancelar
+                   </button>
+                   <button 
+                    onClick={() => setShowCutModal(true)}
+                    className="px-8 py-2 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition shadow-lg shadow-blue-100"
+                   >
+                     Enviar a Corte
+                   </button>
+                </div>
+              </div>
+            )}
+
             <InventoryTable
               displayCoils={coils}
               role={role}
               currentPage={currentPage}
               pageSize={pageSize}
+              selectedIds={selectedIds}
+              orderMapping={orderMapping}
+              onSelect={handleSelect}
+              onSelectAll={handleSelectAll}
               onEdit={handleOpenEdit}
               onVoid={handleVoidCoil}
               onCancelPlan={handleCancelPlan}
+              onSendToCut={(coil) => {
+                setSelectedIds([coil.id]);
+                setShowCutModal(true);
+              }}
               onViewDetails={setViewingCoil}
+              onAssignFinish={handleOpenEdit}
             />
             {loading && (
-              <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-xl">
+              <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-[2rem]">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
               </div>
             )}
@@ -356,6 +491,19 @@ export default function CoilsPage() {
           refresh();
         }}
       />
+
+      {showCutModal && (
+        <SendToCutModal 
+          coils={selectedCoils}
+          userEmail={user?.email || 'admin@ayrsteel.com'}
+          onClose={() => setShowCutModal(false)}
+          onSuccess={() => {
+            setShowCutModal(false);
+            setSelectedIds([]);
+            refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

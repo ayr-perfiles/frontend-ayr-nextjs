@@ -7,15 +7,8 @@ import {
   deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
-
-export interface ProductConfig {
-  sku: string;
-  name: string;
-  stripWidth: number; // Ancho de banda (mm)
-  standardWeight: number; // Peso logístico/estándar (kg)
-  lengthMeters?: number; // 🚀 NUEVO: Largo del producto (ej: 3.00, 2.44)
-  isActive: boolean; // Para poder desactivar productos viejos sin borrarlos
-}
+import { ProductConfig } from "@/types";
+export type { ProductConfig };
 
 /**
  * Obtiene todo el catálogo de productos desde Firebase

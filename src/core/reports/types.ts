@@ -2,7 +2,7 @@ import { LucideIcon } from 'lucide-react';
 
 export type ReportCategory = 'VENTAS' | 'INVENTARIO' | 'MATERIA_PRIMA' | 'PRODUCCIÓN' | 'EJECUTIVO';
 
-export type FilterType = 'PERIOD' | 'LINE' | 'CUSTOMER' | 'SELLER' | 'SKU' | 'FINISH' | 'STATUS' | 'TEXT' | 'DAYS';
+export type FilterType = 'PERIOD' | 'LINE' | 'CUSTOMER' | 'SELLER' | 'SKU' | 'FINISH' | 'STATUS' | 'TEXT' | 'DAYS' | 'BOOLEAN';
 
 export interface FilterSpec {
   id: string;
@@ -20,6 +20,7 @@ export interface ColumnSpec {
   format: ColumnFormat;
   align?: 'left' | 'center' | 'right';
   badgeStyle?: (val: any) => string;
+  roles?: string[];
 }
 
 export interface ReportResult {

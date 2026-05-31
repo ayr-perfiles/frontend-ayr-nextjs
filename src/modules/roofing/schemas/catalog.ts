@@ -5,57 +5,29 @@ import { z } from 'zod';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const roofingProductBase = z.object({
-  /** Omitir para auto-generación con generateSKU(); si se provee, se valida el formato. */
   sku: z
     .string()
-    .min(3, 'SKU debe tener al menos 3 caracteres')
-    .max(30, 'SKU muy largo')
-    .regex(/^[A-Z0-9]+$/, 'SKU solo permite mayúsculas y números')
+    .min(3, 'El SKU debe tener al menos 3 caracteres')
+    .max(30, 'El SKU no puede superar los 30 caracteres')
+    .regex(/^[A-Z0-9]+$/, 'El SKU solo puede contener mayúsculas y números')
     .optional(),
-
-  /** Omitir para auto-generación con generateDisplayName(). */
-  displayName: z.string().min(5, 'Nombre muy corto').optional(),
-
-  /** Por ahora solo TC5; se extiende al agregar nuevos modelos */
+  displayName: z.string().min(5, 'El nombre debe tener al menos 5 caracteres').optional(),
   family: z.string().optional().default('TC5'),
-
   material: z.enum(['UPVC', 'ACERO_GALV', 'POLICARBONATO']),
-
-  /**
-   * Obligatorio para UPVC. Opcional para otros materiales.
-   * Se normaliza a mayúsculas. El color ROJO es el default y se omite del SKU.
-   */
   color: z
     .string()
-    .min(2, 'Color muy corto')
-    .transform(s => s.toUpperCase())
+    .transform(v => v.toUpperCase())
+    .refine(v => v.length >= 2, 'El color debe tener al menos 2 caracteres')
     .optional(),
-
-  /** Espesor en mm */
+  spec: z.string().optional(),
   thickness: z.number().positive('El espesor debe ser mayor a 0').max(10),
-
-  /** Ancho en mm */
   width: z.number().positive('El ancho debe ser mayor a 0').max(10),
-
-  /** Largo en metros */
   length: z.number().positive('El largo debe ser mayor a 0').max(20),
-
-  unit: z.literal('PIEZA'),
-
-  /** Peso por unidad en kg */
+  unit: z.literal('PIEZA').default('PIEZA'),
   weight: z.number().positive('El peso debe ser mayor a 0').optional(),
-
   active: z.boolean().optional().default(true),
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Validaciones cross-field
-//
-// ⚠️  Validaciones que requieren BD (SKU único, combinación única) deben
-//    hacerse en catalogService.ts, no aquí (Zod no tiene acceso a Firestore).
-// ─────────────────────────────────────────────────────────────────────────────
-
-export const RoofingProductSchema = roofingProductBase.superRefine((data, ctx) => {
+  avgCost: z.number().nonnegative().default(0),
+}).superRefine((data, ctx) => {
   if (data.material === 'UPVC' && !data.color) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -64,6 +36,8 @@ export const RoofingProductSchema = roofingProductBase.superRefine((data, ctx) =
     });
   }
 });
+
+export const RoofingProductSchema = roofingProductBase;
 
 /** Input type: what callers pass in (family/active optional — defaults applied by schema). */
 export type RoofingProductInput = z.input<typeof RoofingProductSchema>;

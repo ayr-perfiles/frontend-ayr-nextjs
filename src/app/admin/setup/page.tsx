@@ -118,7 +118,7 @@ export default function SetupPage() {
 
               <p className="text-xs text-slate-400 font-medium">
                 Para agregar más productos, usa el{" "}
-                <a href="/admin/roofing/catalog" className="text-blue-600 hover:underline font-bold">
+                <a href="/admin/lines/roofing/catalog" className="text-blue-600 hover:underline font-bold">
                   Catálogo PVC
                 </a>
                 .

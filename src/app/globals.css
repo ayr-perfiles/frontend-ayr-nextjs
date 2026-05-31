@@ -76,6 +76,30 @@ body {
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.04);
   --shadow-md: 0 2px 6px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
   --shadow-lg: 0 8px 24px rgb(0 0 0 / 0.08);
+
+  /* Business Line Colors (lob-*) */
+  --lob-drywall: oklch(0.55 0.16 240);
+  --lob-pvc: oklch(0.62 0.15 150);
+  --lob-aluzinc: oklch(0.55 0.04 250);
+  --lob-reventa: oklch(0.76 0.15 75);
+  --lob-servicios: oklch(0.55 0.10 200);
+}
+
+/* Sidebar Custom Utilities */
+@layer components {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--color-border-strong);
+  }
 }
 
 html.dark {

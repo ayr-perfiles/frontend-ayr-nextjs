@@ -132,7 +132,7 @@ function setupMocks() {
     return store.makeRef(col, id) as unknown as ReturnType<typeof doc>;
   });
 
-  vi.mocked(where).mockImplementation((field: string, op: string, value: unknown) =>
+  vi.mocked(where).mockImplementation((field: any, op: any, value: unknown) =>
     ({ _where: { field, op, value } }) as unknown as ReturnType<typeof where>,
   );
 
@@ -188,6 +188,7 @@ const MIN_PRODUCT_INPUT = {
   displayName: 'SERVICIO DE CONFORMADO',
   unit: 'TONELADA' as const,
   pricePerUnit: 150,
+  active: true,
 };
 
 function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {

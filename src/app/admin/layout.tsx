@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { AuthProvider, useAuth, UserRole } from "@/context/AuthContext";
-import { BusinessLineProvider } from "@/context/BusinessLineContext";
 import AdminShell from "@/components/layout/AdminShell";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { Loader2, Zap } from "lucide-react";
@@ -15,10 +14,8 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/admin/users": ["ADMIN"],
   "/admin/reports": ["ADMIN", "SUPERVISOR"],
   "/admin/coils": ["ADMIN", "SUPERVISOR"],
-  "/admin/production": ["ADMIN", "SUPERVISOR"],
-  "/admin/roofing": ["ADMIN", "SUPERVISOR"],
-  "/admin/metallic-roofing": ["ADMIN", "SUPERVISOR"],
-  "/admin/operator": ["ADMIN", "SUPERVISOR", "OPERATOR"],
+  "/admin/lines": ["ADMIN", "SUPERVISOR"],
+  "/admin/lines/drywall/operator": ["ADMIN", "SUPERVISOR", "OPERATOR"],
   "/admin": ["ADMIN", "SUPERVISOR"],
 };
 
@@ -43,7 +40,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         const allowedRoles = ROUTE_PERMISSIONS[currentRouteKey];
         if (!allowedRoles.includes(role)) {
           if (role === "OPERATOR") {
-            router.push("/admin/operator");
+            router.push("/admin/lines/drywall/operator");
           } else if (role === "SUPERVISOR") {
             router.push("/admin");
           } else {
@@ -87,13 +84,11 @@ export default function AdminLayout({
 }) {
   return (
     <AuthProvider>
-      <BusinessLineProvider>
-        <AuthGuard>
-          <AdminShell>
-            <ErrorBoundary>{children}</ErrorBoundary>
-          </AdminShell>
-        </AuthGuard>
-      </BusinessLineProvider>
+      <AuthGuard>
+        <AdminShell>
+          <ErrorBoundary>{children}</ErrorBoundary>
+        </AdminShell>
+      </AuthGuard>
     </AuthProvider>
   );
 }

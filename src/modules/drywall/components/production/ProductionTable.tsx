@@ -96,7 +96,7 @@ export function ProductionTable({
                     <span
                       className={`font-black px-2.5 py-1 rounded-md text-xs border tracking-wider ${isVoided ? "text-red-400 border-red-200 line-through bg-red-50" : "text-blue-900 bg-blue-50 border-blue-200"}`}
                     >
-                      {log.parentCoilId}
+                      {log.parentCoilId || `Fleje ${log.totalUsedWidth}mm`}
                     </span>
                     {isVoided && (
                       <span className="ml-2 text-[10px] font-black text-red-500 uppercase tracking-widest bg-red-100 px-2 py-0.5 rounded-full">

@@ -17,7 +17,6 @@ import {
   QueryConstraint,
   QueryDocumentSnapshot,
   DocumentData,
-  FieldValue,
 } from "firebase/firestore";
 import { Coil, BusinessLine } from "@/types";
 import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
@@ -43,7 +42,9 @@ interface FetchParams {
   searchTerm: string;
   startDate?: string;
   endDate?: string;
-  finishFilter?: string; // Nuevo filtro por acabado
+  finishFilter?: string;
+  currencyFilter?: string;
+  providerFilter?: string;
   cursorDoc?: QueryDocumentSnapshot<DocumentData> | null;
   direction?: "next" | "prev" | "first";
   page?: number;
@@ -57,6 +58,8 @@ export const fetchInventory = async (params: FetchParams) => {
     startDate,
     endDate,
     finishFilter,
+    currencyFilter,
+    providerFilter,
     cursorDoc,
     direction = "first",
     page = 0,
@@ -69,6 +72,14 @@ export const fetchInventory = async (params: FetchParams) => {
     
     if (finishFilter && finishFilter !== "ALL") {
       filters.push(`finish:${finishFilter}`);
+    }
+
+    if (currencyFilter && currencyFilter !== "ALL") {
+      filters.push(`metadata.currency:${currencyFilter}`);
+    }
+
+    if (providerFilter && providerFilter.trim() !== "") {
+      filters.push(`metadata.provider:${providerFilter}`);
     }
 
     const {
@@ -117,7 +128,7 @@ export const fetchInventory = async (params: FetchParams) => {
   if (statusFilter === "ALL") {
     if (!hasDateFilter) {
       baseConstraints.push(
-        where("status", "in", ["AVAILABLE", "IN_PROGRESS", "PROCESSED"]),
+        where("status", "in", ["AVAILABLE", "IN_PROGRESS", "PROCESSED", "EN_TERCERO"]),
       );
     }
   } else {
@@ -126,6 +137,14 @@ export const fetchInventory = async (params: FetchParams) => {
 
   if (finishFilter && finishFilter !== "ALL") {
     baseConstraints.push(where("finish", "==", finishFilter));
+  }
+
+  if (currencyFilter && currencyFilter !== "ALL") {
+    baseConstraints.push(where("metadata.currency", "==", currencyFilter));
+  }
+
+  if (providerFilter && providerFilter.trim() !== "") {
+    baseConstraints.push(where("metadata.provider", "==", providerFilter.trim()));
   }
 
   if (hasDateFilter) {
@@ -326,7 +345,6 @@ export const cancelCoilPlan = async (coilId: string, userEmail: string) => {
         throw new Error("Solo se pueden cancelar planes de bobinas EN PROCESO.");
       }
 
-      // Validar si ya se procesó algún fleje (lógica genérica para plannedStrips)
       const hasProcessedStrips = coilData.plannedStrips?.some(
         (strip) => strip.initialCount !== strip.pendingCount,
       );
@@ -356,4 +374,3 @@ export const cancelCoilPlan = async (coilId: string, userEmail: string) => {
     throw new Error(error instanceof Error ? error.message : "Error al cancelar el plan.");
   }
 };
-

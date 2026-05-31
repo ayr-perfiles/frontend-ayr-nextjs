@@ -9,6 +9,8 @@ export interface EditData {
   thickness: number;
   finish: string;
   pricePerKg: number;
+  currency: "PEN" | "USD";
+  exchangeRate: number;
   providerDocType: "LOCAL" | "TAX_ID";
   providerDoc: string;
   providerName: string;
@@ -33,11 +35,14 @@ export function EditCoilModal({
 }: EditCoilModalProps) {
   const { finishes } = useFinishes(true);
   const isLocked = editingCoil.status !== "AVAILABLE";
+  
+  const isUSD = editData.currency === "USD";
   const currentTotalValue = editData.initialWeight * editData.pricePerKg;
+  const currentTotalValueUSD = isUSD ? currentTotalValue / (editData.exchangeRate || 1) : 0;
 
   const handleTotalValueChange = (newTotal: number) => {
-    const newPrice =
-      editData.initialWeight > 0 ? newTotal / editData.initialWeight : 0;
+    const totalPEN = isUSD ? newTotal * editData.exchangeRate : newTotal;
+    const newPrice = editData.initialWeight > 0 ? totalPEN / editData.initialWeight : 0;
     setEditData({ ...editData, pricePerKg: Number(newPrice.toFixed(6)) });
   };
 
@@ -78,8 +83,7 @@ export function EditCoilModal({
                   Campos Financieros Bloqueados
                 </p>
                 <p className="text-xs text-red-600 font-medium mt-1">
-                  Esta bobina ya tiene cortes registrados. Alterar su peso
-                  inicial o costo arruinaría el Kardex histórico.
+                  Esta bobina ya tiene cortes registrados o está en proceso externo.
                 </p>
               </div>
             </div>
@@ -119,6 +123,41 @@ export function EditCoilModal({
 
               <div>
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">
+                  Moneda
+                </label>
+                <select
+                  disabled={isLocked}
+                  value={editData.currency}
+                  onChange={(e) =>
+                    setEditData({ ...editData, currency: e.target.value as "PEN" | "USD" })
+                  }
+                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 disabled:opacity-60"
+                >
+                  <option value="PEN">Soles (PEN)</option>
+                  <option value="USD">Dólares (USD)</option>
+                </select>
+              </div>
+
+              {isUSD && (
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">
+                    Tipo de Cambio
+                  </label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    disabled={isLocked}
+                    value={editData.exchangeRate}
+                    onChange={(e) =>
+                      setEditData({ ...editData, exchangeRate: Number(e.target.value) })
+                    }
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 disabled:opacity-60"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">
                   Peso Inicial (kg)
                 </label>
                 <input
@@ -131,14 +170,15 @@ export function EditCoilModal({
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
+
               <div>
                 <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1 block">
-                  Valor Total (Sin IGV)
+                  Valor Total ({editData.currency}) (Sin IGV)
                 </label>
                 <input
                   type="number"
                   disabled={isLocked}
-                  value={currentTotalValue.toFixed(2)}
+                  value={isUSD ? Number(currentTotalValueUSD.toFixed(2)) : Number(currentTotalValue.toFixed(2))}
                   onChange={(e) =>
                     handleTotalValueChange(Number(e.target.value))
                   }

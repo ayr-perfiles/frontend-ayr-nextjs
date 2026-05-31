@@ -3,7 +3,7 @@ import type { MenuItem } from '@/core/contracts';
 export const servicesSidebarItems: MenuItem[] = [
   {
     label: 'Catálogo',
-    href: '/admin/services/catalog',
+    href: '/admin/lines/services/catalog',
     icon: 'Wrench',
     roles: ['ADMIN', 'SUPERVISOR'],
   },
