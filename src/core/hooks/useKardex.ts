@@ -56,7 +56,7 @@ export function useKardex(filters: KardexFilters) {
         setLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [filters.selectedSku, filters.pageSize, filters.startDate, filters.endDate],
   );
 

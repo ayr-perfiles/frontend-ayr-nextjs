@@ -12,8 +12,8 @@
  *   - NUNCA commitear serviceAccountKey.json al repositorio
  */
 
-const admin = require("firebase-admin");
-const path = require("path");
+import admin from "firebase-admin";
+import path from "path";
 
 // ════════════════════════════════════════════════════════════
 // INICIALIZACIÓN SEGURA DE FIREBASE ADMIN

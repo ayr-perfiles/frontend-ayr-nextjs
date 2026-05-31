@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Truck, ArrowLeft, Save, Trash2, Calculator, Info } from "lucide-react";
+import { Truck, ArrowLeft, Save, Trash2, Calculator, Info, Search, Loader2 } from "lucide-react";
 import { PurchaseItemSelector } from "@/components/purchases/PurchaseItemSelector";
 import type { Purchase, PurchaseItem, Currency } from "@/core/purchases/types";
 import { registerPurchase } from "@/core/purchases/service";
@@ -14,10 +14,38 @@ const IGV_RATE = 0.18;
 export default function NewPurchasePage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSearchingSupplier, setIsSearchingSupplier] = useState(false);
 
   // Form State
   const [businessLine, setBusinessLine] = useState<'roofing' | 'trading'>('trading');
   const [supplier, setSupplier] = useState({ ruc: "", name: "" });
+
+  const handleSearchSupplier = async () => {
+    if (supplier.ruc.length !== 11) {
+      return toast.error("Ingrese un RUC válido (11 dígitos).");
+    }
+
+    setIsSearchingSupplier(true);
+    try {
+      const res = await fetch(`/api/consulta-doc?numero=${supplier.ruc}`);
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error || "No se pudo obtener la información.");
+      
+      const name = data.razon_social ?? data.razonSocial;
+      
+      setSupplier(prev => ({
+        ...prev,
+        name: name || "",
+      }));
+      
+      toast.success("Proveedor encontrado en SUNAT.");
+    } catch (err: any) {
+      toast.error(err.message || "Error al buscar proveedor.");
+    } finally {
+      setIsSearchingSupplier(false);
+    }
+  };
   const [invoice, setInvoice] = useState({
     number: "",
     date: new Date().toISOString().split('T')[0],
@@ -152,17 +180,32 @@ export default function NewPurchasePage() {
                   <option value="roofing">Coberturas PVC</option>
                 </select>
               </div>
-              <div>
+              <div className="flex flex-col">
                 <label className="text-[10px] font-black text-slate-500 uppercase mb-1 block">RUC Proveedor</label>
-                <input
-                  type="text"
-                  maxLength={11}
-                  value={supplier.ruc}
-                  onChange={(e) => setSupplier({ ...supplier, ruc: e.target.value })}
-                  placeholder="20123456789"
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    maxLength={11}
+                    value={supplier.ruc}
+                    onChange={(e) => setSupplier({ ...supplier, ruc: e.target.value })}
+                    placeholder="20123456789"
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 pr-12"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSearchSupplier}
+                    disabled={isSearchingSupplier || supplier.ruc.length !== 11}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition disabled:opacity-30"
+                    title="Buscar en SUNAT"
+                  >
+                    {isSearchingSupplier ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <Search size={18} />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
             <div>

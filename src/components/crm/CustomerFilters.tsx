@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Search, Loader2, X, Filter, ChevronDown } from "lucide-react";
+import { Search, Loader2, X, Filter, ChevronDown, Globe } from "lucide-react";
+import { toast } from "react-hot-toast";
 
 interface CustomerFiltersProps {
   searchTerm: string;
@@ -13,7 +14,43 @@ export function CustomerFilters({
   isSearching,
 }: CustomerFiltersProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isDeepSearching, setIsDeepSearching] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const handleDeepSearch = async () => {
+    const target = searchTerm.trim();
+    if (target.length !== 8 && target.length !== 11) {
+      return toast.error("Ingresa un DNI (8) o RUC (11) válido para buscar en registros oficiales.");
+    }
+
+    setIsDeepSearching(true);
+    try {
+      const res = await fetch(`/api/consulta-doc?numero=${target}`);
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error || "No se encontró el documento.");
+      
+      const isRUC = target.length === 11;
+      const nombre = isRUC
+        ? (data.razon_social ?? data.razonSocial)
+        : `${data.nombres ?? data.first_name} ${data.apellidoPaterno ?? data.first_last_name} ${data.apellidoMaterno ?? data.second_last_name}`;
+      
+      toast.success(
+        <div>
+          <p className="font-bold">¡Documento encontrado!</p>
+          <p className="text-xs">{nombre}</p>
+        </div>,
+        { duration: 5000 }
+      );
+      
+      // Aquí podríamos abrir un modal para crear el cliente con estos datos
+      // Por ahora solo notificamos que se encontró.
+    } catch (err: any) {
+      toast.error(err.message || "Error en la búsqueda externa.");
+    } finally {
+      setIsDeepSearching(false);
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -31,7 +68,7 @@ export function CustomerFilters({
     >
       <div className="relative flex-1">
         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-          {isSearching ? (
+          {isSearching || isDeepSearching ? (
             <Loader2 className="text-blue-500 animate-spin" size={18} />
           ) : (
             <Search className="text-slate-400" size={18} />
@@ -40,18 +77,30 @@ export function CustomerFilters({
         <input
           type="text"
           placeholder="Buscar por Razón Social, RUC o DNI..."
-          className="w-full pl-10 pr-10 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 font-medium text-slate-700 transition shadow-sm uppercase"
+          className="w-full pl-10 pr-24 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 font-medium text-slate-700 transition shadow-sm uppercase"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleDeepSearch()}
         />
-        {searchTerm && (
+        <div className="absolute inset-y-0 right-0 pr-1.5 flex items-center gap-1">
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm("")}
+              className="p-2 text-slate-400 hover:text-red-500 transition"
+            >
+              <X size={16} />
+            </button>
+          )}
           <button
-            onClick={() => setSearchTerm("")}
-            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-red-500 transition"
+            onClick={handleDeepSearch}
+            disabled={isDeepSearching || (searchTerm.length !== 8 && searchTerm.length !== 11)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase tracking-tight hover:bg-blue-100 disabled:opacity-30 transition border border-blue-100"
+            title="Búsqueda profunda en SUNAT/RENIEC"
           >
-            <X size={16} />
+            {isDeepSearching ? <Loader2 size={12} className="animate-spin" /> : <Globe size={12} />}
+            Oficial
           </button>
-        )}
+        </div>
       </div>
 
       <div className="relative sm:w-auto w-full">

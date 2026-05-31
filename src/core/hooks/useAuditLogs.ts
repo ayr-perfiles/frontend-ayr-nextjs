@@ -55,7 +55,7 @@ export function useAuditLogs(filters: AuditFilters) {
         setLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [debouncedSearch, filters.pageSize, filters.actionFilter, filters.startDate, filters.endDate],
   );
 

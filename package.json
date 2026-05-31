@@ -18,9 +18,7 @@
     "test:integration": "vitest src/test/integration",
     "test:emu": "firebase emulators:exec \"vitest run src/test/integration --no-file-parallelism --maxWorkers 1\" --only auth,firestore,storage",
     "emulators": "firebase emulators:start --import=./firebase-data --export-on-exit",
-    "emulate": "concurrently \"npm run emulators\" \"npm run dev\"",
-    "db:seed": "node scripts/seed-database.js",
-    "db:reset": "node scripts/reset-dev-only.js"
+    "emulate": "concurrently \"npm run emulators\" \"npm run dev\""
   },
   "dependencies": {
     "algoliasearch": "^5.49.2",

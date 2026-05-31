@@ -3,8 +3,6 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useParams, useRouter } from "next/navigation";
-import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase/clientApp";
 import { useAuth, UserRole } from "@/context/AuthContext";
 import { businessLines } from "@/core/registry/businessLineRegistry";
 import type { BusinessLineModule, MenuItem } from "@/core/contracts";
@@ -16,7 +14,6 @@ import {
   Settings,
   ChevronRight,
   Zap,
-  LogOut,
   Users,
   ShieldAlert,
   Smartphone,
@@ -37,8 +34,6 @@ import {
   FileText,
   UserCog,
   ScrollText,
-  MoreVertical,
-  User,
   PanelLeft,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -71,8 +66,6 @@ const ICON_MAP: Record<string, LucideIcon> = {
   FileText,
   UserCog,
   ScrollText,
-  MoreVertical,
-  User,
   PanelLeft,
 };
 
@@ -129,7 +122,10 @@ function NavItem({
           ${collapsed ? "justify-center px-0" : ""}
         `}
       >
-        <Icon size={18} className={`shrink-0 ${active ? "text-[var(--color-primary)]" : "text-[var(--color-fg-subtle)] group-hover:text-[var(--color-fg)]"}`} />
+        <Icon
+          size={18}
+          className={`shrink-0 ${active ? "text-[var(--color-primary)]" : "text-[var(--color-fg-subtle)] group-hover:text-[var(--color-fg)]"}`}
+        />
         {!collapsed && (
           <>
             <span className="text-[13px] flex-1 truncate">{label}</span>
@@ -149,7 +145,7 @@ function NavItem({
           </>
         )}
       </Link>
-      
+
       {/* Tooltip for collapsed mode */}
       {collapsed && (
         <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2 py-1 bg-slate-900 text-white text-[11px] font-bold rounded-md opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap shadow-xl">
@@ -177,13 +173,18 @@ function Group({
     <div className="space-y-1.5">
       {!collapsed && (
         <div className="flex items-center gap-2 px-3 py-1.5">
-          <Icon size={14} className="text-[var(--color-fg-subtle)] opacity-60" />
+          <Icon
+            size={14}
+            className="text-[var(--color-fg-subtle)] opacity-60"
+          />
           <span className="text-[10px] font-black text-[var(--color-fg-subtle)] uppercase tracking-widest">
             {title}
           </span>
         </div>
       )}
-      {collapsed && <div className="h-px bg-[var(--color-border)] mx-4 my-2 opacity-50" />}
+      {collapsed && (
+        <div className="h-px bg-[var(--color-border)] mx-4 my-2 opacity-50" />
+      )}
       <div className="space-y-0.5">{children}</div>
     </div>
   );
@@ -286,10 +287,10 @@ function LineGroup({
 
 // ── Main Sidebar Component ────────────────────────────────────────────────
 
-export default function Sidebar({ 
+export default function Sidebar({
   collapsed: initialCollapsed = false,
-  onToggleCollapse
-}: { 
+  onToggleCollapse,
+}: {
   collapsed?: boolean;
   onToggleCollapse?: (collapsed: boolean) => void;
 }) {
@@ -299,7 +300,6 @@ export default function Sidebar({
 
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [openLines, setOpenLines] = useState<Record<string, boolean>>({ drywall: true });
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
     setCollapsed(initialCollapsed);
@@ -333,7 +333,9 @@ export default function Sidebar({
       `}
     >
       {/* BRAND */}
-      <div className={`p-4 h-14 flex items-center border-b border-[var(--color-border)] ${collapsed ? "justify-center px-0" : "justify-between"}`}>
+      <div
+        className={`p-4 h-14 flex items-center border-b border-[var(--color-border)] ${collapsed ? "justify-center px-0" : "justify-between"}`}
+      >
         <div className="flex items-center gap-2.5 overflow-hidden">
           <div className="w-8 h-8 shrink-0 bg-blue-600 text-white rounded-lg flex items-center justify-center font-black text-sm shadow-md shadow-blue-200">
             AY
@@ -364,11 +366,41 @@ export default function Sidebar({
       <nav className="flex-1 p-3 space-y-6 overflow-y-auto custom-scrollbar">
         {/* COMERCIAL */}
         <Group icon="TrendingUp" title="Comercial" collapsed={collapsed}>
-          <NavItem icon="LayoutDashboard" label="Panel" href="/admin" active={pathname === "/admin"} collapsed={collapsed} />
-          <NavItem icon="ShoppingCart" label="Ventas" href="/admin/sales" active={pathname === "/admin/sales"} collapsed={collapsed} />
-          <NavItem icon="FileText" label="Cotizaciones" href="/admin/quotations" active={pathname === "/admin/quotations"} collapsed={collapsed} />
-          <NavItem icon="Contact2" label="Clientes" href="/admin/customers" active={pathname === "/admin/customers"} collapsed={collapsed} />
-          <NavItem icon="BarChart3" label="Reportes" href="/admin/reports" active={pathname.startsWith("/admin/reports")} collapsed={collapsed} />
+          <NavItem
+            icon="LayoutDashboard"
+            label="Panel"
+            href="/admin"
+            active={pathname === "/admin"}
+            collapsed={collapsed}
+          />
+          <NavItem
+            icon="ShoppingCart"
+            label="Ventas"
+            href="/admin/sales"
+            active={pathname === "/admin/sales"}
+            collapsed={collapsed}
+          />
+          <NavItem
+            icon="FileText"
+            label="Cotizaciones"
+            href="/admin/quotations"
+            active={pathname === "/admin/quotations"}
+            collapsed={collapsed}
+          />
+          <NavItem
+            icon="Contact2"
+            label="Clientes"
+            href="/admin/customers"
+            active={pathname === "/admin/customers"}
+            collapsed={collapsed}
+          />
+          <NavItem
+            icon="BarChart3"
+            label="Reportes"
+            href="/admin/reports"
+            active={pathname.startsWith("/admin/reports")}
+            collapsed={collapsed}
+          />
         </Group>
 
         {/* PRODUCCIÓN */}
@@ -390,24 +422,54 @@ export default function Sidebar({
 
         {/* ABASTECIMIENTO */}
         <Group icon="Truck" title="Abastecimiento" collapsed={collapsed}>
-          <NavItem icon="PackagePlus" label="Compras" href="/admin/purchases" active={pathname.startsWith("/admin/purchases")} collapsed={collapsed} />
-          <NavItem icon="Scissors" label="Órdenes de corte" href="/admin/coils/cut-orders" active={pathname === "/admin/coils/cut-orders"} collapsed={collapsed} />
-          <NavItem icon="PackageCheck" label="Recepción de flejes" href="/admin/coils/strips-reception" active={pathname === "/admin/coils/strips-reception"} collapsed={collapsed} />
+          <NavItem
+            icon="PackagePlus"
+            label="Compras"
+            href="/admin/purchases"
+            active={pathname.startsWith("/admin/purchases")}
+            collapsed={collapsed}
+          />
+          <NavItem
+            icon="Scissors"
+            label="Órdenes de corte"
+            href="/admin/coils/cut-orders"
+            active={pathname === "/admin/coils/cut-orders"}
+            collapsed={collapsed}
+          />
+          <NavItem
+            icon="PackageCheck"
+            label="Recepción de flejes"
+            href="/admin/coils/strips-reception"
+            active={pathname === "/admin/coils/strips-reception"}
+            collapsed={collapsed}
+          />
         </Group>
 
         {/* MATERIA PRIMA */}
         <Group icon="Layers" title="Materia prima" collapsed={collapsed}>
-          <NavItem 
-            icon="Layers" 
-            label="Inventario Bobinas" 
-            href="/admin/coils" 
-            active={pathname === "/admin/coils"} 
-            badge={coilBadge} 
+          <NavItem
+            icon="Layers"
+            label="Inventario Bobinas"
+            href="/admin/coils"
+            active={pathname === "/admin/coils"}
+            badge={coilBadge}
             alertDot={coilBadge > 0}
-            collapsed={collapsed} 
+            collapsed={collapsed}
           />
-          <NavItem icon="AlignJustify" label="Inventario Flejes" href="/admin/coils/strips" active={pathname === "/admin/coils/strips"} collapsed={collapsed} />
-          <NavItem icon="Tag" label="Acabados" href="/admin/coils/finishes" active={pathname === "/admin/coils/finishes"} collapsed={collapsed} />
+          <NavItem
+            icon="AlignJustify"
+            label="Inventario Flejes"
+            href="/admin/coils/strips"
+            active={pathname === "/admin/coils/strips"}
+            collapsed={collapsed}
+          />
+          <NavItem
+            icon="Tag"
+            label="Acabados"
+            href="/admin/coils/finishes"
+            active={pathname === "/admin/coils/finishes"}
+            collapsed={collapsed}
+          />
         </Group>
 
         {/* LÍNEAS DE NEGOCIO */}
@@ -427,56 +489,63 @@ export default function Sidebar({
         {/* ADMINISTRACIÓN */}
         {role === "ADMIN" && (
           <Group icon="Settings" title="Administración" collapsed={collapsed}>
-            <NavItem icon="History" label="Kardex" href="/admin/kardex" active={pathname === "/admin/kardex"} collapsed={collapsed} />
-            <NavItem icon="Users" label="Usuarios" href="/admin/users" active={pathname === "/admin/users"} collapsed={collapsed} />
-            <NavItem icon="ShieldAlert" label="Auditoría" href="/admin/audit" active={pathname === "/admin/audit"} collapsed={collapsed} />
-            <NavItem icon="Settings" label="Configuración" href="/admin/settings" active={pathname === "/admin/settings"} collapsed={collapsed} />
+            <NavItem
+              icon="History"
+              label="Kardex"
+              href="/admin/kardex"
+              active={pathname === "/admin/kardex"}
+              collapsed={collapsed}
+            />
+            <NavItem
+              icon="Users"
+              label="Usuarios"
+              href="/admin/users"
+              active={pathname === "/admin/users"}
+              collapsed={collapsed}
+            />
+            <NavItem
+              icon="ShieldAlert"
+              label="Auditoría"
+              href="/admin/audit"
+              active={pathname === "/admin/audit"}
+              collapsed={collapsed}
+            />
+            <NavItem
+              icon="Settings"
+              label="Configuración"
+              href="/admin/settings"
+              active={pathname === "/admin/settings"}
+              collapsed={collapsed}
+            />
           </Group>
         )}
       </nav>
 
       {/* USER FOOTER */}
-      <div className={`p-4 border-t border-[var(--color-border)] bg-slate-50/50 relative ${collapsed ? "flex justify-center" : ""}`}>
-        {userMenuOpen && !collapsed && (
-          <div className="absolute bottom-full left-4 right-4 mb-2 bg-white rounded-2xl shadow-xl border border-[var(--color-border)] overflow-hidden py-1.5 animate-in slide-in-from-bottom-2 duration-200">
-            <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition text-left">
-              <User size={16} className="text-slate-400" /> Mi Perfil
-            </button>
-            <div className="h-px bg-slate-100 my-1.5 mx-3" />
-            <button
-              onClick={() => signOut(auth)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-amber-600 hover:bg-amber-50 transition text-left"
+      <div
+        className={`p-4 border-t border-[var(--color-border)] bg-slate-50/50 relative ${collapsed ? "flex justify-center" : ""}`}
+      >
+        {!collapsed && (
+          <div className="flex items-center justify-between px-1 opacity-60">
+            <span className="text-[10px] font-bold text-slate-400">v1.1</span>
+            <div
+              className={`text-[9px] px-1.5 py-0.5 rounded-md font-black uppercase tracking-tighter ${
+                (process.env.NEXT_PUBLIC_APP_ENV || process.env.NODE_ENV) ===
+                "production"
+                  ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                  : (process.env.NEXT_PUBLIC_APP_ENV ||
+                        process.env.NODE_ENV) === "test"
+                    ? "bg-amber-50 text-amber-600 border border-amber-100"
+                    : "bg-slate-100 text-slate-500 border border-slate-200"
+              }`}
             >
-              <LogOut size={16} /> Cerrar Sesión
-            </button>
-          </div>
-        )}
-
-        <button
-          onClick={() => (collapsed ? toggleCollapse() : setUserMenuOpen(!userMenuOpen))}
-          className={`flex items-center gap-3 w-full p-2 rounded-xl transition hover:bg-white group/user ${collapsed ? "justify-center" : ""}`}
-        >
-          <div className="w-9 h-9 shrink-0 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs border-2 border-white shadow-sm">
-            {role?.substring(0, 2).toUpperCase() || "US"}
-          </div>
-          {!collapsed && (
-            <>
-              <div className="flex-1 text-left overflow-hidden">
-                <p className="text-[13px] font-black text-slate-900 truncate">
-                  {user?.displayName || user?.email?.split("@")[0] || "Usuario"}
-                </p>
-                <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
-                  {role === "ADMIN" ? "Administrador" : role === "SUPERVISOR" ? "Supervisor" : "Operador"}
-                </p>
-              </div>
-              <MoreVertical size={16} className={`text-slate-400 transition ${userMenuOpen ? "rotate-90 text-slate-600" : ""}`} />
-            </>
-          )}
-        </button>
-        
-        {collapsed && (
-          <div className="absolute left-full bottom-4 ml-3 px-2 py-1 bg-slate-900 text-white text-[11px] font-bold rounded-md opacity-0 group-hover/user:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap shadow-xl">
-            {user?.displayName || user?.email?.split("@")[0]} · {role}
+              {process.env.NEXT_PUBLIC_APP_ENV === "production" ||
+              process.env.NODE_ENV === "production"
+                ? "produccion"
+                : process.env.NEXT_PUBLIC_APP_ENV === "test"
+                  ? "test"
+                  : "desarrollo"}
+            </div>
           </div>
         )}
       </div>

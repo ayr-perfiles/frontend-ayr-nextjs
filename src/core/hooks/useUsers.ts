@@ -52,7 +52,7 @@ export function useUsers(filters: UsersFilters) {
         setLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [debouncedSearch, filters.pageSize, filters.roleFilter, filters.statusFilter],
   );
 
