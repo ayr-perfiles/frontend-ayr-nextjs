@@ -16,15 +16,24 @@ import {
   query,
 } from "firebase/firestore";
 import { getSystemSettings, SystemSettings } from "@/services/settingsService";
-import { processSale, createQuotation, type CartItem } from "@/services/salesService";
+import {
+  processSale,
+  createQuotation,
+  type CartItem,
+} from "@/services/salesService";
 import { useAuth } from "@/context/AuthContext";
 import { useForm } from "@/core/hooks/useForm";
 import { saleCustomerSchema, type SaleCustomerForm } from "@/core/schemas/sale";
 import ProductSelector from "@/core/sales/components/ProductSelector";
 import { ShoppingCart } from "lucide-react";
+import { functions } from "@/lib/firebase/clientApp";
+import { httpsCallable } from "firebase/functions";
 import toast from "react-hot-toast";
 
-import { CustomerSection, SaleContact } from "@/components/sales/CustomerSection";
+import {
+  CustomerSection,
+  SaleContact,
+} from "@/components/sales/CustomerSection";
 import { CartSummary } from "@/components/sales/CartSummary";
 
 const IGV_RATE = 0.18;
@@ -44,7 +53,10 @@ export default function NewSalePage() {
     errors: customerErrors,
     setErrors: setCustomerErrors,
     validate: validateCustomer,
-  } = useForm<SaleCustomerForm>(saleCustomerSchema, { customerName: "", documentNumber: "" });
+  } = useForm<SaleCustomerForm>(saleCustomerSchema, {
+    customerName: "",
+    documentNumber: "",
+  });
 
   const customerName = customerForm.customerName;
   const documentNumber = customerForm.documentNumber;
@@ -61,7 +73,9 @@ export default function NewSalePage() {
   const [globalContacts, setGlobalContacts] = useState<SaleContact[]>([]);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [suggestedCustomers, setSuggestedCustomers] = useState<Record<string, unknown>[]>([]);
+  const [suggestedCustomers, setSuggestedCustomers] = useState<
+    Record<string, unknown>[]
+  >([]);
   const [isSearchingClient, setIsSearchingClient] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchInputRef = useRef<HTMLDivElement>(null);
@@ -77,7 +91,9 @@ export default function NewSalePage() {
       ]);
       setSettings(dataSettings);
       setGlobalContacts(
-        contactsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as SaleContact),
+        contactsSnap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as SaleContact,
+        ),
       );
     };
     load();
@@ -85,7 +101,10 @@ export default function NewSalePage() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (searchInputRef.current && !searchInputRef.current.contains(event.target as Node)) {
+      if (
+        searchInputRef.current &&
+        !searchInputRef.current.contains(event.target as Node)
+      ) {
         setShowSuggestions(false);
       }
     };
@@ -152,17 +171,25 @@ export default function NewSalePage() {
       setCustomerName(data.name || "");
       setCustomerAddress(data.address || "");
       const cSnap = await getDocs(
-        query(collection(db, "contacts"), where("associatedCompanyIds", "array-contains", docNum)),
+        query(
+          collection(db, "contacts"),
+          where("associatedCompanyIds", "array-contains", docNum),
+        ),
       );
-      const fetched = cSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as SaleContact);
+      const fetched = cSnap.docs.map(
+        (d) => ({ id: d.id, ...d.data() }) as SaleContact,
+      );
       setContacts(fetched);
-      if (fetched.length > 0 && fetched[0].id) setSelectedContactId(fetched[0].id);
+      if (fetched.length > 0 && fetched[0].id)
+        setSelectedContactId(fetched[0].id);
       return true;
     }
     return false;
   };
 
-  const handleSelectSuggestedCustomer = async (hit: Record<string, unknown>) => {
+  const handleSelectSuggestedCustomer = async (
+    hit: Record<string, unknown>,
+  ) => {
     setSearchTerm((hit.documentNumber ?? hit.objectID) as string);
     setShowSuggestions(false);
     await fetchClientData((hit.documentNumber ?? hit.objectID) as string);
@@ -178,22 +205,35 @@ export default function NewSalePage() {
     try {
       const existsLocally = await fetchClientData(targetDoc);
       if (!existsLocally) {
-        const res = await fetch(`/api/consulta-doc?numero=${targetDoc}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "No se pudo obtener la información.");
         const isRUC = targetDoc.length === 11;
-        const nombre = isRUC
-          ? (data.razon_social ?? data.razonSocial)
-          : `${data.nombres ?? data.first_name} ${data.apellidoPaterno ?? data.first_last_name} ${data.apellidoMaterno ?? data.second_last_name}`;
-        setDocumentNumber(targetDoc);
-        setCustomerName(nombre);
-        setCustomerAddress(data.direccion || "Dirección no registrada");
-        setContacts([]);
-        setSelectedContactId("");
-        toast.success("Datos importados desde SUNAT/RENIEC.");
+        const consultFn = httpsCallable(
+          functions,
+          isRUC ? "consultarRuc" : "consultarDni",
+        );
+        const result: any = await consultFn(
+          isRUC ? { ruc: targetDoc } : { dni: targetDoc },
+        );
+
+        if (result.data.success) {
+          const data = result.data.data;
+          const nombre = isRUC
+            ? data.razonSocial || data.razon_social
+            : `${data.nombres || data.first_name || ""} ${data.apellidoPaterno || data.first_last_name || ""} ${data.apellidoMaterno || data.second_last_name || ""}`.trim();
+
+          setDocumentNumber(targetDoc);
+          setCustomerName(nombre);
+          setCustomerAddress(
+            data.direccion || data.address || "Dirección no registrada",
+          );
+          setContacts([]);
+          setSelectedContactId("");
+          toast.success("Datos importados desde SUNAT/RENIEC.");
+        }
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Error al buscar cliente.");
+      toast.error(
+        err instanceof Error ? err.message : "Error al buscar cliente.",
+      );
     } finally {
       setIsSearchingClient(false);
     }
@@ -212,7 +252,12 @@ export default function NewSalePage() {
       (c) => c.name.toLowerCase() === newName.toLowerCase(),
     );
     if (existing) {
-      updated[index] = { ...updated[index], id: existing.id, phone: existing.phone || "", email: existing.email || "" };
+      updated[index] = {
+        ...updated[index],
+        id: existing.id,
+        phone: existing.phone || "",
+        email: existing.email || "",
+      };
       toast.success(`Contacto "${existing.name}" autocompletado.`);
     } else if (updated[index].id && !updated[index].id?.startsWith("temp_")) {
       updated[index].id = `temp_${Date.now()}`;
@@ -220,7 +265,11 @@ export default function NewSalePage() {
     setContacts(updated);
   };
 
-  const updateContact = (index: number, field: keyof SaleContact, value: string) => {
+  const updateContact = (
+    index: number,
+    field: keyof SaleContact,
+    value: string,
+  ) => {
     const updated = [...contacts];
     updated[index][field] = value;
     setContacts(updated);
@@ -229,7 +278,9 @@ export default function NewSalePage() {
   const handleAddItem = (newItem: CartItem) => {
     setCart((prev) => {
       const existingIdx = prev.findIndex(
-        (i) => i.sku === newItem.sku && (i.businessLine ?? "drywall") === (newItem.businessLine ?? "drywall"),
+        (i) =>
+          i.sku === newItem.sku &&
+          (i.businessLine ?? "drywall") === (newItem.businessLine ?? "drywall"),
       );
       if (existingIdx >= 0) {
         const updated = [...prev];
@@ -249,9 +300,13 @@ export default function NewSalePage() {
   const totalValue = cart.reduce((s, i) => s + i.quantity * i.unitValue, 0);
   const totalCost = cart.reduce((s, i) => s + i.quantity * i.baseCost, 0);
   const totalIGV = totalAmount - totalValue;
-  const totalWeight = cart.reduce((s, i) => s + i.quantity * (i.unitWeight ?? 0), 0);
+  const totalWeight = cart.reduce(
+    (s, i) => s + i.quantity * (i.unitWeight ?? 0),
+    0,
+  );
   const projectedProfit = totalValue - totalCost;
-  const marginPercent = totalValue > 0 ? (projectedProfit / totalValue) * 100 : 0;
+  const marginPercent =
+    totalValue > 0 ? (projectedProfit / totalValue) * 100 : 0;
   const MIN_MARGIN_ALERT = settings?.minMarginPercent ?? 20;
 
   const handleAction = async (actionType: "QUOTE" | "SALE") => {
@@ -267,26 +322,77 @@ export default function NewSalePage() {
         if (isNew) {
           const ref = doc(collection(db, "contacts"));
           contactId = ref.id;
-          await setDoc(ref, { name: contact.name, phone: contact.phone, email: contact.email, associatedCompanyIds: [documentNumber], createdAt: serverTimestamp() });
+          await setDoc(ref, {
+            name: contact.name,
+            phone: contact.phone,
+            email: contact.email,
+            associatedCompanyIds: [documentNumber],
+            createdAt: serverTimestamp(),
+          });
         } else {
-          await setDoc(doc(db, "contacts", contactId!), { name: contact.name, phone: contact.phone, email: contact.email, associatedCompanyIds: arrayUnion(documentNumber), updatedAt: serverTimestamp() }, { merge: true });
+          await setDoc(
+            doc(db, "contacts", contactId!),
+            {
+              name: contact.name,
+              phone: contact.phone,
+              email: contact.email,
+              associatedCompanyIds: arrayUnion(documentNumber),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          );
         }
         finalContactIds.push(contactId as string);
       }
-      const docType = documentNumber.length === 11 ? "RUC" : documentNumber.length === 8 ? "DNI" : "TAX_ID";
-      await setDoc(doc(db, "customers", documentNumber), { name: customerName, documentNumber, documentType: docType, address: customerAddress, contactIds: finalContactIds, lastUpdate: serverTimestamp() }, { merge: true });
+      const docType =
+        documentNumber.length === 11
+          ? "RUC"
+          : documentNumber.length === 8
+            ? "DNI"
+            : "TAX_ID";
+      await setDoc(
+        doc(db, "customers", documentNumber),
+        {
+          name: customerName,
+          documentNumber,
+          documentType: docType,
+          address: customerAddress,
+          contactIds: finalContactIds,
+          lastUpdate: serverTimestamp(),
+        },
+        { merge: true },
+      );
       const sellerId = user?.email ?? user?.uid ?? "VENDEDOR_DESCONOCIDO";
-      const selectedContact = contacts.find((c) => c.id === selectedContactId) ?? contacts[0];
+      const selectedContact =
+        contacts.find((c) => c.id === selectedContactId) ?? contacts[0];
       if (actionType === "QUOTE") {
-        await createQuotation(customerName, documentNumber, cart, sellerId, customerAddress, selectedContact?.name ?? "", selectedContact?.phone ?? "");
+        await createQuotation(
+          customerName,
+          documentNumber,
+          cart,
+          sellerId,
+          customerAddress,
+          selectedContact?.name ?? "",
+          selectedContact?.phone ?? "",
+        );
         toast.success("Cotización generada con éxito.");
       } else {
-        await processSale(customerName, documentNumber, cart, sellerId, customerAddress, selectedContact?.name ?? "", selectedContact?.phone ?? "");
+        await processSale(
+          customerName,
+          documentNumber,
+          cart,
+          sellerId,
+          customerAddress,
+          selectedContact?.name ?? "",
+          selectedContact?.phone ?? "",
+        );
         toast.success("Venta procesada. El stock fue descontado.");
       }
       router.push("/admin/sales");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Error al procesar la operación.");
+      toast.error(
+        err instanceof Error ? err.message : "Error al procesar la operación.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -336,7 +442,11 @@ export default function NewSalePage() {
             globalContacts={globalContacts}
             fieldErrors={customerErrors}
           />
-          <ProductSelector cartItems={cart} settings={settings} onAdd={handleAddItem} />
+          <ProductSelector
+            cartItems={cart}
+            settings={settings}
+            onAdd={handleAddItem}
+          />
         </div>
 
         <div className="lg:col-span-4 flex flex-col gap-6">

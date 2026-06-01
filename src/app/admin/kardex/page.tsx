@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { fetchAllKardexForExport, KardexMovement } from "@/services/kardexService";
 import { getCatalog, ProductConfig } from "@/services/catalogService";
-import { History, Package, Loader2, ChevronLeft, ChevronRight, FileSpreadsheet } from "lucide-react";
+import { History, Package, FileSpreadsheet } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { useKardex } from "@/core/hooks/useKardex";
@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { TableSkeleton } from "@/components/ui/TableSkeleton";
 import { KardexFilters } from "@/components/kardex/KardexFilters";
 import { KardexTable } from "@/components/kardex/KardexTable";
+import { TablePagination } from "@/components/ui/TablePagination";
 
 export default function KardexPage() {
   const [catalog, setCatalog] = useState<ProductConfig[]>([]);
@@ -118,51 +119,27 @@ export default function KardexPage() {
             {loading && movements.length === 0 ? (
               <TableSkeleton rows={8} columns={8} />
             ) : (
-              <>
-                <KardexTable movements={movements} currentPage={currentPage} pageSize={pageSize} />
-                {loading && (
-                  <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-3xl">
-                    <Loader2 className="animate-spin text-blue-600" size={32} />
-                  </div>
-                )}
-              </>
+              <KardexTable 
+                movements={movements} 
+                currentPage={currentPage} 
+                pageSize={pageSize} 
+                isLoading={loading && movements.length > 0} 
+              />
             )}
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-between bg-white px-6 py-4 border border-slate-200 rounded-xl shadow-sm gap-4 mt-6">
-            <div className="w-full sm:w-1/3 flex justify-center sm:justify-start">
-              <p className="text-sm font-black text-blue-600">{totalCount} Movimientos Totales</p>
-            </div>
-            <div className="w-full sm:w-1/3 flex items-center justify-center gap-3">
-              <button
-                onClick={prevPage}
-                disabled={currentPage === 1 || loading}
-                className="flex items-center justify-center w-10 h-10 bg-white text-slate-600 rounded-xl hover:bg-blue-50 disabled:opacity-50 transition border border-slate-200"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              <div className="text-xs font-bold text-slate-500 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-100 shadow-inner">
-                Página <span className="font-black text-slate-800 text-sm mx-1">{currentPage}</span>
-              </div>
-              <button
-                onClick={nextPage}
-                disabled={!hasNextPage || loading}
-                className="flex items-center justify-center w-10 h-10 bg-white text-slate-600 rounded-xl hover:bg-blue-50 disabled:opacity-50 transition border border-slate-200"
-              >
-                <ChevronRight size={20} />
-              </button>
-            </div>
-            <div className="w-full sm:w-1/3 flex justify-center sm:justify-end">
-              <select
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="border border-slate-200 rounded-lg p-2 text-xs font-bold bg-slate-50"
-              >
-                <option value={15}>15 ítems</option>
-                <option value={50}>50 ítems</option>
-              </select>
-            </div>
-          </div>
+          <TablePagination
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalItems={totalCount}
+            totalLabel="movimientos"
+            onPageChange={(page) => {
+              if (page > currentPage) nextPage();
+              else prevPage();
+            }}
+            pageSizeOptions={[15, 50]}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
     </div>

@@ -9,6 +9,7 @@ import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
+import { getNextSequence } from "./services/correlative";
 
 // Inicializar Firebase Admin
 admin.initializeApp();
@@ -17,6 +18,143 @@ admin.initializeApp();
 setGlobalOptions({
   maxInstances: 10,
   region: "us-central1",
+});
+
+// ════════════════════════════════════════════════════════════
+// ADMINISTRACIÓN: Inicializar Integraciones
+// ════════════════════════════════════════════════════════════
+
+export const initializeIntegrations = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Usuario no autenticado");
+  }
+
+  // Solo ADMIN puede inicializar
+  if (request.auth.token.role !== "ADMIN") {
+    throw new HttpsError("permission-denied", "Permisos insuficientes");
+  }
+
+  const db = admin.firestore();
+  const batch = db.batch();
+
+  const integrations = [
+    {
+      id: "sunat-emision",
+      data: {
+        provider: "SUNAT",
+        enabled: true,
+        environment: "beta",
+        config: {
+          ruc: "20123456789", // TODO: reemplazar en setup
+          razonSocial: "AYR STEEL S.A.C.", // TODO: reemplazar en setup
+          direccionFiscal: "Av. Principal 123, Lima", // TODO: reemplazar en setup
+          ubigeo: "150101", // TODO: reemplazar en setup
+          series: {
+            factura: "F001",
+            boleta: "B001",
+            notaCredito: "FC01",
+            notaDebito: "FD01",
+          },
+          endpoints: {
+            beta: "https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService",
+            prod: "https://e-factura.sunat.gob.pe/ol-ti-itcpfegem/billService",
+          },
+        },
+        status: {
+          lastCheck: admin.firestore.FieldValue.serverTimestamp(),
+          ok: true,
+          message: "Inicializado",
+        },
+      },
+    },
+    {
+      id: "sunat-consulta",
+      data: {
+        provider: "SUNAT",
+        enabled: true,
+        environment: "prod",
+        config: {
+          // NOTA: Estas credenciales se generan en SOL → Comprobantes → Consulta de Validez → Credenciales API
+          // El client_id debe reemplazarse en la URL en tiempo de ejecución o configurarse según el manual
+          tokenEndpoint: "https://api-seguridad.sunat.gob.pe/v1/clientesextranet/{client_id}/oauth2/token/",
+          validationEndpoint: "https://api.sunat.gob.pe/v1/contribuyente/contribuyentes/{numRuc}/validarcomprobante",
+          grantType: "client_credentials",
+        },
+        status: {
+          lastCheck: admin.firestore.FieldValue.serverTimestamp(),
+          ok: true,
+          message: "Inicializado",
+        },
+      },
+    },
+    {
+      id: "apisnet",
+      data: {
+        provider: "APISNET",
+        enabled: true,
+        environment: "prod",
+        config: {
+          // Migrado de apis.net.pe/v2 a decolecta.com/v1
+          baseUrl: "https://api.decolecta.com/v1",
+        },
+        status: {
+          lastCheck: admin.firestore.FieldValue.serverTimestamp(),
+          ok: true,
+          message: "Inicializado",
+        },
+      },
+    },
+    {
+      id: "algolia",
+      data: {
+        provider: "ALGOLIA",
+        enabled: true,
+        environment: "prod",
+        config: {
+          appId: "APP_ID", // TODO: reemplazar en setup
+          indexName: "products",
+          searchKey: "", // Clave pública (puedes pegarla aquí con seguridad)
+        },
+        status: {
+          lastCheck: admin.firestore.FieldValue.serverTimestamp(),
+          ok: true,
+          message: "Inicializado",
+        },
+      },
+    },
+  ];
+
+  for (const integration of integrations) {
+    const ref = db.collection("integrations").doc(integration.id);
+    batch.set(ref, integration.data, { merge: true });
+  }
+
+  await batch.commit();
+
+  return { success: true, message: "Integraciones inicializadas correctamente" };
+});
+
+// ════════════════════════════════════════════════════════════
+// SUNAT: Obtener siguiente correlativo
+// ════════════════════════════════════════════════════════════
+
+export const getNextSunatSequence = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Usuario no autenticado");
+  }
+
+  const { serie } = request.data;
+  if (!serie) {
+    throw new HttpsError("invalid-argument", "La serie es requerida");
+  }
+
+  try {
+    const sequence = await getNextSequence(serie);
+    return { success: true, sequence };
+  } catch (error) {
+    console.error("Error obteniendo correlativo:", error);
+    throw new HttpsError("internal", "Error al generar correlativo");
+  }
 });
 
 // ════════════════════════════════════════════════════════════
@@ -187,3 +325,21 @@ export const healthCheck = onCall(async () => {
     message: "AYR Steel ERP Functions are running",
   };
 });
+
+// ════════════════════════════════════════════════════════════
+// SUNAT: Emisión y Bajas
+// ════════════════════════════════════════════════════════════
+
+export { emitirComprobante, comunicarBaja, consultarEstadoBaja } from "./sunat/callables";
+
+// ════════════════════════════════════════════════════════════
+// INTEGRACIONES: Validación CPE y Consultas RUC/DNI
+// ════════════════════════════════════════════════════════════
+
+export { validarCpeSunat, consultarRuc, consultarDni } from "./callables/integrations";
+
+// ════════════════════════════════════════════════════════════
+// COMPRAS: Importación SIRE/RCE y XML
+// ════════════════════════════════════════════════════════════
+
+export { importSireRce, parsePurchaseXml, confirmPurchaseStaging } from "./callables/purchases";

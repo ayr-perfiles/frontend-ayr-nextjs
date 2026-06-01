@@ -20,6 +20,10 @@ export interface StockWriteParams {
   sellerId: string;
   /** Costo promedio unitario — usado por roofing para registrar movimiento */
   avgCost?: number;
+  /** Motivo personalizado para el movimiento de stock (ej. NC FFC1-001) */
+  motivo?: string;
+  /** Referencia al documento original (ej. factura ajustada) */
+  ref?: string;
 }
 
 export interface ProductionIncrementParams {
@@ -41,7 +45,7 @@ export interface StockStrategy {
   extractAvgCost(snap: DocumentSnapshot): number;
   /** Descuenta stock al procesar o aprobar una venta */
   writeSaleDecrement(params: StockWriteParams, snap: DocumentSnapshot | null, tx: Transaction): void;
-  /** Devuelve stock al anular una venta */
+  /** Devuelve stock al anular una venta o procesar NC */
   writeSaleReversal(params: StockWriteParams, snap: DocumentSnapshot | null, tx: Transaction): void;
   /** Incrementa stock por producción */
   writeProductionIncrement(params: ProductionIncrementParams, snap: DocumentSnapshot | null, tx: Transaction): void;
@@ -91,7 +95,7 @@ export const drywallStockStrategy: StockStrategy = {
     });
   },
 
-  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx) {
+  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId, motivo, ref }, snap, tx) {
     const stockRef = doc(db, 'inventory_stock', sku);
 
     if (snap?.exists()) {
@@ -106,8 +110,8 @@ export const drywallStockStrategy: StockStrategy = {
       type: 'IN',
       quantity,
       balance: newBalance,
-      reference: saleId,
-      description: `Anulación de Venta: ${customerName}`,
+      reference: ref || saleId,
+      description: motivo || `Anulación de Venta: ${customerName}`,
       user: sellerId,
     });
   },
@@ -198,7 +202,7 @@ export const roofingStockStrategy: StockStrategy = {
     });
   },
 
-  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx) {
+  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId, motivo, ref }, snap, tx) {
     const stockRef = doc(db, 'roofing_stock', sku);
     const avgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
     const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
@@ -225,7 +229,8 @@ export const roofingStockStrategy: StockStrategy = {
       type: 'ENTRADA',
       quantity,
       costPerUnit: avgCost,
-      reason: `Anulación Venta ${saleId} — ${customerName}`,
+      reason: motivo || `Anulación Venta ${saleId} — ${customerName}`,
+      adjustedDocument: ref || null,
       businessLine: 'roofing',
       createdBy: sellerId,
       createdAt: serverTimestamp(),
@@ -319,7 +324,7 @@ export const metallicRoofingStockStrategy: StockStrategy = {
     });
   },
 
-  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx) {
+  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId, motivo, ref }, snap, tx) {
     const stockRef = doc(db, 'metallic_roofing_stock', sku);
     const avgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
     const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
@@ -346,7 +351,8 @@ export const metallicRoofingStockStrategy: StockStrategy = {
       type: 'ENTRADA',
       quantity,
       costPerUnit: avgCost,
-      reason: `Anulación Venta ${saleId} — ${customerName}`,
+      reason: motivo || `Anulación Venta ${saleId} — ${customerName}`,
+      adjustedDocument: ref || null,
       businessLine: 'metallic-roofing',
       createdBy: sellerId,
       createdAt: serverTimestamp(),
@@ -439,7 +445,7 @@ export const tradingStockStrategy: StockStrategy = {
     });
   },
 
-  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx) {
+  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId, motivo, ref }, snap, tx) {
     const stockRef = doc(db, 'trading_stock', sku);
     const avgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
     const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
@@ -466,7 +472,8 @@ export const tradingStockStrategy: StockStrategy = {
       type: 'ENTRADA',
       quantity,
       costPerUnit: avgCost,
-      reason: `Anulación Venta ${saleId} — ${customerName}`,
+      reason: motivo || `Anulación Venta ${saleId} — ${customerName}`,
+      adjustedDocument: ref || null,
       businessLine: 'trading',
       createdBy: sellerId,
       createdAt: serverTimestamp(),

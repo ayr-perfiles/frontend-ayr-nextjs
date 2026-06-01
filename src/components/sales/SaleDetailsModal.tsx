@@ -19,6 +19,9 @@ import { Sale } from "@/types";
 import { useAuth } from "@/context/AuthContext";
 import { annulSale } from "@/services/salesService";
 import toast from "react-hot-toast";
+import { SunatPanel } from "./SunatPanel";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase/clientApp";
 
 interface SaleDetailsModalProps {
   sale: Sale;
@@ -27,12 +30,27 @@ interface SaleDetailsModalProps {
 }
 
 export function SaleDetailsModal({
-  sale,
+  sale: initialSale,
   onClose,
   onSuccess,
 }: SaleDetailsModalProps) {
   const { user, role } = useAuth();
   const [isAnnuling, setIsAnnuling] = useState(false);
+  const [sale, setSale] = useState(initialSale);
+
+  const refreshSale = async () => {
+    if (!sale.id) return;
+    try {
+      const docRef = doc(db, "sales", sale.id);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        setSale({ id: docSnap.id, ...docSnap.data() } as Sale);
+        if (onSuccess) onSuccess();
+      }
+    } catch (error) {
+      console.error("Error refreshing sale:", error);
+    }
+  };
 
   // Configuración y cálculos financieros
   const IGV_RATE = 0.18;
@@ -349,6 +367,17 @@ export function SaleDetailsModal({
                     </div>
                   )}
                 </div>
+
+                {/* 🔥 PANEL SUNAT INTEGRADO */}
+                {sale.status === "COMPLETED" && (
+                  <div className="mt-6">
+                    <SunatPanel 
+                      saleId={sale.id!} 
+                      sunatData={sale.sunat} 
+                      onRefresh={refreshSale} 
+                    />
+                  </div>
+                )}
 
                 <div className="pt-4 space-y-3">
                   <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 flex justify-between items-center text-xs">

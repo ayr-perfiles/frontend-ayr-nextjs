@@ -24,7 +24,11 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\User\\\\Documents\\\\workspace\\\\ayr\\\\frontend-ayr\" -Recurse -Filter \"BusinessLine*\" -ErrorAction SilentlyContinue)",
       "Bash(Select-Object -ExpandProperty FullName)",
       "Bash(git stash *)",
-      "Bash(Remove-Item -Force metallicRoofingStrategy.ts, skuGenerator.ts, stockAdjustmentService.ts, catalogService.ts, inventoryService.ts, inventory.ts, production.ts, catalog.ts, sidebar.ts, permissions.ts, businessLineRegistry.ts)"
+      "Bash(Remove-Item -Force metallicRoofingStrategy.ts, skuGenerator.ts, stockAdjustmentService.ts, catalogService.ts, inventoryService.ts, inventory.ts, production.ts, catalog.ts, sidebar.ts, permissions.ts, businessLineRegistry.ts)",
+      "Bash(.\\\\node_modules\\\\.bin\\\\vitest.cmd run *)",
+      "Bash(node *)",
+      "Bash(.\\\\node_modules\\\\.bin\\\\tsc.cmd --noEmit)",
+      "Bash(npx next *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\User\\Documents\\workspace\\ayr\\frontend-ayr"

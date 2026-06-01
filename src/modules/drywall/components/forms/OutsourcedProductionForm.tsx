@@ -109,21 +109,21 @@ export function OutsourcedProductionForm({ strip, onClose }: OutsourcedProductio
   }
 
   return (
-    <div className="flex flex-col h-full bg-white max-h-[95vh]">
+    <div className="flex flex-col h-full bg-white max-h-[95vh] min-w-0 overflow-hidden">
       {/* HEADER COMPACTO */}
-      <header className="flex justify-between items-center bg-orange-50 p-5 border-b border-orange-200">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center text-white shadow-md">
+      <header className="flex justify-between items-center bg-orange-50 p-5 border-b border-orange-200 shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center text-white shadow-md shrink-0">
             <Factory size={20} />
           </div>
-          <div>
-            <h2 className="text-lg font-black text-orange-900 tracking-tight uppercase leading-none">Paso 2: Conformadora</h2>
-            <p className="text-[11px] text-orange-700 font-bold mt-1 italic">
+          <div className="min-w-0">
+            <h2 className="text-lg font-black text-orange-900 tracking-tight uppercase leading-none truncate">Paso 2: Conformadora</h2>
+            <p className="text-[11px] text-orange-700 font-bold mt-1 italic truncate">
               Procesando fleje de {strip.widthMm}mm
             </p>
           </div>
         </div>
-        <button onClick={onClose} className="p-2 hover:bg-orange-200 rounded-full transition text-orange-800">
+        <button onClick={onClose} className="p-2 hover:bg-orange-200 rounded-full transition text-orange-800 shrink-0 ml-2">
           <X size={20} />
         </button>
       </header>
@@ -132,63 +132,69 @@ export function OutsourcedProductionForm({ strip, onClose }: OutsourcedProductio
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
            
            {/* COLUMNA IZQUIERDA: SELECCIÓN Y TRAZABILIDAD */}
-           <div className="lg:col-span-7 space-y-6">
+           <div className="lg:col-span-7 space-y-8 min-w-0">
               
               {/* TRAZABILIDAD DE ORIGEN */}
               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
                   <History size={14} /> Trazabilidad de Origen (Últimos ingresos)
                 </h3>
-                <div className="flex flex-wrap gap-2">
-                   {recentMovements.length > 0 ? recentMovements.map((move, i) => (
-                     <div key={i} className="bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                        <span className="text-[9px] font-black text-blue-600 uppercase leading-none">LOTE #{move.referenceId.slice(-6)}</span>
-                        <span className="text-[10px] font-bold text-slate-500 mt-1">{move.description.split('bobina')[1] || move.description}</span>
-                     </div>
-                   )) : (
-                     <p className="text-[10px] text-slate-400 font-bold italic">Cargando datos de origen...</p>
+                <div className="flex flex-wrap gap-2 min-w-0">
+                   {recentMovements.length > 0 ? recentMovements.map((move, i) => {
+                     const bobinaInfo = move.description.includes('bobina') ? move.description.split('bobina')[1] : null;
+                     const cleanDesc = (bobinaInfo ? bobinaInfo.trim() : move.description).replace(/^:/, '').trim();
+                     
+                     return (
+                       <div key={i} className="bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm flex flex-col min-w-0 max-w-[160px] flex-1 lg:flex-none" title={move.description}>
+                          <span className="text-[9px] font-black text-blue-600 uppercase leading-none truncate">LOTE #{move.referenceId.slice(-6)}</span>
+                          <span className="text-[10px] font-bold text-slate-500 mt-1 truncate">{cleanDesc}</span>
+                       </div>
+                     );
+                   }) : (
+                     <p className="text-[10px] text-slate-400 font-bold italic py-1">Sin ingresos recientes registrados.</p>
                    )}
                 </div>
               </div>
 
               {/* SELECCIÓN DE PRODUCTO */}
-              <div className="space-y-3">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+              <div className="space-y-3 min-w-0">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wide ml-1">
                   1. Perfil a fabricar
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {catalog.map(p => (
                     <label 
                       key={p.sku}
-                      className={`p-4 border-2 rounded-2xl cursor-pointer flex flex-col transition-all relative overflow-hidden ${formData.sku === p.sku ? "border-orange-500 bg-orange-50" : "border-slate-100 hover:border-slate-300"}`}
+                      className={`p-4 border-2 rounded-2xl cursor-pointer flex flex-col transition-all relative overflow-hidden min-w-0 ${formData.sku === p.sku ? "border-orange-500 bg-orange-50" : "border-slate-100 hover:border-slate-300"}`}
+                      title={p.name}
                     >
-                      <div className="flex items-center gap-2 z-10">
+                      <div className="flex items-center gap-2 z-10 min-w-0">
                         <input
                           type="radio"
                           checked={formData.sku === p.sku}
                           onChange={() => setFormData(f => ({ ...f, sku: p.sku }))}
-                          className="w-4 h-4 text-orange-600 focus:ring-orange-500"
+                          className="w-4 h-4 text-orange-600 focus:ring-orange-500 shrink-0"
                         />
-                        <span className="font-black text-sm text-slate-800 uppercase tracking-tighter">
+                        <span className="font-black text-sm text-slate-800 uppercase tracking-tight truncate">
                           {p.sku}
                         </span>
                       </div>
-                      <p className="text-[9px] font-bold text-slate-500 mt-0.5 z-10">{p.name}</p>
+                      <p className="text-[9px] font-bold text-slate-500 mt-1 z-10 truncate leading-tight">{p.name}</p>
                     </label>
                   ))}
                 </div>
               </div>
 
               {/* FLEJES USADOS (INPUT NUMÉRICO CON BOTONES) */}
-              <div className="space-y-3">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+              <div className="space-y-3 min-w-0">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wide ml-1">
                   2. Cantidad de flejes físicos
                 </label>
-                <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100 w-full max-w-sm">
+                <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100 w-full max-w-full lg:max-w-sm">
                    <button
                      type="button"
                      onClick={() => setFormData(f => ({ ...f, stripsUsed: Math.max(1, f.stripsUsed - 1) }))}
-                     className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:scale-95 transition shadow-sm"
+                     className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:scale-95 transition shadow-sm shrink-0"
                    >
                      <Minus size={20} />
                    </button>
@@ -196,17 +202,17 @@ export function OutsourcedProductionForm({ strip, onClose }: OutsourcedProductio
                       type="number"
                       value={formData.stripsUsed}
                       onChange={e => setFormData(f => ({ ...f, stripsUsed: Math.min(strip.totalStrips, Math.max(1, Number(e.target.value))) }))}
-                      className="flex-1 bg-transparent border-none text-center font-black text-2xl text-slate-800 outline-none focus:ring-0"
+                      className="flex-1 min-w-0 bg-transparent border-none text-center font-black text-2xl text-slate-800 outline-none focus:ring-0 px-1"
                    />
                    <button
                      type="button"
                      onClick={() => setFormData(f => ({ ...f, stripsUsed: Math.min(strip.totalStrips, f.stripsUsed + 1) }))}
-                     className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:scale-95 transition shadow-sm"
+                     className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:scale-95 transition shadow-sm shrink-0"
                    >
                      <Plus size={20} />
                    </button>
-                   <div className="px-4 border-l border-slate-200 text-right min-w-[80px]">
-                      <p className="text-[8px] font-black text-slate-400 uppercase leading-none">Disponibles</p>
+                   <div className="px-3 border-l border-slate-200 text-right shrink-0 min-w-[70px]">
+                      <p className="text-[8px] font-black text-slate-400 uppercase leading-none">Stock</p>
                       <p className="text-sm font-black text-slate-700">{strip.totalStrips}</p>
                    </div>
                 </div>
@@ -214,14 +220,14 @@ export function OutsourcedProductionForm({ strip, onClose }: OutsourcedProductio
            </div>
 
            {/* COLUMNA DERECHA: RESULTADO Y COSTEO */}
-           <div className="lg:col-span-5 space-y-6">
-              <div className="bg-slate-50 rounded-[2rem] p-6 border border-slate-100 flex flex-col items-center">
-                 <div className="w-full flex justify-between items-end mb-3 px-1">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      3. Piezas Resultantes
+           <div className="lg:col-span-5 space-y-6 min-w-0">
+              <div className="bg-slate-50 rounded-[2rem] p-6 border border-slate-100 flex flex-col items-center min-w-0">
+                 <div className="w-full flex flex-wrap items-center justify-between gap-2 mb-3 px-1">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wide">
+                      3. Piezas
                     </label>
                     {totalExpectedPieces > 0 && (
-                      <span className="text-[9px] font-black uppercase bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full shadow-sm">
+                      <span className="text-[9px] font-black uppercase bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
                         Esperado: ~{Math.floor(totalExpectedPieces)}
                       </span>
                     )}
@@ -257,24 +263,24 @@ export function OutsourcedProductionForm({ strip, onClose }: OutsourcedProductio
               </div>
 
               {/* RESUMEN DE COSTEO COMPACTO */}
-              <div className="bg-blue-600 rounded-[2rem] p-6 text-white shadow-lg relative overflow-hidden group">
-                 <div className="absolute -right-2 -top-2 text-blue-500 opacity-20">
+              <div className="bg-blue-600 rounded-[2rem] p-6 text-white shadow-lg relative overflow-hidden group min-w-0">
+                 <div className="absolute -right-2 -top-2 text-blue-500 opacity-20 pointer-events-none">
                     <Calculator size={80} />
                  </div>
                  
-                 <h3 className="text-[9px] font-black text-blue-200 uppercase tracking-widest mb-4 flex items-center gap-2 relative z-10">
+                 <h3 className="text-[9px] font-black text-blue-200 uppercase tracking-wide mb-4 flex items-center gap-2 relative z-10">
                     <TrendingUp size={12} /> Valorización Estimada
                  </h3>
                  
-                 <div className="space-y-4 relative z-10">
-                    <div className="flex justify-between items-center text-xs">
-                       <span className="font-bold text-blue-100">Material:</span>
-                       <span className="font-black">S/ {(formData.stripsUsed * avgWeightPerStrip * strip.avgCostPerKg).toFixed(2)}</span>
+                 <div className="space-y-4 relative z-10 min-w-0">
+                    <div className="flex justify-between items-center text-xs gap-3 min-w-0">
+                       <span className="font-bold text-blue-100 shrink-0">Material:</span>
+                       <span className="font-black truncate min-w-0">S/ {(formData.stripsUsed * avgWeightPerStrip * strip.avgCostPerKg).toFixed(2)}</span>
                     </div>
                     <div className="h-px bg-blue-500/50" />
-                    <div>
-                        <p className="text-[9px] font-black text-blue-200 uppercase tracking-widest mb-1">Costo Unitario</p>
-                        <p className="text-2xl font-black">
+                    <div className="min-w-0">
+                        <p className="text-[9px] font-black text-blue-200 uppercase tracking-wide mb-1">Costo Unitario</p>
+                        <p className="text-2xl font-black truncate min-w-0">
                           S/ {formData.pieces ? ((formData.stripsUsed * avgWeightPerStrip * strip.avgCostPerKg) / Number(formData.pieces)).toFixed(4) : '0.0000'}
                         </p>
                     </div>
@@ -285,17 +291,17 @@ export function OutsourcedProductionForm({ strip, onClose }: OutsourcedProductio
       </form>
 
       {/* FOOTER FIJO */}
-      <footer className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0">
+      <footer className="p-5 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row justify-end gap-3 shrink-0">
         <button 
           onClick={onClose}
-          className="px-6 py-3 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-600 transition"
+          className="px-6 py-3 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-600 transition order-2 sm:order-1"
         >
           Cancelar
         </button>
         <button 
           onClick={handleSubmit}
           disabled={isSubmitting || catalog.length === 0 || !formData.pieces || isExceeding}
-          className="px-10 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition shadow-xl disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+          className="px-10 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition shadow-xl disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2 order-1 sm:order-2"
         >
           {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
           {isSubmitting ? "REGISTRANDO..." : "FINALIZAR PRODUCCIÓN"}

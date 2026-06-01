@@ -4,12 +4,9 @@ import { useState } from "react";
 import { Sale } from "@/types";
 import {
   Plus,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  X,
   FileSpreadsheet,
   Download,
+  ChevronDown,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -20,9 +17,9 @@ import { SalesMetrics } from "@/components/sales/SalesMetrics";
 import { SalesFilters } from "@/components/sales/SalesFilters";
 import { SalesTable } from "@/components/sales/SalesTable";
 import { SaleDetailsModal } from "@/components/sales/SaleDetailsModal";
-import { BulkUploadSales } from "@/components/sales/BulkUploadSales";
+import { TablePagination } from "@/components/ui/TablePagination";
 
-function HeaderOptions({ onExport, onOpenExcel }: { onExport: () => void; onOpenExcel: () => void }) {
+function HeaderOptions({ onExport }: { onExport: () => void }) {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <div className="relative z-40">
@@ -44,7 +41,7 @@ function HeaderOptions({ onExport, onOpenExcel }: { onExport: () => void; onOpen
               <Download size={18} className="text-slate-400" /> Descargar Reporte Excel
             </button>
             <button
-              onClick={() => { setIsOpen(false); onOpenExcel(); }}
+              onClick={() => { setIsOpen(false); window.location.href = "/admin/sales/import"; }}
               className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-3 font-medium transition"
             >
               <FileSpreadsheet size={18} className="text-green-500" /> Importar Ventas (Excel)
@@ -62,16 +59,16 @@ export default function SalesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [businessLine, setBusinessLine] = useState<"ALL" | "drywall" | "roofing" | "metallic-roofing" | "trading" | "services">("ALL");
+  const [sunatFilter, setSunatFilter] = useState("ALL");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [pageSize, setPageSize] = useState(10);
 
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
-  const [showExcelModal, setShowExcelModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const { sales, loading, filteredTotal, currentPage, hasNextPage, nextPage, prevPage, refresh } = useSales({
-    pageSize, statusFilter, businessLine, searchTerm, startDate, endDate,
+    pageSize, statusFilter, businessLine, searchTerm, startDate, endDate, sunatFilter,
   });
 
   const handleApprove = async (sale: Sale) => {
@@ -116,7 +113,6 @@ export default function SalesPage() {
         <div className="flex items-center gap-3 w-full md:w-auto">
           <HeaderOptions
             onExport={() => toast.success("Generando Excel...")}
-            onOpenExcel={() => setShowExcelModal(true)}
           />
           <button
             onClick={() => (window.location.href = "/admin/sales/new")}
@@ -136,6 +132,8 @@ export default function SalesPage() {
         setStatusFilter={setStatusFilter}
         businessLine={businessLine}
         setBusinessLine={setBusinessLine}
+        sunatFilter={sunatFilter}
+        setSunatFilter={setSunatFilter}
         startDate={startDate}
         setStartDate={setStartDate}
         endDate={endDate}
@@ -166,64 +164,19 @@ export default function SalesPage() {
         )}
       </div>
 
-      <div className="flex flex-col sm:flex-row items-center justify-between bg-white px-6 py-4 border border-slate-200 rounded-xl shadow-sm gap-4 mt-6">
-        <div className="w-full sm:w-1/3 flex justify-center sm:justify-start">
-          <div className="flex flex-col">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Operaciones encontradas</p>
-            <p className="text-sm font-black text-blue-600">
-              {filteredTotal} {filteredTotal === 1 ? "registro" : "registros"}
-            </p>
-          </div>
-        </div>
-        <div className="w-full sm:w-1/3 flex items-center justify-center gap-3">
-          <button
-            onClick={prevPage}
-            disabled={currentPage === 1 || loading}
-            className="flex items-center justify-center w-10 h-10 bg-white text-slate-600 rounded-xl hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm border border-slate-200"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <div className="text-xs font-bold text-slate-500 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-100 shadow-inner">
-            Página <span className="font-black text-slate-800 text-sm mx-1">{currentPage}</span>
-          </div>
-          <button
-            onClick={nextPage}
-            disabled={!hasNextPage || loading}
-            className="flex items-center justify-center w-10 h-10 bg-white text-slate-600 rounded-xl hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm border border-slate-200"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
-        <div className="w-full sm:w-1/3 flex items-center justify-center sm:justify-end gap-2">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Mostrar:</label>
-          <select
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-2 py-1.5 outline-none focus:border-blue-500 transition shadow-sm"
-          >
-            <option value={10}>10 ítems</option>
-            <option value={25}>25 ítems</option>
-            <option value={50}>50 ítems</option>
-          </select>
-        </div>
-      </div>
+      <TablePagination
+        currentPage={currentPage}
+        pageSize={pageSize}
+        totalItems={filteredTotal}
+        onPageChange={(page) => {
+          if (page > currentPage) nextPage();
+          else if (page < currentPage) prevPage();
+        }}
+        onPageSizeChange={setPageSize}
+      />
 
       {viewingSale && (
         <SaleDetailsModal sale={viewingSale} onClose={() => setViewingSale(null)} onSuccess={refresh} />
-      )}
-
-      {showExcelModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl relative my-8 animate-in fade-in zoom-in-95">
-            <button
-              onClick={() => { setShowExcelModal(false); refresh(); }}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 z-10 bg-white rounded-full p-1 shadow-sm border border-slate-100 transition"
-            >
-              <X size={20} />
-            </button>
-            <BulkUploadSales />
-          </div>
-        </div>
       )}
     </div>
   );

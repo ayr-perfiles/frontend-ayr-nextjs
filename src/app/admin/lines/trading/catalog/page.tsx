@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, ShoppingCart, Search, X } from "lucide-react";
+import { Plus, ShoppingCart, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import { useTradingCatalog } from "@/modules/trading/hooks/useTradingCatalog";
@@ -12,16 +12,29 @@ import {
   reactivateProduct,
 } from "@/modules/trading/services/catalogService";
 import type { TradingProduct, TradingCategory } from "@/modules/trading/types";
+import { TableFilters, FilterGroup } from "@/components/ui/TableFilters";
+import { TablePagination } from "@/components/ui/TablePagination";
 
-const CATEGORY_OPTIONS: TradingCategory[] = ['POLICARBONATO', 'TUBO', 'AUTOPERFORANTE', 'ACCESORIO', 'OTRO'];
+const CATEGORY_OPTIONS: TradingCategory[] = [
+  "POLICARBONATO",
+  "TUBO",
+  "AUTOPERFORANTE",
+  "ACCESORIO",
+  "OTRO",
+];
 
 export default function TradingCatalogPage() {
   const { role } = useAuth();
   const isAdmin = role === "ADMIN";
 
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<TradingCategory | "">("");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ALL");
+  const [categoryFilter, setCategoryFilter] = useState<TradingCategory | "">(
+    "",
+  );
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">(
+    "ALL",
+  );
+  const [pageSize, setPageSize] = useState(50);
 
   const filters = {
     searchTerm: search || undefined,
@@ -32,8 +45,12 @@ export default function TradingCatalogPage() {
   const { products, loading, refresh } = useTradingCatalog(filters);
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<TradingProduct | null>(null);
-  const [viewingProduct, setViewingProduct] = useState<TradingProduct | null>(null);
+  const [editingProduct, setEditingProduct] = useState<TradingProduct | null>(
+    null,
+  );
+  const [viewingProduct, setViewingProduct] = useState<TradingProduct | null>(
+    null,
+  );
 
   // Deactivate flow
   const [deactivating, setDeactivating] = useState<TradingProduct | null>(null);
@@ -78,7 +95,37 @@ export default function TradingCatalogPage() {
     }
   }
 
-  const hasFilters = search || categoryFilter || statusFilter !== "ALL";
+  const filterGroups: FilterGroup[] = [
+    {
+      id: "category",
+      label: "Categoría",
+      value: categoryFilter || "ALL",
+      onChange: (v) => setCategoryFilter(v === "ALL" ? "" : (v as TradingCategory)),
+      options: [
+        { value: "ALL", label: "Todas las categorías" },
+        ...CATEGORY_OPTIONS.map((c) => ({ value: c, label: c })),
+      ],
+      layout: "grid-2",
+    },
+    {
+      id: "status",
+      label: "Estado",
+      value: statusFilter,
+      onChange: (v) => setStatusFilter(v as "ALL" | "ACTIVE" | "INACTIVE"),
+      options: [
+        { value: "ALL", label: "Todos" },
+        { value: "ACTIVE", label: "Activos" },
+        { value: "INACTIVE", label: "Inactivos" },
+      ],
+      layout: "list",
+    },
+  ];
+
+  const handleClearAll = () => {
+    setSearch("");
+    setCategoryFilter("");
+    setStatusFilter("ALL");
+  };
 
   return (
     <div className="space-y-6">
@@ -89,9 +136,13 @@ export default function TradingCatalogPage() {
             <ShoppingCart size={22} />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Catálogo de Reventa</h1>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight">
+              Catálogo de Reventa
+            </h1>
             <p className="text-sm text-gray-500 font-medium">
-              {loading ? "Cargando…" : `${products.length} producto${products.length !== 1 ? "s" : ""}`}
+              {loading
+                ? "Cargando…"
+                : `${products.length} producto${products.length !== 1 ? "s" : ""}`}
             </p>
           </div>
         </div>
@@ -106,68 +157,38 @@ export default function TradingCatalogPage() {
         )}
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-        <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por SKU o nombre…"
-              className="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl font-medium text-sm outline-none focus:border-amber-400 focus:bg-white transition"
-            />
-          </div>
-
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value as TradingCategory | "")}
-            className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm outline-none focus:border-amber-400 min-w-[150px]"
-          >
-            <option value="">Todas las categorías</option>
-            {CATEGORY_OPTIONS.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-
-          <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm font-bold bg-gray-50">
-            {(["ALL", "ACTIVE", "INACTIVE"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-2.5 transition ${
-                  statusFilter === s ? "bg-amber-600 text-white" : "text-gray-500 hover:bg-gray-100"
-                }`}
-              >
-                {s === "ALL" ? "Todos" : s === "ACTIVE" ? "Activos" : "Inactivos"}
-              </button>
-            ))}
-          </div>
-
-          {hasFilters && (
-            <button
-              onClick={() => {
-                setSearch("");
-                setCategoryFilter("");
-                setStatusFilter("ALL");
-              }}
-              className="flex items-center gap-1 px-3 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 transition"
-            >
-              <X size={14} /> Limpiar
-            </button>
-          )}
-        </div>
-      </div>
-
-      <ProductCatalogTable
-        products={products}
-        loading={loading}
-        canEdit={isAdmin}
-        onView={setViewingProduct}
-        onEdit={setEditingProduct}
-        onToggleActive={handleToggleActive}
+      <TableFilters
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: "Buscar por SKU o nombre…",
+          isSearching: loading && !!search,
+        }}
+        filterGroups={filterGroups}
+        onClearAll={handleClearAll}
       />
+
+      <div className="space-y-4">
+        <ProductCatalogTable
+          products={products}
+          loading={loading}
+          canEdit={isAdmin}
+          onView={setViewingProduct}
+          onEdit={setEditingProduct}
+          onToggleActive={handleToggleActive}
+          pageSize={pageSize}
+        />
+
+        <TablePagination
+          currentPage={1}
+          pageSize={pageSize}
+          totalItems={products.length}
+          onPageChange={() => {}}
+          pageSizeOptions={[15, 30, 50, 100]}
+          onPageSizeChange={setPageSize}
+          totalLabel="Productos"
+        />
+      </div>
 
       {/* Modals */}
       {showAddModal && (

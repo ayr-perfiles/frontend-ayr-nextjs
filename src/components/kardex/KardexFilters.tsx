@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from "react";
-import { PackageSearch, Filter, X, Calendar, ChevronDown } from "lucide-react";
+import React from "react";
+import { PackageSearch, ChevronDown, Calendar, Clock } from "lucide-react";
 import { ProductConfig } from "@/services/catalogService";
+import { TableFilters } from "@/components/ui/TableFilters";
 
 interface KardexFiltersProps {
   selectedSku: string;
@@ -21,20 +22,6 @@ export function KardexFilters({
   setEndDate,
   catalog,
 }: KardexFiltersProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node))
-        setIsOpen(false);
-    };
-    if (isOpen) document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen]);
-
-  const activeFiltersCount = (startDate ? 1 : 0) + (endDate ? 1 : 0);
-
   const applyDatePreset = (daysBack: number, isMonth = false) => {
     const today = new Date();
     const end = today.toISOString().split("T")[0];
@@ -45,11 +32,36 @@ export function KardexFilters({
     setEndDate(end);
   };
 
+  const extraContent = (
+    <div className="space-y-4">
+      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+        <Clock size={12} /> Presets de Tiempo
+      </h4>
+      <div className="grid grid-cols-3 gap-2">
+        <button
+          onClick={() => applyDatePreset(0)}
+          className="bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 text-[10px] font-black py-2.5 rounded-xl transition uppercase tracking-widest border border-slate-200/50"
+        >
+          Hoy
+        </button>
+        <button
+          onClick={() => applyDatePreset(7)}
+          className="bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 text-[10px] font-black py-2.5 rounded-xl transition uppercase tracking-widest border border-slate-200/50"
+        >
+          7 Días
+        </button>
+        <button
+          onClick={() => applyDatePreset(0, true)}
+          className="bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 text-[10px] font-black py-2.5 rounded-xl transition uppercase tracking-widest border border-slate-200/50"
+        >
+          Mes
+        </button>
+      </div>
+    </div>
+  );
+
   return (
-    <div
-      className="flex flex-col sm:flex-row gap-3 relative z-30"
-      ref={menuRef}
-    >
+    <div className="flex flex-col sm:flex-row gap-3 relative z-30">
       {/* 1. SELECTOR PRINCIPAL DE SKU */}
       <div className="relative flex-1">
         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -73,108 +85,22 @@ export function KardexFilters({
         />
       </div>
 
-      {/* 2. BOTÓN DE FECHAS */}
-      <div className="relative sm:w-auto w-full">
-        <button
-          disabled={!selectedSku}
-          onClick={() => setIsOpen(!isOpen)}
-          className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold transition border shadow-sm ${
-            activeFiltersCount > 0
-              ? "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
-              : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
-        >
-          <Filter
-            size={18}
-            className={
-              activeFiltersCount > 0 ? "text-blue-600" : "text-slate-400"
-            }
-          />
-          Fechas
-          {activeFiltersCount > 0 && (
-            <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full ml-1">
-              {activeFiltersCount}
-            </span>
-          )}
-          <ChevronDown
-            size={16}
-            className={`ml-1 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
-          />
-        </button>
-
-        {isOpen && (
-          <div className="absolute right-0 sm:left-auto left-0 top-full mt-2 w-full sm:w-80 bg-white border border-slate-100 rounded-2xl shadow-2xl p-5 animate-in fade-in zoom-in-95 z-50">
-            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <Calendar size={14} /> Rango del Kardex
-            </h4>
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  onClick={() => applyDatePreset(0)}
-                  className="bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 text-[10px] font-black py-2 rounded-lg transition uppercase"
-                >
-                  Hoy
-                </button>
-                <button
-                  onClick={() => applyDatePreset(7)}
-                  className="bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 text-[10px] font-black py-2 rounded-lg transition uppercase"
-                >
-                  7 Días
-                </button>
-                <button
-                  onClick={() => applyDatePreset(0, true)}
-                  className="bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 text-[10px] font-black py-2 rounded-lg transition uppercase"
-                >
-                  Mes
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 ml-1">
-                    Desde
-                  </span>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-2 py-2 outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 ml-1">
-                    Hasta
-                  </span>
-                  <input
-                    type="date"
-                    min={startDate}
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-2 py-2 outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="mt-5 pt-4 border-t border-slate-100 flex gap-2">
-              <button
-                onClick={() => setIsOpen(false)}
-                className="flex-1 bg-slate-100 text-slate-600 hover:bg-slate-200 py-2.5 rounded-xl text-sm font-bold transition"
-              >
-                Cerrar
-              </button>
-              {activeFiltersCount > 0 && (
-                <button
-                  onClick={() => {
-                    setStartDate("");
-                    setEndDate("");
-                  }}
-                  className="flex-1 bg-red-50 text-red-600 hover:bg-red-100 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1 transition"
-                >
-                  <X size={16} /> Limpiar
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+      {/* 2. TABLE FILTERS (FECHAS) */}
+      <div className="sm:w-auto w-full">
+        <TableFilters
+          dateRange={{
+            startDate,
+            endDate,
+            setStartDate,
+            setEndDate,
+          }}
+          extraContent={extraContent}
+          onClearAll={() => {
+            setStartDate("");
+            setEndDate("");
+          }}
+          rightSlot={null}
+        />
       </div>
     </div>
   );

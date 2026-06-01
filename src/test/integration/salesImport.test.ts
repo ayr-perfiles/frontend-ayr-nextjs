@@ -3,62 +3,112 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 const TEST_PROJECT_ID = `test-sales-import-${Date.now()}`;
 vi.stubEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID', TEST_PROJECT_ID);
 
-import { 
-  setupIntegrationTest, 
-  clearFirestore, 
-  cleanupIntegrationTest, 
+import {
+  setupIntegrationTest,
+  clearFirestore,
+  cleanupIntegrationTest,
   seedStock
 } from './firestore-helpers';
 import { getStockStrategy } from '@/core/sales/strategies';
-import { doc, getDoc, collection, getDocs, writeBatch, serverTimestamp, query, where } from 'firebase/firestore';
+import { classifyNCStockAction, NcStockAction } from '@/utils/importHelpers';
+import { doc, getDoc, collection, getDocs, writeBatch, serverTimestamp, query, where, runTransaction, DocumentSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase/clientApp';
 
 vi.unmock('@/lib/firebase/clientApp');
 
 // Simulación de la función de importación masiva (BulkUploadSales.tsx)
-// con la lógica de idempotencia requerida.
+// con la lógica de idempotencia y NC real.
 async function simulateImport(parsedSales: any[]) {
-  const batches = [];
-  let currentBatch = writeBatch(db);
-  let opCount = 0;
+  let importedCount = 0;
+  const omittedIds: string[] = [];
 
   for (const sale of parsedSales) {
-    // 1. Verificación de Idempotencia (documentNumber)
-    const existingDoc = await getDoc(doc(db, 'sales', sale.documentNumber));
-    if (existingDoc.exists()) {
-      continue; // Skip if already imported
-    }
+    try {
+      const result = await runTransaction(db, async (tx) => {
+        const saleRef = doc(db, "sales", sale.documentNumber);
+        
+        // a. LECTURA 1: Verificar existencia de la venta
+        const existingSaleSnap = await tx.get(saleRef);
+        if (existingSaleSnap.exists()) {
+          return "OMITTED";
+        }
 
-    currentBatch.set(doc(db, 'sales', sale.documentNumber), {
-      ...sale,
-      uploadedAt: serverTimestamp(),
-    });
-    opCount++;
+        // b. LECTURAS DE STOCK: Agrupar referencias únicas para cumplir la regla read-before-write
+        const stockRefsToRead = new Map<string, any>();
+        for (const item of sale.items) {
+          if (item.sku && item.sku !== "GENERIC" && !item.isCoil) {
+            const strategy = getStockStrategy(item.businessLine);
+            const stockRef = strategy.getStockRef(item.sku);
+            stockRefsToRead.set(stockRef.path, { ref: stockRef, strategy, sku: item.sku });
+          }
+        }
 
-    for (const item of sale.items) {
-      if (!item.isCoil) {
-        const strategy = getStockStrategy(item.businessLine);
-        // En una app real, aquí leeríamos el stock actual. 
-        // Para el test, simplificamos asumiendo que el strategy maneja el decremento.
-        const stockRef = strategy.getStockRef(item.sku);
-        const snap = await getDoc(stockRef);
-        const currentQty = strategy.extractQuantity(snap);
-        const newBalance = currentQty - item.quantity;
+        const stockSnaps = new Map<string, DocumentSnapshot>();
+        for (const [path, info] of Array.from(stockRefsToRead.entries())) {
+           const snap = await tx.get(info.ref);
+           stockSnaps.set(path, snap as DocumentSnapshot);
+        }
 
-        strategy.writeSaleDecrement({
-          sku: item.sku,
-          quantity: item.quantity,
-          newBalance,
-          saleId: sale.documentNumber,
-          customerName: sale.customerName,
-          sellerId: 'SISTEMA'
-        }, snap, currentBatch as any);
-        opCount += 2;
+        // c. ESCRITURAS: Crear venta
+        const skusArray = Array.from(new Set(sale.items.map((i: any) => i.sku)));
+        tx.set(saleRef, {
+          ...sale,
+          skus: skusArray,
+          uploadedAt: serverTimestamp(),
+          metadata: { 
+            isHistorical: true, 
+            documentType: sale.documentType,
+            adjustedDocument: sale.adjustedDocument,
+          },
+        });
+
+        // d. ESCRITURAS DE STOCK
+        for (const item of sale.items) {
+          if (item.sku && item.sku !== "GENERIC" && !item.isCoil) {
+            const strategy = getStockStrategy(item.businessLine);
+            const stockRef = strategy.getStockRef(item.sku);
+            const stockSnap = stockSnaps.get(stockRef.path)!;
+            
+            const currentQty = strategy.extractQuantity(stockSnap);
+            
+            const isNCWithStock = sale.documentType === 'NOTA CRÉDITO' && sale.ncStockAction === 'RETURNS_STOCK';
+            const shouldMoveStock = (sale.documentType === 'FACTURA' || sale.documentType === 'BOLETA') || isNCWithStock;
+            
+            if (shouldMoveStock) {
+              const newBalance = isNCWithStock ? currentQty + item.quantity : currentQty - item.quantity;
+              const writeParams = {
+                sku: item.sku,
+                quantity: item.quantity,
+                newBalance,
+                saleId: sale.documentNumber,
+                customerName: sale.customerName,
+                sellerId: sale.sellerId || 'SISTEMA',
+                avgCost: item.baseCost,
+                motivo: isNCWithStock ? `NC ${sale.documentNumber}` : undefined,
+                ref: (sale.adjustedDocument as string) || undefined,
+              };
+
+              if (isNCWithStock) {
+                strategy.writeSaleReversal(writeParams, stockSnap, tx);
+              } else {
+                strategy.writeSaleDecrement(writeParams, stockSnap, tx);
+              }
+            }
+          }
+        }
+        
+        return "IMPORTED";
+      });
+
+      if (result === "OMITTED") {
+        omittedIds.push(sale.documentNumber);
+      } else {
+        importedCount++;
       }
+    } catch (txError) {
+      console.error(`Error transaccional en venta ${sale.documentNumber}:`, txError);
     }
   }
-
-  if (opCount > 0) await currentBatch.commit();
 }
 
 describe('Sales Import Logic (Integration)', () => {
@@ -80,6 +130,8 @@ describe('Sales Import Logic (Integration)', () => {
     
     const saleData = {
       documentNumber: 'F001-000001',
+      documentType: 'FACTURA',
+      adjustedDocument: '',
       customerName: 'Cliente Test',
       items: [{
         sku,
@@ -106,40 +158,97 @@ describe('Sales Import Logic (Integration)', () => {
     expect(movesSnap.docs).toHaveLength(1); // Solo un movimiento registrado
   });
 
-  it('multi-línea: descuenta de las colecciones correctas via strategy', async () => {
-    await seedStock(db, 'inventory_stock', 'P38', { totalQuantity: 50 }); // Drywall
-    await seedStock(db, 'trading_stock', 'TUBO-1', { quantity: 20 }); // Trading
+  it('NC: RETURNS_STOCK mueve stock y peso neto difiere de MONEY_ONLY', async () => {
+    const skuSI = 'SKU-SI';
+    const skuNO = 'SKU-NO';
+    await seedStock(db, 'roofing_stock', skuSI, { quantity: 100, avgCost: 10 });
+    await seedStock(db, 'roofing_stock', skuNO, { quantity: 100, avgCost: 10 });
 
-    const multiSale = {
-      documentNumber: 'F001-MULTI',
-      customerName: 'Multi Cliente',
-      items: [
-        { sku: 'P38', quantity: 5, businessLine: 'drywall', isCoil: false },
-        { sku: 'TUBO-1', quantity: 2, businessLine: 'trading', isCoil: false }
-      ]
+    // RETURNS_STOCK: stock entra → totalWeight = -10 (reversal de salida)
+    const saleSI = {
+      documentNumber: 'NC-001',
+      documentType: 'NOTA CRÉDITO',
+      adjustedDocument: '',
+      ncStockAction: 'RETURNS_STOCK' as NcStockAction,
+      customerName: 'Cliente SI',
+      totalWeight: -10,
+      items: [{
+        sku: skuSI,
+        quantity: 10,
+        businessLine: 'roofing',
+        isCoil: false,
+        baseCost: 10
+      }]
     };
 
-    await simulateImport([multiSale]);
+    // MONEY_ONLY: sin movimiento de stock → totalWeight = 0
+    const saleNO = {
+      documentNumber: 'NC-002',
+      documentType: 'NOTA CRÉDITO',
+      adjustedDocument: '',
+      ncStockAction: 'MONEY_ONLY' as NcStockAction,
+      customerName: 'Cliente NO',
+      totalWeight: 0,
+      items: [{
+        sku: skuNO,
+        quantity: 10,
+        businessLine: 'roofing',
+        isCoil: false,
+        baseCost: 10
+      }]
+    };
 
-    const snapDry = await getDoc(doc(db, 'inventory_stock', 'P38'));
-    expect(snapDry.data()?.totalQuantity).toBe(45);
+    await simulateImport([saleSI, saleNO]);
 
-    const snapTrad = await getDoc(doc(db, 'trading_stock', 'TUBO-1'));
-    expect(snapTrad.data()?.quantity).toBe(18);
+    const stockSI = await getDoc(doc(db, 'roofing_stock', skuSI));
+    const stockNO = await getDoc(doc(db, 'roofing_stock', skuNO));
+    const saleSIDoc = await getDoc(doc(db, 'sales', 'NC-001'));
+    const saleNODoc = await getDoc(doc(db, 'sales', 'NC-002'));
+
+    // Stock final: RETURNS_STOCK sube, MONEY_ONLY no cambia
+    expect(stockSI.data()?.quantity).toBe(110);
+    expect(stockNO.data()?.quantity).toBe(100);
+    expect(stockSI.data()?.quantity).not.toBe(stockNO.data()?.quantity);
+
+    // Peso neto: ambas ramas producen valores distintos
+    expect(saleSIDoc.data()?.totalWeight).toBe(-10);
+    expect(saleNODoc.data()?.totalWeight).toBe(0);
+    expect(saleSIDoc.data()?.totalWeight).not.toBe(saleNODoc.data()?.totalWeight);
   });
 
-  it('services: no realiza movimientos de stock', async () => {
-    const serviceSale = {
-      documentNumber: 'F001-SERV',
-      customerName: 'Servicios SAC',
-      items: [
-        { sku: 'CORTE-01', quantity: 1, businessLine: 'services', isCoil: false }
-      ]
+  it('NC Fase 2: SUNAT "Sí" con tilde produce RETURNS_STOCK end-to-end', async () => {
+    // Simula el flujo real: AFECTA_STOCK viene del Excel como "Sí" (con tilde, formato SUNAT)
+    const sku = 'SKU-SUNAT';
+    await seedStock(db, 'roofing_stock', sku, { quantity: 50, avgCost: 15 });
+
+    const ncStockAction = classifyNCStockAction('Sí'); // debe devolver 'RETURNS_STOCK'
+    expect(ncStockAction).toBe('RETURNS_STOCK');
+
+    const saleNC = {
+      documentNumber: 'NC-SUNAT-001',
+      documentType: 'NOTA CRÉDITO',
+      adjustedDocument: 'FFB1-0001',
+      ncStockAction,
+      customerName: 'Cliente SUNAT',
+      totalWeight: -5,
+      items: [{
+        sku,
+        quantity: 5,
+        businessLine: 'roofing',
+        isCoil: false,
+        baseCost: 15
+      }]
     };
 
-    await simulateImport([serviceSale]);
+    await simulateImport([saleNC]);
 
-    const movesSnap = await getDocs(collection(db, 'services_stock_movements'));
-    expect(movesSnap.docs).toHaveLength(0); // Services strategy is NO-OP
+    const stockSnap = await getDoc(doc(db, 'roofing_stock', sku));
+    // "Sí" → RETURNS_STOCK → stock IN: 50 + 5 = 55
+    expect(stockSnap.data()?.quantity).toBe(55);
+
+    const movesSnap = await getDocs(collection(db, 'roofing_stock_movements'));
+    const movement = movesSnap.docs.find(d => d.data().sku === sku);
+    expect(movement?.data()?.type).toBe('ENTRADA');
+    expect(movement?.data()?.quantity).toBe(5);
   });
 });

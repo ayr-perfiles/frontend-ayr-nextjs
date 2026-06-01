@@ -1,15 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useProduction } from "@/modules/drywall/hooks/useProduction";
 import { EmptyState } from "@/components/ui/EmptyState";
 import {
   Factory,
-  Package,
   History,
-  DollarSign,
-  TrendingUp,
-  Download,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -26,6 +23,8 @@ import { StripStock } from "@/types";
 
 export default function ProductionPage() {
   const { user, role } = useAuth();
+  const searchParams = useSearchParams();
+  const skuParam = searchParams.get("sku");
 
   const { stock } = useProduction();
 
@@ -35,7 +34,7 @@ export default function ProductionPage() {
 
   // FILTROS DE PRODUCCIÓN
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterSku, setFilterSku] = useState("ALL");
+  const [filterSku, setFilterSku] = useState(skuParam || "ALL");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [pageSize, setPageSize] = useState(10);
@@ -51,6 +50,12 @@ export default function ProductionPage() {
     prevPage,
     refresh,
   } = useProductionLogs({ searchTerm, skuFilter: filterSku, startDate, endDate, pageSize });
+
+  useEffect(() => {
+    if (skuParam) {
+      setFilterSku(skuParam);
+    }
+  }, [skuParam]);
 
   useEffect(() => {
     if (error) toast.error(error);
@@ -83,40 +88,6 @@ export default function ProductionPage() {
     }
   };
 
-  const exportStockToExcel = () => {
-    const headers = [
-      "Producto (SKU)",
-      "Unidades Físicas",
-      "Costo Unitario (S/)",
-      "Valor Total (S/)",
-    ];
-    const rows = stock.map((item) => {
-      const costPerPiece = item.lastCostPerPiece || 0;
-      return [
-        item.sku,
-        item.totalQuantity,
-        costPerPiece.toFixed(4),
-        (item.totalQuantity * costPerPiece).toFixed(2),
-      ];
-    });
-    const csvContent = [
-      headers.join(","),
-      ...rows.map((r) => r.join(",")),
-    ].join("\n");
-    const blob = new Blob(["﻿" + csvContent], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute(
-      "download",
-      `Valorizacion_Stock_${new Date().toLocaleDateString()}.csv`,
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
     <div className="space-y-8 pb-10">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -125,7 +96,7 @@ export default function ProductionPage() {
             <Factory className="text-blue-600" /> Producción y Costos
           </h1>
           <p className="text-slate-500 font-medium mt-1">
-            Control de inventario valorizado y trazabilidad de máquina (Drywall).
+            Trazabilidad de máquina y control de costos de producción (Drywall).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
@@ -135,15 +106,13 @@ export default function ProductionPage() {
           >
             <Factory size={18} /> Iniciar Producción
           </button>
-          <button
-            onClick={exportStockToExcel}
-            className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-700 transition active:scale-95 shadow-md shadow-emerald-200 font-black uppercase tracking-widest text-xs"
-          >
-            <Download size={18} /> Exportar Stock
-          </button>
         </div>
       </div>
 
+      {/* 
+        TODO: Migrar este selector a la nueva página de Inventario de Flejes (/admin/coils/strips)
+        para centralizar la gestión de stock tercerizado.
+      */}
       {showStartModal && (
         <StripsProductionModal
           onClose={() => setShowStartModal(false)}
@@ -161,73 +130,6 @@ export default function ProductionPage() {
           </div>
         </div>
       )}
-
-      <section>
-        <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-          <Package size={16} /> Stock Disponible para Venta
-        </h2>
-
-        {stock.length === 0 && !loading ? (
-          <div className="bg-white rounded-xl border border-dashed border-slate-300">
-            <EmptyState
-              icon="Factory"
-              title="Sin stock registrado"
-              description="Aún no hay productos procesados en planta."
-            />
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {stock.map((item) => {
-              const costPerPiece = item.lastCostPerPiece || 0;
-              const totalValue = item.totalQuantity * costPerPiece;
-              return (
-                <div
-                  key={item.sku}
-                  className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition group"
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <span className="text-xs font-black text-slate-700 uppercase bg-slate-100 px-3 py-1 rounded-full group-hover:bg-blue-50 group-hover:text-blue-700 transition">
-                      {item.sku}
-                    </span>
-                    <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-                      <Package size={18} />
-                    </div>
-                  </div>
-                  <div className="mb-4">
-                    <p className="text-4xl font-black text-slate-800 tracking-tighter">
-                      {item.totalQuantity}
-                    </p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
-                      Unidades Físicas
-                    </p>
-                  </div>
-                  <div className="space-y-2 pt-4 border-t border-slate-100">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-500 font-bold flex items-center gap-1">
-                        <DollarSign size={12} /> Costo Unit.
-                      </span>
-                      <span className="font-mono font-black text-emerald-600">
-                        S/ {costPerPiece.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-500 font-bold flex items-center gap-1">
-                        <TrendingUp size={12} /> Valor Total
-                      </span>
-                      <span className="font-mono font-black text-slate-700">
-                        S/{" "}
-                        {totalValue.toLocaleString("es-PE", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
 
       <section>
         <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2 mt-8">

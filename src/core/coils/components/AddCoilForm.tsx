@@ -25,6 +25,8 @@ import {
   type CoilInvoiceHeader,
 } from "@/core/coils/schemas/coil";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
+import { functions } from "@/lib/firebase/clientApp";
+import { httpsCallable } from "firebase/functions";
 
 interface AddCoilFormProps {
   onOpenChange: (isOpen: boolean) => void;
@@ -40,7 +42,12 @@ interface CoilEntry {
   value: number | "";
 }
 
-type RowErrors = Partial<Record<"coilId" | "weight" | "width" | "thickness" | "finish" | "value", string>>;
+type RowErrors = Partial<
+  Record<
+    "coilId" | "weight" | "width" | "thickness" | "finish" | "value",
+    string
+  >
+>;
 
 const localDate = () => {
   const tzOffset = new Date().getTimezoneOffset() * 60000;
@@ -65,14 +72,20 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     exchangeRate: 1,
   };
 
-  const { values, setValues, errors, setErrors, validate } = useForm<CoilInvoiceHeader>(
-    coilInvoiceHeaderSchema,
-    initialHeader,
-  );
+  const { values, setValues, errors, setErrors, validate } =
+    useForm<CoilInvoiceHeader>(coilInvoiceHeaderSchema, initialHeader);
 
   // --- COIL ROWS ---
   const [coils, setCoils] = useState<CoilEntry[]>([
-    { uid: Date.now().toString(), coilId: "", weight: "", width: 1200, thickness: 0.45, finish: "", value: "" },
+    {
+      uid: Date.now().toString(),
+      coilId: "",
+      weight: "",
+      width: 1200,
+      thickness: 0.45,
+      finish: "",
+      value: "",
+    },
   ]);
   const [coilErrors, setCoilErrors] = useState<Record<string, RowErrors>>({});
 
@@ -82,12 +95,15 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       const fetchRate = async () => {
         setFetchingRate(true);
         try {
-          const res = await fetch(`/api/tipo-cambio?fecha=${values.invoiceDate}`);
+          const res = await fetch(
+            `/api/tipo-cambio?fecha=${values.invoiceDate}`,
+          );
           if (res.ok) {
             const data = await res.json();
             if (data.venta) {
               setValues((prev) => ({ ...prev, exchangeRate: data.venta }));
-              if (data.fallback) toast.error(`TC Referencial: S/ ${data.venta}`);
+              if (data.fallback)
+                toast.error(`TC Referencial: S/ ${data.venta}`);
               else toast.success(`TC Obtenido: S/ ${data.venta}`);
             }
           }
@@ -105,26 +121,44 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
 
   // --- RUC / DNI LOOKUP ---
   const handleSearchDoc = async () => {
-    if (values.docType === "LOCAL" && values.providerDoc.length !== 8 && values.providerDoc.length !== 11) {
+    if (
+      values.docType === "LOCAL" &&
+      values.providerDoc.length !== 8 &&
+      values.providerDoc.length !== 11
+    ) {
       toast.error("El documento debe tener 8 (DNI) u 11 (RUC) dígitos.");
       return;
     }
     setSearchingDoc(true);
     setValues((prev) => ({ ...prev, providerName: "" }));
+
+    const isRUC = values.providerDoc.length === 11;
+    const consultFn = httpsCallable(
+      functions,
+      isRUC ? "consultarRuc" : "consultarDni",
+    );
+
     try {
-      const response = await fetch(`/api/consulta-doc?numero=${values.providerDoc}`);
-      const data = await response.json();
-      if (!response.ok) throw new Error("No encontrado");
-      const isRUC = values.providerDoc.length === 11;
-      const nombre = isRUC
-        ? data.razon_social || data.razonSocial
-        : `${data.first_name} ${data.first_last_name} ${data.second_last_name}`;
-      if (nombre) {
-        setValues((prev) => ({ ...prev, providerName: nombre.toUpperCase() }));
-        toast.success("Proveedor encontrado");
-      } else throw new Error("Desconocido");
-    } catch {
-      toast.error("No se pudo encontrar el proveedor.");
+      const result: any = await consultFn(
+        isRUC ? { ruc: values.providerDoc } : { dni: values.providerDoc },
+      );
+      if (result.data.success) {
+        const data = result.data.data;
+        const nombre = isRUC
+          ? data.razonSocial || data.razon_social
+          : `${data.full_name}`;
+
+        if (nombre) {
+          setValues((prev) => ({
+            ...prev,
+            providerName: nombre.toUpperCase(),
+          }));
+          toast.success("Proveedor encontrado");
+        } else throw new Error("Desconocido");
+      }
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "No se pudo encontrar el proveedor.");
     } finally {
       setSearchingDoc(false);
     }
@@ -134,7 +168,15 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
   const addCoilRow = () => {
     setCoils([
       ...coils,
-      { uid: Date.now().toString(), coilId: "", weight: "", width: 1200, thickness: 0.45, finish: "", value: "" },
+      {
+        uid: Date.now().toString(),
+        coilId: "",
+        weight: "",
+        width: 1200,
+        thickness: 0.45,
+        finish: "",
+        value: "",
+      },
     ]);
   };
 
@@ -151,7 +193,11 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     });
   };
 
-  const updateCoil = (uid: string, field: keyof CoilEntry, val: CoilEntry[keyof CoilEntry]) => {
+  const updateCoil = (
+    uid: string,
+    field: keyof CoilEntry,
+    val: CoilEntry[keyof CoilEntry],
+  ) => {
     setCoils(coils.map((c) => (c.uid === uid ? { ...c, [field]: val } : c)));
     if (coilErrors[uid]?.[field as keyof RowErrors]) {
       setCoilErrors((prev) => ({
@@ -204,14 +250,17 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
         const docRef = doc(db, "coils", coil.coilId.toString().toUpperCase());
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          toast.error(`La serie ${coil.coilId.toString().toUpperCase()} ya existe. Revisa tus datos.`);
+          toast.error(
+            `La serie ${coil.coilId.toString().toUpperCase()} ya existe. Revisa tus datos.`,
+          );
           setLoading(false);
           return;
         }
 
         const weight = Number(coil.weight);
         const inputVal = Number(coil.value);
-        const finalTotalValuePEN = values.currency === "USD" ? inputVal * values.exchangeRate : inputVal;
+        const finalTotalValuePEN =
+          values.currency === "USD" ? inputVal * values.exchangeRate : inputVal;
         const exactCostPerKg = weight > 0 ? finalTotalValuePEN / weight : 0;
 
         batch.set(docRef, {
@@ -249,7 +298,10 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       );
       onOpenChange(false);
     } catch (error: unknown) {
-      toast.error("Error al guardar: " + (error instanceof Error ? error.message : "Error desconocido"));
+      toast.error(
+        "Error al guardar: " +
+          (error instanceof Error ? error.message : "Error desconocido"),
+      );
     } finally {
       setLoading(false);
     }
@@ -258,8 +310,14 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
   const hasHeaderErrors = Object.keys(errors).length > 0;
   const hasRowErrors = Object.keys(coilErrors).length > 0;
 
-  const totalInvoiceValue = coils.reduce((sum, c) => sum + (Number(c.value) || 0), 0);
-  const totalInvoiceWeight = coils.reduce((sum, c) => sum + (Number(c.weight) || 0), 0);
+  const totalInvoiceValue = coils.reduce(
+    (sum, c) => sum + (Number(c.value) || 0),
+    0,
+  );
+  const totalInvoiceWeight = coils.reduce(
+    (sum, c) => sum + (Number(c.weight) || 0),
+    0,
+  );
 
   return (
     <div className="flex flex-col h-full bg-slate-50 max-h-[90vh] w-full rounded-xl overflow-hidden shadow-2xl">
@@ -270,13 +328,18 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
             <Receipt size={22} />
           </div>
           <div>
-            <h2 className="text-xl font-black leading-tight">Factura de Compra</h2>
+            <h2 className="text-xl font-black leading-tight">
+              Factura de Compra
+            </h2>
             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">
               Ingreso de Materia Prima
             </p>
           </div>
         </div>
-        <button onClick={() => onOpenChange(false)} className="p-2 hover:bg-white/10 rounded-full transition">
+        <button
+          onClick={() => onOpenChange(false)}
+          className="p-2 hover:bg-white/10 rounded-full transition"
+        >
           <X size={24} />
         </button>
       </div>
@@ -293,7 +356,9 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5">
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Origen</label>
+              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">
+                Origen
+              </label>
               <select
                 value={values.docType}
                 onChange={(e) => {
@@ -337,26 +402,37 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     onClick={handleSearchDoc}
                     className="bg-slate-100 text-slate-600 px-3 rounded-lg hover:bg-blue-500 hover:text-white transition"
                   >
-                    {searchingDoc ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
+                    {searchingDoc ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <Search size={18} />
+                    )}
                   </button>
                 )}
               </div>
             </div>
 
             <div className="sm:col-span-2">
-              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Razón Social</label>
+              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">
+                Razón Social
+              </label>
               <input
                 type="text"
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none"
                 value={values.providerName}
                 onChange={(e) =>
-                  setValues((prev) => ({ ...prev, providerName: e.target.value.toUpperCase() }))
+                  setValues((prev) => ({
+                    ...prev,
+                    providerName: e.target.value.toUpperCase(),
+                  }))
                 }
               />
             </div>
 
             <div>
-              <label className={`block text-[11px] font-bold mb-1.5 uppercase ${errors.invoiceDate ? "text-red-500" : "text-blue-600"}`}>
+              <label
+                className={`block text-[11px] font-bold mb-1.5 uppercase ${errors.invoiceDate ? "text-red-500" : "text-blue-600"}`}
+              >
                 Fecha Factura *
               </label>
               <input
@@ -364,34 +440,49 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                 className={`w-full rounded-lg p-2.5 text-sm font-bold outline-none focus:border-blue-500 border ${errors.invoiceDate ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-200 text-blue-900"}`}
                 value={values.invoiceDate}
                 onChange={(e) => {
-                  setValues((prev) => ({ ...prev, invoiceDate: e.target.value }));
+                  setValues((prev) => ({
+                    ...prev,
+                    invoiceDate: e.target.value,
+                  }));
                   setErrors((prev) => ({ ...prev, invoiceDate: undefined }));
                 }}
               />
               {errors.invoiceDate && (
-                <p className="text-red-500 text-xs mt-1">{errors.invoiceDate}</p>
+                <p className="text-red-500 text-xs mt-1">
+                  {errors.invoiceDate}
+                </p>
               )}
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Factura N°</label>
+              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">
+                Factura N°
+              </label>
               <input
                 type="text"
                 placeholder="F001-000"
                 className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-sm font-bold outline-none focus:border-blue-500"
                 value={values.invoiceNumber}
                 onChange={(e) =>
-                  setValues((prev) => ({ ...prev, invoiceNumber: e.target.value.toUpperCase() }))
+                  setValues((prev) => ({
+                    ...prev,
+                    invoiceNumber: e.target.value.toUpperCase(),
+                  }))
                 }
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">Moneda</label>
+              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">
+                Moneda
+              </label>
               <select
                 value={values.currency}
                 onChange={(e) =>
-                  setValues((prev) => ({ ...prev, currency: e.target.value as "PEN" | "USD" }))
+                  setValues((prev) => ({
+                    ...prev,
+                    currency: e.target.value as "PEN" | "USD",
+                  }))
                 }
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500"
               >
@@ -401,7 +492,9 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
             </div>
 
             <div>
-              <label className={`block text-[11px] font-bold mb-1.5 uppercase ${errors.exchangeRate ? "text-red-500" : "text-slate-500"}`}>
+              <label
+                className={`block text-[11px] font-bold mb-1.5 uppercase ${errors.exchangeRate ? "text-red-500" : "text-slate-500"}`}
+              >
                 T. Cambio
               </label>
               <input
@@ -411,13 +504,20 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                 className={`w-full bg-white border rounded-lg p-2.5 text-sm font-bold disabled:bg-slate-100 outline-none focus:border-blue-500 ${errors.exchangeRate ? "border-red-300" : "border-slate-200"}`}
                 value={values.exchangeRate}
                 onChange={(e) => {
-                  setValues((prev) => ({ ...prev, exchangeRate: Number(e.target.value) }));
+                  setValues((prev) => ({
+                    ...prev,
+                    exchangeRate: Number(e.target.value),
+                  }));
                   setErrors((prev) => ({ ...prev, exchangeRate: undefined }));
                 }}
               />
-              {fetchingRate && <p className="text-xs text-blue-500 mt-1">Obteniendo TC...</p>}
+              {fetchingRate && (
+                <p className="text-xs text-blue-500 mt-1">Obteniendo TC...</p>
+              )}
               {errors.exchangeRate && (
-                <p className="text-red-500 text-xs mt-1">{errors.exchangeRate}</p>
+                <p className="text-red-500 text-xs mt-1">
+                  {errors.exchangeRate}
+                </p>
               )}
             </div>
           </div>
@@ -450,34 +550,52 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
 
             {coils.map((coil) => {
               const rowErr = coilErrors[coil.uid] ?? {};
-              const selectedFinish = finishes.find(f => f.id === coil.finish);
+              const selectedFinish = finishes.find((f) => f.id === coil.finish);
               return (
                 <div
                   key={coil.uid}
                   className={`grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 bg-white border rounded-lg relative transition ${Object.keys(rowErr).length > 0 ? "border-red-300 bg-red-50/20" : "border-slate-100 hover:border-blue-200 hover:shadow-md"}`}
                 >
                   <div className="lg:col-span-2">
-                    <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">N° Serie *</label>
+                    <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
+                      N° Serie *
+                    </label>
                     <input
                       type="text"
                       placeholder="F001-..."
                       className={`w-full border rounded-md p-2.5 text-sm font-black uppercase outline-none focus:bg-white focus:border-blue-500 ${rowErr.coilId ? "bg-red-50 border-red-300" : "bg-slate-50 border-slate-200"}`}
                       value={coil.coilId}
-                      onChange={(e) => updateCoil(coil.uid, "coilId", e.target.value.toUpperCase())}
+                      onChange={(e) =>
+                        updateCoil(
+                          coil.uid,
+                          "coilId",
+                          e.target.value.toUpperCase(),
+                        )
+                      }
                     />
-                    {rowErr.coilId && <p className="text-red-500 text-xs mt-1">{rowErr.coilId}</p>}
+                    {rowErr.coilId && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {rowErr.coilId}
+                      </p>
+                    )}
                   </div>
 
                   <div className="lg:col-span-2">
-                    <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">Acabado *</label>
+                    <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
+                      Acabado *
+                    </label>
                     <select
                       className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${rowErr.finish ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
                       value={coil.finish}
-                      onChange={(e) => updateCoil(coil.uid, "finish", e.target.value)}
+                      onChange={(e) =>
+                        updateCoil(coil.uid, "finish", e.target.value)
+                      }
                     >
                       <option value="">Seleccionar...</option>
                       {finishes.map((f) => (
-                        <option key={f.id} value={f.id}>{f.label}</option>
+                        <option key={f.id} value={f.id}>
+                          {f.label}
+                        </option>
                       ))}
                     </select>
                     {selectedFinish && (
@@ -485,42 +603,70 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                         Disponible para: {selectedFinish.lines.join(", ")}
                       </p>
                     )}
-                    {rowErr.finish && <p className="text-red-500 text-xs mt-1">{rowErr.finish}</p>}
+                    {rowErr.finish && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {rowErr.finish}
+                      </p>
+                    )}
                   </div>
 
                   <div className="lg:col-span-2">
-                    <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">Peso (kg) *</label>
+                    <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
+                      Peso (kg) *
+                    </label>
                     <input
                       type="number"
                       step="0.01"
                       className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${rowErr.weight ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
                       value={coil.weight}
-                      onChange={(e) => updateCoil(coil.uid, "weight", e.target.value)}
+                      onChange={(e) =>
+                        updateCoil(coil.uid, "weight", e.target.value)
+                      }
                     />
-                    {rowErr.weight && <p className="text-red-500 text-xs mt-1">{rowErr.weight}</p>}
+                    {rowErr.weight && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {rowErr.weight}
+                      </p>
+                    )}
                   </div>
 
                   <div className="lg:col-span-2">
-                    <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">Ancho (mm) *</label>
+                    <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
+                      Ancho (mm) *
+                    </label>
                     <input
                       type="number"
                       className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${rowErr.width ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
                       value={coil.width}
-                      onChange={(e) => updateCoil(coil.uid, "width", e.target.value)}
+                      onChange={(e) =>
+                        updateCoil(coil.uid, "width", e.target.value)
+                      }
                     />
-                    {rowErr.width && <p className="text-red-500 text-xs mt-1">{rowErr.width}</p>}
+                    {rowErr.width && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {rowErr.width}
+                      </p>
+                    )}
                   </div>
 
                   <div className="lg:col-span-1">
-                    <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">Espesor (mm) *</label>
+                    <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
+                      Espesor (mm) *
+                    </label>
                     <input
                       type="number"
                       step="0.01"
                       className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${rowErr.thickness ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
                       value={coil.thickness}
-                      onChange={(e) => updateCoil(coil.uid, "thickness", e.target.value)}
+                      onChange={(e) =>
+                        updateCoil(coil.uid, "thickness", e.target.value)
+                      }
                     />
-                    {rowErr.thickness && <p className="text-red-500 text-xs mt-1">{rowErr.thickness}</p>}
+                    {rowErr.thickness && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {rowErr.thickness}
+                      </p>
+                    )}
                   </div>
 
                   <div className="lg:col-span-2">
@@ -528,16 +674,25 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                       Valor {values.currency} *
                     </label>
                     <div className="relative">
-                      <DollarSign size={14} className="absolute left-3 top-3 text-emerald-500" />
+                      <DollarSign
+                        size={14}
+                        className="absolute left-3 top-3 text-emerald-500"
+                      />
                       <input
                         type="number"
                         step="0.01"
                         className={`pl-8 w-full border rounded-md p-2.5 text-sm font-black outline-none ${rowErr.value ? "bg-red-50 border-red-300 text-red-800" : "bg-emerald-50 border-emerald-200 text-emerald-800 focus:bg-white focus:border-emerald-500"}`}
                         value={coil.value}
-                        onChange={(e) => updateCoil(coil.uid, "value", e.target.value)}
+                        onChange={(e) =>
+                          updateCoil(coil.uid, "value", e.target.value)
+                        }
                       />
                     </div>
-                    {rowErr.value && <p className="text-red-500 text-xs mt-1">{rowErr.value}</p>}
+                    {rowErr.value && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {rowErr.value}
+                      </p>
+                    )}
                   </div>
 
                   <div className="lg:col-span-1 flex items-end justify-center pb-1">
@@ -569,24 +724,33 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       <div className="bg-white border-t border-slate-200 p-6 shrink-0 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-8">
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase">Peso Total Factura</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase">
+              Peso Total Factura
+            </p>
             <p className="text-xl font-black text-slate-800">
-              {totalInvoiceWeight.toLocaleString("es-PE")} <span className="text-xs text-slate-500">kg</span>
+              {totalInvoiceWeight.toLocaleString("es-PE")}{" "}
+              <span className="text-xs text-slate-500">kg</span>
             </p>
           </div>
           <div className="w-px h-8 bg-slate-200" />
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase">Monto Total Factura</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase">
+              Monto Total Factura
+            </p>
             <p className="text-2xl font-black text-emerald-600">
               {values.currency}{" "}
-              {totalInvoiceValue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+              {totalInvoiceValue.toLocaleString("es-PE", {
+                minimumFractionDigits: 2,
+              })}
             </p>
           </div>
         </div>
 
         <button
           onClick={handleSubmit}
-          disabled={loading || hasHeaderErrors || hasRowErrors || loadingFinishes}
+          disabled={
+            loading || hasHeaderErrors || hasRowErrors || loadingFinishes
+          }
           className="w-full md:w-auto bg-slate-900 text-white px-10 py-4 rounded-xl text-sm font-black flex items-center justify-center gap-3 hover:bg-blue-600 transition shadow-xl disabled:opacity-50"
         >
           {loading ? <Loader2 className="animate-spin" /> : <Save size={20} />}

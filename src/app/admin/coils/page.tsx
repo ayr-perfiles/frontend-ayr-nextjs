@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase/clientApp";
 import * as XLSX from "xlsx";
 import {
@@ -10,7 +10,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  orderBy,
 } from "firebase/firestore";
 import { Coil, CutOrder } from "@/types";
 import { Plus, Scissors } from "lucide-react";
@@ -29,12 +28,11 @@ import { useAuth } from "@/context/AuthContext";
 import { InventoryFilters } from "@/core/coils/components/InventoryFilters";
 import { EditData } from "@/core/coils/components/EditCoilModal";
 import InventoryTable from "@/core/coils/components/InventoryTable";
-import { TableSkeleton } from "@/components/ui/TableSkeleton";
 import { HeaderOptions } from "@/core/coils/components/HeaderOptions";
 import { InventoryMetrics } from "@/core/coils/components/InventoryMetrics";
-import { InventoryPagination } from "@/core/coils/components/InventoryPagination";
 import { InventoryModals } from "@/core/coils/components/InventoryModals";
 import SendToCutModal from "@/core/coils/components/SendToCutModal";
+import { TablePagination } from "@/components/ui/TablePagination";
 
 export default function CoilsPage() {
   const { user, role } = useAuth();
@@ -92,8 +90,6 @@ export default function CoilsPage() {
     error,
     currentPage,
     filteredTotal,
-    isAlgoliaMode,
-    algoliaTotalPages,
     hasNextPage,
     nextPage,
     prevPage,
@@ -395,76 +391,70 @@ export default function CoilsPage() {
       />
 
       <div className="relative">
-        {loading && coils.length === 0 ? (
-          <TableSkeleton rows={8} columns={11} />
-        ) : (
-          <>
-            {selectedIds.length > 0 && (
-              <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-[2rem] flex justify-between items-center animate-in slide-in-from-top-4 duration-300 shadow-sm">
-                <div className="flex items-center gap-4 ml-2">
-                   <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-100">
-                      <Scissors size={20} />
-                   </div>
-                   <p className="text-sm font-black text-blue-900 uppercase tracking-tighter">
-                     {selectedIds.length} Bobinas seleccionadas para corte
-                   </p>
-                </div>
-                <div className="flex gap-2">
-                   <button 
-                    onClick={() => setSelectedIds([])}
-                    className="px-6 py-2 text-slate-400 font-black text-xs uppercase tracking-widest hover:text-slate-600 transition"
-                   >
-                     Cancelar
-                   </button>
-                   <button 
-                    onClick={() => setShowCutModal(true)}
-                    className="px-8 py-2 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition shadow-lg shadow-blue-100"
-                   >
-                     Enviar a Corte
-                   </button>
-                </div>
-              </div>
-            )}
+        {selectedIds.length > 0 && (
+          <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-[2rem] flex justify-between items-center animate-in slide-in-from-top-4 duration-300 shadow-sm">
+            <div className="flex items-center gap-4 ml-2">
+               <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-100">
+                  <Scissors size={20} />
+               </div>
+               <p className="text-sm font-black text-blue-900 uppercase tracking-tighter">
+                 {selectedIds.length} Bobinas seleccionadas para corte
+               </p>
+            </div>
+            <div className="flex gap-2">
+               <button 
+                onClick={() => setSelectedIds([])}
+                className="px-6 py-2 text-slate-400 font-black text-xs uppercase tracking-widest hover:text-slate-600 transition"
+               >
+                 Cancelar
+               </button>
+               <button 
+                onClick={() => setShowCutModal(true)}
+                className="px-8 py-2 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition shadow-lg shadow-blue-100"
+               >
+                 Enviar a Corte
+               </button>
+            </div>
+          </div>
+        )}
 
-            <InventoryTable
-              displayCoils={coils}
-              role={role}
-              currentPage={currentPage}
-              pageSize={pageSize}
-              selectedIds={selectedIds}
-              orderMapping={orderMapping}
-              onSelect={handleSelect}
-              onSelectAll={handleSelectAll}
-              onEdit={handleOpenEdit}
-              onVoid={handleVoidCoil}
-              onCancelPlan={handleCancelPlan}
-              onSendToCut={(coil) => {
-                setSelectedIds([coil.id]);
-                setShowCutModal(true);
-              }}
-              onViewDetails={setViewingCoil}
-              onAssignFinish={handleOpenEdit}
-            />
-            {loading && (
-              <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-[2rem]">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-              </div>
-            )}
-          </>
+        <InventoryTable
+          displayCoils={coils}
+          role={role}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          selectedIds={selectedIds}
+          orderMapping={orderMapping}
+          onSelect={handleSelect}
+          onSelectAll={handleSelectAll}
+          onEdit={handleOpenEdit}
+          onVoid={handleVoidCoil}
+          onCancelPlan={handleCancelPlan}
+          onSendToCut={(coil) => {
+            setSelectedIds([coil.id]);
+            setShowCutModal(true);
+          }}
+          onViewDetails={setViewingCoil}
+          onAssignFinish={handleOpenEdit}
+          isLoading={loading}
+        />
+        {loading && coils.length > 0 && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-[2rem]">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+          </div>
         )}
       </div>
 
-      <InventoryPagination
-        filteredTotal={filteredTotal}
+      <TablePagination
         currentPage={currentPage}
-        hasNextPage={hasNextPage}
-        isAlgoliaMode={isAlgoliaMode}
-        algoliaTotalPages={algoliaTotalPages}
-        loading={loading}
         pageSize={pageSize}
-        onPrev={prevPage}
-        onNext={nextPage}
+        totalItems={filteredTotal}
+        onPageChange={(page) => {
+          if (page > currentPage) nextPage();
+          else if (page < currentPage) prevPage();
+        }}
         onPageSizeChange={setPageSize}
+        pageSizeOptions={[10, 25, 50, 100]}
       />
 
       <InventoryModals

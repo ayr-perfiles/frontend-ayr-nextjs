@@ -37,7 +37,5 @@
     "**/*.mts",
     "scripts/migrate-roles-to-claims.js"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules", "sunat", "functions"]
 }

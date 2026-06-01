@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Layers, Search, X } from "lucide-react";
+import { Plus, Layers, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import { useMetallicCatalog } from "@/modules/metallic-roofing/hooks/useMetallicCatalog";
@@ -12,6 +12,8 @@ import {
   reactivateProduct,
 } from "@/modules/metallic-roofing/services/catalogService";
 import type { MetallicProduct } from "@/modules/metallic-roofing/types";
+import { TableFilters, FilterGroup } from "@/components/ui/TableFilters";
+import { TablePagination } from "@/components/ui/TablePagination";
 
 const FAMILY_OPTIONS = ["COBERTURA", "PLANCHA", "BOBINA", "ACCESORIO"];
 const FINISH_OPTIONS = ["GALV", "ALUZINC", "NATURAL", "PREPINTADO"];
@@ -26,6 +28,7 @@ export default function MetallicRoofingCatalogPage() {
   const [finishFilter, setFinishFilter] = useState("");
   const [colorFilter, setColorFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [pageSize, setPageSize] = useState(50);
 
   const { products, loading, error, refresh } = useMetallicCatalog({
     searchTerm: search || undefined,
@@ -36,10 +39,16 @@ export default function MetallicRoofingCatalogPage() {
   });
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<MetallicProduct | null>(null);
-  const [viewingProduct, setViewingProduct] = useState<MetallicProduct | null>(null);
+  const [editingProduct, setEditingProduct] = useState<MetallicProduct | null>(
+    null,
+  );
+  const [viewingProduct, setViewingProduct] = useState<MetallicProduct | null>(
+    null,
+  );
 
-  const [deactivating, setDeactivating] = useState<MetallicProduct | null>(null);
+  const [deactivating, setDeactivating] = useState<MetallicProduct | null>(
+    null,
+  );
   const [deactivateReason, setDeactivateReason] = useState("");
   const [deactivateSaving, setDeactivateSaving] = useState(false);
 
@@ -81,20 +90,67 @@ export default function MetallicRoofingCatalogPage() {
     }
   }
 
-  const hasFilters = search || familyFilter || finishFilter || colorFilter || statusFilter !== "ALL";
+  const filterGroups: FilterGroup[] = [
+    {
+      id: "family",
+      label: "Familia",
+      value: familyFilter || "ALL",
+      onChange: (v) => setFamilyFilter(v === "ALL" ? "" : v),
+      options: [
+        { value: "ALL", label: "Toda familia" },
+        ...FAMILY_OPTIONS.map((f) => ({ value: f, label: f })),
+      ],
+      layout: "grid-2",
+    },
+    {
+      id: "finish",
+      label: "Acabado",
+      value: finishFilter || "ALL",
+      onChange: (v) => setFinishFilter(v === "ALL" ? "" : v),
+      options: [
+        { value: "ALL", label: "Todo acabado" },
+        ...FINISH_OPTIONS.map((f) => ({ value: f, label: f })),
+      ],
+      layout: "grid-2",
+    },
+    {
+      id: "status",
+      label: "Estado",
+      value: statusFilter,
+      onChange: (v) => setStatusFilter(v as StatusFilter),
+      options: [
+        { value: "ALL", label: "Todos" },
+        { value: "ACTIVE", label: "Activos" },
+        { value: "INACTIVE", label: "Inactivos" },
+      ],
+      layout: "list",
+    },
+  ];
+
+  const handleClearAll = () => {
+    setSearch("");
+    setFamilyFilter("");
+    setFinishFilter("");
+    setColorFilter("");
+    setStatusFilter("ALL");
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="bg-zinc-100 p-2.5 rounded-xl">
-            <Layers className="text-zinc-700" size={22} />
+          <div className="bg-zinc-100 p-2.5 rounded-xl text-zinc-700">
+            <Layers size={22} />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Catálogo Aluzinc</h1>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight">
+              Catálogo Aluzinc
+            </h1>
             <p className="text-sm text-gray-500 font-medium">
-              {loading ? "Cargando…" : `${products.length} producto${products.length !== 1 ? "s" : ""}`}
+              {loading
+                ? "Cargando…"
+                : `${products.length} producto${products.length !== 1 ? "s" : ""}`}
             </p>
           </div>
         </div>
@@ -109,78 +165,30 @@ export default function MetallicRoofingCatalogPage() {
         )}
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-        <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <TableFilters
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: "Buscar por SKU o nombre…",
+          isSearching: loading && !!search,
+        }}
+        filterGroups={filterGroups}
+        extraContent={
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">
+              Color (Filtro manual)
+            </label>
             <input
               type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por SKU o nombre…"
-              className="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl font-medium text-sm outline-none focus:border-zinc-400 focus:bg-white transition"
+              value={colorFilter}
+              onChange={(e) => setColorFilter(e.target.value.toUpperCase())}
+              placeholder="Ej: ROJO, AZUL..."
+              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm outline-none focus:border-zinc-400"
             />
           </div>
-
-          <select
-            value={familyFilter}
-            onChange={(e) => setFamilyFilter(e.target.value)}
-            className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm outline-none focus:border-zinc-400 min-w-[140px]"
-          >
-            <option value="">Toda familia</option>
-            {FAMILY_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
-          </select>
-
-          <select
-            value={finishFilter}
-            onChange={(e) => setFinishFilter(e.target.value)}
-            className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm outline-none focus:border-zinc-400 min-w-[140px]"
-          >
-            <option value="">Todo acabado</option>
-            {FINISH_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
-          </select>
-
-          <input
-            type="text"
-            value={colorFilter}
-            onChange={(e) => setColorFilter(e.target.value.toUpperCase())}
-            placeholder="Color…"
-            className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm outline-none focus:border-zinc-400 w-28"
-          />
-
-          <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm font-bold bg-gray-50">
-            {(["ALL", "ACTIVE", "INACTIVE"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-2.5 transition whitespace-nowrap ${
-                  statusFilter === s
-                    ? "bg-zinc-700 text-white"
-                    : "text-gray-500 hover:bg-gray-100"
-                }`}
-              >
-                {s === "ALL" ? "Todos" : s === "ACTIVE" ? "Activos" : "Inactivos"}
-              </button>
-            ))}
-          </div>
-
-          {hasFilters && (
-            <button
-              onClick={() => {
-                setSearch("");
-                setFamilyFilter("");
-                setFinishFilter("");
-                setColorFilter("");
-                setStatusFilter("ALL");
-              }}
-              className="flex items-center gap-1 px-3 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 transition whitespace-nowrap"
-            >
-              <X size={14} /> Limpiar
-            </button>
-          )}
-        </div>
-      </div>
+        }
+        onClearAll={handleClearAll}
+      />
 
       {/* Error */}
       {error && (
@@ -189,15 +197,28 @@ export default function MetallicRoofingCatalogPage() {
         </div>
       )}
 
-      {/* Table */}
-      <ProductCatalogTable
-        products={products}
-        loading={loading}
-        canEdit={isAdmin}
-        onView={(p) => setViewingProduct(p)}
-        onEdit={(p) => setEditingProduct(p)}
-        onToggleActive={handleToggleActive}
-      />
+      {/* Table & Pagination */}
+      <div className="space-y-4">
+        <ProductCatalogTable
+          products={products}
+          loading={loading}
+          canEdit={isAdmin}
+          onView={(p) => setViewingProduct(p)}
+          onEdit={(p) => setEditingProduct(p)}
+          onToggleActive={handleToggleActive}
+          pageSize={pageSize}
+        />
+
+        <TablePagination
+          currentPage={1}
+          pageSize={pageSize}
+          totalItems={products.length}
+          onPageChange={() => {}} // Client side filtering for now
+          pageSizeOptions={[15, 30, 50, 100]}
+          onPageSizeChange={setPageSize}
+          totalLabel="Productos"
+        />
+      </div>
 
       {/* Modals */}
       {showAddModal && (

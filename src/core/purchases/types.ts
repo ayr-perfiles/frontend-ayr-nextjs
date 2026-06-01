@@ -38,6 +38,23 @@ export interface Purchase {
   voidReason?: string;
   voidedAt?: Timestamp;
   voidedBy?: string;
+  validacionSunat?: {
+    valido: boolean;
+    estadoCp: string;
+    estadoRuc: string;
+    condDomiRuc: string;
+    fecha: Timestamp;
+    origen?: 'API' | 'SIRE';
+  };
+  origin?: 'MANUAL' | 'SIRE';
+  CAR?: string;
+  stockPendiente?: boolean;
+  discrepancias?: {
+    baseImponible?: number;
+    igv?: number;
+    total?: number;
+    moneda?: string;
+  };
 }
 
 export interface PurchaseFilters {

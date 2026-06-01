@@ -440,6 +440,7 @@ export interface FetchSalesParams {
   endDate: string;
   customerDoc?: string | null;
   businessLine?: BusinessLine | 'ALL' | '';
+  sunatFilter?: string;
   direction?: 'first' | 'next' | 'prev';
   cursorDoc?: QueryDocumentSnapshot<DocumentData> | null;
   page?: number;
@@ -454,6 +455,7 @@ export const fetchSales = async (params: FetchSalesParams) => {
     endDate,
     customerDoc,
     businessLine,
+    sunatFilter,
     direction = 'first',
     cursorDoc,
     page = 0,
@@ -461,7 +463,10 @@ export const fetchSales = async (params: FetchSalesParams) => {
 
   // ── MOTOR ALGOLIA ─────────────────────────────────────────────────────────
   if (searchTerm.trim().length > 0 && !customerDoc) {
-    const filters = statusFilter !== 'ALL' ? `status:${statusFilter}` : '';
+    let filters = statusFilter !== 'ALL' ? `status:${statusFilter}` : '';
+    if (sunatFilter && sunatFilter !== 'ALL') {
+      filters += (filters ? ' AND ' : '') + `sunat.estado:${sunatFilter}`;
+    }
 
     const { hits, nbPages, page: currentPage, nbHits } = await algoliaClient.searchSingleIndex({
       indexName: ALGOLIA_INDICES.SALES ?? 'sales_index',
@@ -501,6 +506,10 @@ export const fetchSales = async (params: FetchSalesParams) => {
 
   if (businessLine && businessLine !== 'ALL') {
     baseConstraints.push(where('businessLines', 'array-contains', businessLine));
+  }
+
+  if (sunatFilter && sunatFilter !== 'ALL') {
+    baseConstraints.push(where('sunat.estado', '==', sunatFilter));
   }
 
   if (hasDateFilter) {

@@ -13,11 +13,15 @@ import {
   Save,
   X,
   Loader2,
-  AlertTriangle,
   UploadCloud,
 } from "lucide-react";
 import { PRODUCT_CATALOG } from "@/config/products";
 import toast from "react-hot-toast";
+import { DataTable, ColumnDef } from "@/components/ui/DataTable";
+import { RowActionsMenu, RowAction } from "@/components/ui/RowActionsMenu";
+import { TableFilters } from "@/components/ui/TableFilters";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { useTableData } from "@/hooks/useTableData";
 
 export function CatalogManager() {
   const [products, setProducts] = useState<ProductConfig[]>([]);
@@ -26,6 +30,21 @@ export function CatalogManager() {
   const [editingProduct, setEditingProduct] = useState<ProductConfig | null>(
     null,
   );
+
+  const {
+    pageItems,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
+    searchValue,
+    setSearchValue,
+    totalFiltered,
+  } = useTableData<ProductConfig>({
+    data: products,
+    searchFields: ["sku", "name"],
+    pageSize: 50,
+  });
 
   const loadProducts = async () => {
     setIsLoading(true);
@@ -59,7 +78,7 @@ export function CatalogManager() {
       }
       await loadProducts();
       toast.success("Catálogo migrado exitosamente.");
-    } catch (error) {
+    } catch {
       toast.error("Error en la migración.");
     }
   };
@@ -88,7 +107,7 @@ export function CatalogManager() {
       await loadProducts();
       setEditingProduct(null);
       toast.success(`Perfil ${editingProduct.sku} guardado correctamente.`);
-    } catch (error) {
+    } catch {
       toast.error("Error al guardar el perfil.");
     } finally {
       setIsSaving(false);
@@ -102,7 +121,7 @@ export function CatalogManager() {
       await deleteProduct(sku);
       await loadProducts();
       toast.success("Producto eliminado del catálogo.");
-    } catch (error) {
+    } catch {
       toast.error("Error al eliminar.");
     }
   };
@@ -116,6 +135,83 @@ export function CatalogManager() {
       lengthMeters: 3.0,
       isActive: true,
     });
+
+  const columns: ColumnDef<ProductConfig>[] = [
+    {
+      key: "sku",
+      header: "SKU",
+      render: (p) => (
+        <span
+          className={`font-black font-mono text-sm ${p.isActive ? "text-gray-900" : "text-gray-400"}`}
+        >
+          {p.sku}
+        </span>
+      ),
+    },
+    {
+      key: "name",
+      header: "Descripción",
+      render: (p) => (
+        <span className="font-bold text-gray-600 uppercase">{p.name}</span>
+      ),
+    },
+    {
+      key: "dimensions",
+      header: "Dimensiones (A x L)",
+      align: "center",
+      render: (p) => (
+        <span className="font-mono font-bold text-gray-500">
+          {p.stripWidth} mm x {(p.lengthMeters || 3).toFixed(2)} m
+        </span>
+      ),
+    },
+    {
+      key: "weight",
+      header: "Peso (kg)",
+      align: "right",
+      render: (p) => (
+        <span className="font-mono font-bold text-gray-500">
+          {p.standardWeight.toFixed(3)}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Estado",
+      align: "center",
+      render: (p) => (
+        <span
+          className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest ${p.isActive ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"}`}
+        >
+          {p.isActive ? "Activo" : "Inactivo"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Acciones",
+      align: "right",
+      width: "w-24",
+      render: (p) => {
+        const actions: RowAction[] = [
+          {
+            id: "edit",
+            label: "Editar",
+            icon: <Edit2 size={16} />,
+            onClick: () => setEditingProduct(p),
+          },
+          {
+            id: "delete",
+            label: "Eliminar",
+            icon: <Trash2 size={16} />,
+            variant: "danger",
+            onClick: () => handleDelete(p.sku),
+          },
+        ];
+        return <RowActionsMenu items={actions} />;
+      },
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -297,96 +393,44 @@ export function CatalogManager() {
         </form>
       )}
 
-      {/* TABLA DE PRODUCTOS */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        {isLoading ? (
-          <div className="p-12 flex justify-center">
-            <Loader2 size={32} className="animate-spin text-blue-500" />
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-gray-50/50 border-b border-gray-100">
-                <tr>
-                  <th className="p-4 pl-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                    SKU
-                  </th>
-                  <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                    Descripción
-                  </th>
-                  <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">
-                    Dimensiones (A x L)
-                  </th>
-                  <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">
-                    Peso (kg)
-                  </th>
-                  <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">
-                    Estado
-                  </th>
-                  <th className="p-4 pr-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {products.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="p-8 text-center text-gray-400 font-bold"
-                    >
-                      No hay productos. Haz clic en Migrar Catálogo.
-                    </td>
-                  </tr>
-                ) : (
-                  products.map((p) => (
-                    <tr
-                      key={p.sku}
-                      className={`hover:bg-gray-50/50 transition ${!p.isActive ? "opacity-50" : ""}`}
-                    >
-                      <td className="p-4 pl-6 font-black text-gray-900">
-                        {p.sku}
-                      </td>
-                      <td className="p-4 font-bold text-gray-600 uppercase">
-                        {p.name}
-                      </td>
-                      <td className="p-4 text-center font-mono font-bold text-gray-500">
-                        {p.stripWidth} mm x {(p.lengthMeters || 3).toFixed(2)} m
-                      </td>
-                      {/* 🚀 TABLA MUESTRA 3 DECIMALES */}
-                      <td className="p-4 text-right font-mono font-bold text-gray-500">
-                        {p.standardWeight.toFixed(3)} kg
-                      </td>
-                      <td className="p-4 text-center">
-                        <span
-                          className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest ${p.isActive ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"}`}
-                        >
-                          {p.isActive ? "Activo" : "Inactivo"}
-                        </span>
-                      </td>
-                      <td className="p-4 pr-6 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => setEditingProduct(p)}
-                            className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(p.sku)}
-                            className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+      {/* FILTROS Y TABLA */}
+      <div className="space-y-4">
+        <TableFilters
+          search={{
+            value: searchValue,
+            onChange: setSearchValue,
+            placeholder: "Buscar por SKU o descripción...",
+            isSearching: isLoading && !!searchValue,
+          }}
+        />
+
+        <DataTable
+          columns={columns}
+          data={pageItems}
+          getRowKey={(p) => p.sku}
+          isLoading={isLoading}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          showRowNumber={true}
+          getRowClassName={(p) =>
+            `group transition-colors ${!p.isActive ? "opacity-50" : "hover:bg-blue-50/20"}`
+          }
+          emptyState={{
+            icon: "BookOpen",
+            title: "No hay productos",
+            description: "No se encontraron perfiles. Haz clic en Migrar Catálogo.",
+          }}
+        />
+
+        <TablePagination
+          currentPage={currentPage}
+          pageSize={pageSize}
+          totalItems={totalFiltered}
+          onPageChange={setCurrentPage}
+          pageSizeOptions={[15, 30, 50, 100]}
+          onPageSizeChange={setPageSize}
+          totalLabel="Perfiles"
+        />
       </div>
     </div>
   );

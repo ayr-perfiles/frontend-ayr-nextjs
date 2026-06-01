@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   X,
   Calendar,
@@ -12,10 +12,25 @@ import {
   Hash,
   Scissors,
   Layers,
+  ExternalLink,
+  Loader2,
+  CheckCircle2,
+  Truck,
+  AlertCircle,
 } from "lucide-react";
-import { Timestamp } from "firebase/firestore";
-import { Coil } from "@/types";
+import {
+  Timestamp,
+  collection,
+  query,
+  where,
+  getDocs,
+  limit,
+  orderBy,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase/clientApp";
+import { Coil, CutOrder } from "@/types";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
+import Link from "next/link";
 
 interface CoilDetailsModalProps {
   coil: Coil;
@@ -39,24 +54,50 @@ const formatDate = (dateValue: Timestamp | Date | string | null | undefined) => 
 
 export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
   const { finishes } = useFinishes(false);
-  const finishName = finishes.find((f) => f.id === coil.finish)?.label || coil.finish || "N/A";
-  
+  const finishName =
+    finishes.find((f) => f.id === coil.finish)?.label || coil.finish || "N/A";
+
   const isConverted = coil.metadata?.currency === "USD";
   const exchangeRate = coil.metadata?.exchangeRate || 1;
   const originalCurrencyValue = coil.metadata?.originalCurrencyValue || 0;
   const isVoided = coil.status === "VOIDED";
 
-  // --- VARIABLES PARA EL PLAN DE CORTE ---
-  const isPlanned = coil.plannedStrips && coil.plannedStrips.length > 0;
-  const totalPlannedWidth = isPlanned
-    ? coil.plannedStrips!.reduce(
-        (sum, strip) => sum + strip.width * strip.initialCount,
-        0,
-      )
-    : 0;
-  const scrapWidth = coil.masterWidth
-    ? coil.masterWidth - totalPlannedWidth
-    : 0;
+  // --- NUEVA LÓGICA DE ORDEN DE CORTE ---
+  const [linkedOrder, setLinkedOrder] = useState<CutOrder | null>(null);
+  const [loadingOrder, setLoadingOrder] = useState(true);
+
+  useEffect(() => {
+    const fetchLinkedOrder = async () => {
+      setLoadingOrder(true);
+      try {
+        // Consultar órdenes recientes y buscar la bobina localmente
+        const q = query(
+          collection(db, "cut_orders"),
+          orderBy("sentAt", "desc"),
+          limit(50),
+        );
+        const snap = await getDocs(q);
+        const orders = snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as CutOrder,
+        );
+        const found = orders.find((o) =>
+          o.coils.some((c) => c.coilId === coil.id),
+        );
+        setLinkedOrder(found || null);
+      } catch (error) {
+        console.error("Error al buscar orden de corte vinculada:", error);
+      } finally {
+        setLoadingOrder(false);
+      }
+    };
+
+    fetchLinkedOrder();
+  }, [coil.id]);
+
+  const coilInOrder = linkedOrder?.coils.find((c) => c.coilId === coil.id);
+  const coilReceivedWeight = linkedOrder?.receivedStrips
+    ?.filter((s) => s.coilId === coil.id)
+    .reduce((sum, s) => sum + s.weight, 0);
 
   return (
     <div className="flex flex-col bg-slate-50 w-full max-w-3xl max-h-[90vh] rounded-2xl overflow-hidden shadow-2xl">
@@ -74,7 +115,9 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
                   ? "bg-red-500/20 text-red-300 border-red-500/30"
                   : coil.status === "AVAILABLE"
                     ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
-                    : "bg-orange-500/20 text-orange-300 border-orange-500/30"
+                    : coil.status === "EN_TERCERO"
+                      ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                      : "bg-orange-500/20 text-orange-300 border-orange-500/30"
               }`}
             >
               {coil.status}
@@ -326,118 +369,163 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
           </div>
         </div>
 
-        {/* 4. PLAN DE CORTE (NUEVA SECCIÓN UNIFICADA) */}
+        {/* 4. CORTE TERCERIZADO (NUEVA SECCIÓN) */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
           <header className="flex items-center gap-2 pb-2 border-b border-slate-100">
             <Scissors size={16} className="text-purple-500" />
             <h3 className="text-xs font-black text-slate-600 uppercase tracking-wider">
-              Plan de Corte (Flejes Operativos)
+              Corte Tercerizado
             </h3>
           </header>
 
-          {!isPlanned ? (
-            <div className="bg-slate-50 border border-slate-200 border-dashed p-8 rounded-xl text-center">
-              <p className="text-slate-500 font-bold">
-                Esta bobina aún no tiene un plan de corte asignado.
-              </p>
-              <p className="text-sm text-slate-400 mt-1">
-                Debe procesarse desde la tabla principal para generar los
-                flejes.
+          {loadingOrder ? (
+            <div className="py-8 flex flex-col items-center justify-center gap-2 text-slate-400">
+              <Loader2 size={24} className="animate-spin" />
+              <p className="text-xs font-bold uppercase tracking-widest">
+                Buscando orden de corte...
               </p>
             </div>
+          ) : !linkedOrder ? (
+            <div className="bg-slate-50 border border-slate-200 border-dashed p-8 rounded-xl text-center">
+              <p className="text-slate-500 font-bold">
+                Esta bobina no ha sido enviada a corte externo.
+              </p>
+              {coil.status === "AVAILABLE" && (
+                <p className="text-xs text-slate-400 mt-2 font-medium">
+                  Puedes enviarla a corte desde la tabla de inventario
+                  seleccionando la bobina.
+                </p>
+              )}
+            </div>
           ) : (
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="p-3 text-[10px] font-black text-slate-500 uppercase">
-                      Producto (SKU)
-                    </th>
-                    <th className="p-3 text-[10px] font-black text-slate-500 uppercase text-center">
-                      Ancho Fleje
-                    </th>
-                    <th className="p-3 text-[10px] font-black text-slate-500 uppercase text-center">
-                      Cortes (Progreso)
-                    </th>
-                    <th className="p-3 text-[10px] font-black text-slate-500 uppercase text-right">
-                      Costo Asignado
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {coil.plannedStrips!.map((strip, idx) => {
-                    const completedCuts =
-                      strip.initialCount - strip.pendingCount;
-                    const isDone = strip.pendingCount === 0;
-
-                    return (
-                      <tr
-                        key={idx}
-                        className={`hover:bg-slate-50 transition ${
-                          isDone ? "opacity-60 bg-slate-50/50" : ""
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      linkedOrder.status === "RECIBIDO"
+                        ? "bg-emerald-100 text-emerald-600"
+                        : linkedOrder.status === "ANULADA"
+                          ? "bg-red-100 text-red-600"
+                          : "bg-blue-100 text-blue-600"
+                    }`}
+                  >
+                    {linkedOrder.status === "RECIBIDO" ? (
+                      <CheckCircle2 size={20} />
+                    ) : linkedOrder.status === "ANULADA" ? (
+                      <AlertCircle size={20} />
+                    ) : (
+                      <Truck size={20} />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${
+                          linkedOrder.status === "RECIBIDO"
+                            ? "bg-emerald-600 text-white"
+                            : linkedOrder.status === "ANULADA"
+                              ? "bg-red-600 text-white"
+                              : "bg-blue-600 text-white"
                         }`}
                       >
-                        <td className="p-3 font-bold text-slate-700 text-sm">
-                          {strip.sku}
-                          {isDone && (
-                            <span className="ml-2 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                              Completado
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3 text-center text-sm font-medium text-slate-600">
-                          {strip.width} mm
-                        </td>
-                        <td className="p-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <span className="text-sm font-black text-blue-600">
-                              {completedCuts}
-                            </span>
-                            <span className="text-xs text-slate-400">de</span>
-                            <span className="text-sm font-bold text-slate-700">
-                              {strip.initialCount}
-                            </span>
-                          </div>
-                          {/* Barra de progreso visual */}
-                          <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1.5 overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                isDone ? "bg-green-500" : "bg-blue-500"
-                              }`}
-                              style={{
-                                width: `${(completedCuts / strip.initialCount) * 100}%`,
-                              }}
-                            ></div>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right text-sm font-black text-slate-700">
-                          S/ {strip.costPerStrip.toFixed(2)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="bg-slate-50/50 border-t border-slate-200">
-                  <tr>
-                    <td
-                      colSpan={2}
-                      className="p-3 text-xs font-bold text-slate-500"
-                    >
-                      Ancho Consumido:{" "}
-                      <span className="text-slate-800">
-                        {totalPlannedWidth} mm
+                        {linkedOrder.status === "RECIBIDO"
+                          ? "Procesada"
+                          : linkedOrder.status === "ANULADA"
+                            ? "Orden Anulada"
+                            : "En Corte Externo"}
                       </span>
-                    </td>
-                    <td
-                      colSpan={2}
-                      className="p-3 text-xs font-bold text-slate-500 text-right"
-                    >
-                      Merma (Retazo):{" "}
-                      <span className="text-red-500">{scrapWidth} mm</span>
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+                      <span className="text-xs font-black text-slate-400">
+                        #{linkedOrder.id?.slice(-6).toUpperCase()}
+                      </span>
+                    </div>
+                    <p className="text-sm font-black text-slate-800 uppercase mt-0.5">
+                      {linkedOrder.tercero.nombre}
+                    </p>
+                  </div>
+                </div>
+
+                <Link
+                  href="/admin/coils/cut-orders"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-600 hover:bg-slate-50 transition shadow-sm"
+                >
+                  <ExternalLink size={14} /> Ver Orden
+                </Link>
+              </div>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-3 bg-white border border-slate-100 rounded-lg shadow-sm">
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-tighter">
+                    Fecha Envío
+                  </label>
+                  <p className="text-sm font-bold text-slate-700">
+                    {formatDate(linkedOrder.sentAt)}
+                  </p>
+                </div>
+                <div className="p-3 bg-white border border-slate-100 rounded-lg shadow-sm">
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-tighter">
+                    Peso Enviado (Bobina)
+                  </label>
+                  <p className="text-sm font-black text-slate-800">
+                    {coilInOrder?.sentWeight} kg
+                  </p>
+                </div>
+                {linkedOrder.status === "RECIBIDO" && (
+                  <>
+                    <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg shadow-sm">
+                      <label className="block text-[9px] font-black text-emerald-600 uppercase tracking-tighter">
+                        Peso Recibido
+                      </label>
+                      <p className="text-sm font-black text-emerald-700">
+                        {coilReceivedWeight || 0} kg
+                      </p>
+                    </div>
+                    <div className="p-3 bg-white border border-slate-100 rounded-lg shadow-sm">
+                      <label className="block text-[9px] font-black text-slate-400 uppercase tracking-tighter">
+                        Factura Corte
+                      </label>
+                      <p className="text-sm font-black text-blue-600">
+                        {linkedOrder.invoice?.number || "Pendiente"}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {coilInOrder?.cutPlan && (
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="p-3 text-[10px] font-black text-slate-500 uppercase">
+                          Plan de Corte Enviado
+                        </th>
+                        <th className="p-3 text-[10px] font-black text-slate-500 uppercase text-center">
+                          Ancho
+                        </th>
+                        <th className="p-3 text-[10px] font-black text-slate-500 uppercase text-center">
+                          Cant. Flejes
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {coilInOrder.cutPlan.map((plan, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50 transition">
+                          <td className="p-3 text-xs font-medium text-slate-500">
+                            Fleje Estándar
+                          </td>
+                          <td className="p-3 text-center text-sm font-black text-slate-700">
+                            {plan.widthMm} mm
+                          </td>
+                          <td className="p-3 text-center text-sm font-black text-blue-600">
+                            {plan.count} un.
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>

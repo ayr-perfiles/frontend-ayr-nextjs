@@ -14,6 +14,12 @@ export const drywallSidebarItems: MenuItem[] = [
     roles: ['ADMIN', 'SUPERVISOR'],
   },
   {
+    label: 'Inventario',
+    href: '/admin/lines/drywall/inventory',
+    icon: 'Package',
+    roles: ['ADMIN', 'SUPERVISOR'],
+  },
+  {
     label: 'Terminal Móvil',
     href: '/admin/lines/drywall/operator',
     icon: 'Smartphone',

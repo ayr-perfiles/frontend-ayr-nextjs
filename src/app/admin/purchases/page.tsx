@@ -9,25 +9,49 @@ import {
   orderBy,
   limit,
   onSnapshot,
-  Timestamp,
-  where,
 } from "firebase/firestore";
-import { Truck, Plus, Search, Eye, AlertCircle, FileText, Ban } from "lucide-react";
+import { 
+  Truck, 
+  Plus, 
+  FileText, 
+  Ban, 
+  FileUp, 
+  FileCode, 
+  FileSpreadsheet 
+} from "lucide-react";
 import type { Purchase } from "@/core/purchases/types";
 import { voidPurchase } from "@/core/purchases/service";
 import toast from "react-hot-toast";
+import { SunatCpeValidator } from "@/components/purchases/SunatCpeValidator";
+import { SireRceImporter } from "@/components/purchases/SireRceImporter";
+import { PurchaseXmlImporter } from "@/components/purchases/PurchaseXmlImporter";
+import { PurchaseExcelImporter } from "@/components/purchases/PurchaseExcelImporter";
+
+import { DataTable, ColumnDef } from "@/components/ui/DataTable";
+import { TableFilters } from "@/components/ui/TableFilters";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { RowActionsMenu } from "@/components/ui/RowActionsMenu";
+import { useTableData } from "@/hooks/useTableData";
 
 export default function PurchasesPage() {
   const router = useRouter();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [activeTool, setActiveTool] = useState<"SIRE" | "XML" | "EXCEL" | null>(null);
+
+  const parseInvoice = (num: string) => {
+    const parts = num.split("-");
+    if (parts.length === 2) {
+      return { serie: parts[0], numero: parts[1] };
+    }
+    return { serie: "", numero: num };
+  };
 
   useEffect(() => {
     const q = query(
       collection(db, "purchases"),
       orderBy("createdAt", "desc"),
-      limit(50)
+      limit(100)
     );
 
     const unsub = onSnapshot(q, (snap) => {
@@ -50,125 +74,234 @@ export default function PurchasesPage() {
     }
   };
 
-  const filtered = purchases.filter(p => 
-    p.supplier.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.invoice.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.supplier.ruc.includes(searchTerm)
-  );
+  const {
+    pageItems,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    searchValue,
+    setSearchValue,
+    filterValues,
+    setFilterValue,
+    totalFiltered,
+  } = useTableData<Purchase>({
+    data: purchases,
+    pageSize: 15,
+    searchFields: [
+      (p) => p.supplier.name,
+      (p) => p.invoice.number,
+      (p) => p.supplier.ruc,
+    ],
+    filters: {
+      status: (p, v) => v === "TODOS" || p.status === v,
+    },
+  });
+
+  const columns: ColumnDef<Purchase>[] = [
+    {
+      key: "invoice",
+      header: "Fecha / Nº",
+      render: (p) => (
+        <div>
+          <p className="font-bold text-slate-700 text-sm">{p.invoice.number}</p>
+          <p className="text-[10px] text-slate-400 font-mono">
+            {p.invoice.date.toDate().toLocaleDateString("es-PE")}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: "supplier",
+      header: "Proveedor",
+      render: (p) => (
+        <div>
+          <p className="font-bold text-slate-800 text-sm">{p.supplier.name}</p>
+          <p className="text-xs text-slate-500 font-medium tracking-tight">RUC {p.supplier.ruc}</p>
+        </div>
+      ),
+    },
+    {
+      key: "businessLine",
+      header: "Línea",
+      align: "center",
+      render: (p) => (
+        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+          p.businessLine === 'roofing' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+        }`}>
+          {p.businessLine}
+        </span>
+      ),
+    },
+    {
+      key: "total",
+      header: "Total PEN",
+      align: "right",
+      render: (p) => (
+        <div>
+          <p className="font-black text-slate-700 text-sm">
+            S/ {p.totalCostPEN.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </p>
+          {p.invoice.currency === 'USD' && (
+            <p className="text-[10px] text-slate-400 font-bold">
+              $ {(p.totalCostPEN / p.invoice.exchangeRate).toFixed(2)} @ {p.invoice.exchangeRate}
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      header: "Estado",
+      align: "center",
+      render: (p) => (
+        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+          p.status === 'REGISTRADA' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+        }`}>
+          {p.status}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Acciones",
+      align: "center",
+      render: (p) => {
+        if (p.status !== 'REGISTRADA') return null;
+        
+        return (
+          <div className="flex items-center justify-center gap-3">
+            <SunatCpeValidator 
+              purchaseId={p.id!}
+              invoiceData={{
+                numRuc: p.supplier.ruc,
+                codComp: "01", 
+                ...parseInvoice(p.invoice.number),
+                fechaEmision: p.invoice.date.toDate().toISOString().split('T')[0],
+                monto: p.invoice.total
+              }}
+              validation={p.validacionSunat}
+            />
+            <RowActionsMenu
+              items={[
+                {
+                  id: "void",
+                  label: "Anular Compra",
+                  icon: <Ban size={16} />,
+                  variant: "danger",
+                  onClick: () => handleVoid(p.id!, p.invoice.number),
+                }
+              ]}
+            />
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
         <div>
-          <h1 className="text-2xl font-black flex items-center gap-2 text-slate-800">
+          <h1 className="text-2xl font-black flex items-center gap-2 text-slate-800 tracking-tight">
             <Truck className="text-blue-600" /> Registro de Compras
           </h1>
-          <p className="text-slate-500 text-sm font-medium">
+          <p className="text-slate-500 text-sm font-medium italic">
             Entrada de mercadería y fijación de costos (PPP)
           </p>
         </div>
-        <button
-          onClick={() => router.push("/admin/purchases/new")}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition active:scale-95"
-        >
-          <Plus size={20} /> Nueva Compra
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input
-            type="text"
-            placeholder="Buscar por proveedor o factura..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-          />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setActiveTool(activeTool === "SIRE" ? null : "SIRE")}
+            className={`px-4 py-2 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl font-bold flex items-center gap-2 transition hover:bg-slate-100 ${activeTool === "SIRE" ? "ring-2 ring-blue-500 bg-white" : ""}`}
+          >
+            <FileUp size={18} /> SIRE
+          </button>
+          <button
+            onClick={() => setActiveTool(activeTool === "XML" ? null : "XML")}
+            className={`px-4 py-2 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl font-bold flex items-center gap-2 transition hover:bg-slate-100 ${activeTool === "XML" ? "ring-2 ring-blue-500 bg-white" : ""}`}
+          >
+            <FileCode size={18} /> XML
+          </button>
+          <button
+            onClick={() => setActiveTool(activeTool === "EXCEL" ? null : "EXCEL")}
+            className={`px-4 py-2 bg-slate-50 border border-slate-200 text-slate-600 rounded-xl font-bold flex items-center gap-2 transition hover:bg-slate-100 ${activeTool === "EXCEL" ? "ring-2 ring-blue-500 bg-white" : ""}`}
+          >
+            <FileSpreadsheet size={18} /> Excel
+          </button>
+          <button
+            onClick={() => router.push("/admin/purchases/new")}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 transition active:scale-95 shadow-xl shadow-blue-100 uppercase text-xs tracking-widest"
+          >
+            <Plus size={20} /> Nueva Compra
+          </button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-50 border-b border-slate-100">
-            <tr>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Fecha / Nº</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Proveedor</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Línea</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Total PEN</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Estado</th>
-              <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {isLoading ? (
-               <tr><td colSpan={6} className="p-12 text-center text-slate-400">Cargando...</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="p-12 text-center">
-                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-50 text-slate-400 mb-2">
-                    <FileText size={24} />
-                  </div>
-                  <p className="text-slate-500 font-medium">No se encontraron compras registradas.</p>
-                </td>
-              </tr>
-            ) : (
-              filtered.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50 transition group">
-                  <td className="p-4">
-                    <p className="font-bold text-slate-700 text-sm">{p.invoice.number}</p>
-                    <p className="text-[10px] text-slate-400 font-mono">
-                      {p.invoice.date.toDate().toLocaleDateString()}
-                    </p>
-                  </td>
-                  <td className="p-4">
-                    <p className="font-bold text-slate-800 text-sm">{p.supplier.name}</p>
-                    <p className="text-xs text-slate-500 font-medium">RUC {p.supplier.ruc}</p>
-                  </td>
-                  <td className="p-4 text-center">
-                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                      p.businessLine === 'roofing' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                    }`}>
-                      {p.businessLine}
-                    </span>
-                  </td>
-                  <td className="p-4 text-right">
-                    <p className="font-black text-slate-700 text-sm">S/ {p.totalCostPEN.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-                    {p.invoice.currency === 'USD' && (
-                      <p className="text-[10px] text-slate-400 font-bold">
-                        $ {(p.totalCostPEN / p.invoice.exchangeRate).toFixed(2)} @ {p.invoice.exchangeRate}
-                      </p>
-                    )}
-                  </td>
-                  <td className="p-4 text-center">
-                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${
-                      p.status === 'REGISTRADA' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                    }`}>
-                      {p.status}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center justify-center gap-2">
-                      {p.status === 'REGISTRADA' && (
-                        <button
-                          onClick={() => handleVoid(p.id!, p.invoice.number)}
-                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                          title="Anular Compra"
-                        >
-                          <Ban size={18} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {activeTool === "SIRE" && (
+        <div className="animate-in fade-in slide-in-from-top-4 duration-300">
+          <SireRceImporter onFinished={() => setActiveTool(null)} />
+        </div>
+      )}
+
+      {activeTool === "XML" && (
+        <div className="animate-in fade-in slide-in-from-top-4 duration-300">
+          <PurchaseXmlImporter />
+        </div>
+      )}
+
+      {activeTool === "EXCEL" && (
+        <div className="animate-in fade-in slide-in-from-top-4 duration-300">
+          <PurchaseExcelImporter />
+        </div>
+      )}
+
+      <TableFilters
+        search={{
+          value: searchValue,
+          onChange: setSearchValue,
+          placeholder: "Buscar por proveedor, factura o RUC...",
+        }}
+        filterGroups={[
+          {
+            id: "status",
+            label: "Estado",
+            layout: "list",
+            value: filterValues.status || "TODOS",
+            onChange: (v) => setFilterValue("status", v),
+            options: [
+              { value: "TODOS", label: "Todas" },
+              { value: "REGISTRADA", label: "Registradas" },
+              { value: "ANULADA", label: "Anuladas" },
+            ],
+          },
+        ]}
+        onClearAll={() => {
+          setSearchValue("");
+          setFilterValue("status", "TODOS");
+        }}
+      />
+
+      <DataTable
+        columns={columns}
+        data={pageItems}
+        getRowKey={(p) => p.id!}
+        isLoading={isLoading}
+        currentPage={currentPage}
+        pageSize={pageSize}
+        emptyState={{
+          icon: "FileText",
+          title: "No se encontraron compras",
+          description: "No hay compras registradas con los filtros actuales.",
+        }}
+      />
+
+      <TablePagination
+        currentPage={currentPage}
+        pageSize={pageSize}
+        totalItems={totalFiltered}
+        onPageChange={setCurrentPage}
+      />
     </div>
   );
 }

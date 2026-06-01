@@ -1,11 +1,26 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from "@/lib/firebase/clientApp";
 import { collection, query, orderBy, getDocs, doc, getDoc } from "firebase/firestore";
 import { CutOrder, Coil } from "@/types";
-import { Loader2, Scissors, Plus, Calendar, User, ExternalLink, Layers, Receipt, Trash2, Edit2, AlertCircle } from "lucide-react";
+import { 
+  Loader2, 
+  Scissors, 
+  Plus, 
+  Receipt, 
+  Trash2, 
+  Edit2, 
+  AlertCircle, 
+  Save,
+} from "lucide-react";
 import Link from "next/link";
+
+import { DataTable, ColumnDef } from "@/components/ui/DataTable";
+import { TableFilters } from "@/components/ui/TableFilters";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { RowActionsMenu, RowAction } from "@/components/ui/RowActionsMenu";
+import { useTableData } from "@/hooks/useTableData";
 
 import ReceiveStripsModal from "@/core/coils/components/ReceiveStripsModal";
 import UpdateInvoiceModal from "@/core/coils/components/UpdateInvoiceModal";
@@ -57,31 +72,283 @@ export default function CutOrdersPage() {
     }
   };
 
+  // ── Table Logic ─────────────────────────────────────────────────────────
+
+  const {
+    pageItems,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    searchValue,
+    setSearchValue,
+    filterValues,
+    setFilterValue,
+    totalFiltered,
+  } = useTableData<CutOrder>({
+    data: orders,
+    pageSize: 15,
+    searchFields: [(o) => o.tercero?.nombre ?? ""],
+    filters: {
+      status: (o, v) => o.status === v,
+    },
+  });
+
+  const columns: ColumnDef<CutOrder>[] = [
+    {
+      key: "status",
+      header: "Estado",
+      align: "center",
+      render: (row) => {
+        const styles = {
+          ENVIADO: "bg-blue-100 text-blue-700 border-blue-200",
+          RECIBIDO: "bg-green-100 text-green-700 border-green-200",
+          ANULADA: "bg-red-100 text-red-700 border-red-200",
+        };
+        return (
+          <span
+            className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+              styles[row.status as keyof typeof styles] || ""
+            }`}
+          >
+            {row.status}
+          </span>
+        );
+      },
+    },
+    {
+      key: "provider",
+      header: "Proveedor",
+      render: (row) => (
+        <div>
+          <p className="font-black text-slate-800 leading-none">
+            {row.tercero.nombre}
+          </p>
+          {row.tercero.ruc && (
+            <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">
+              RUC: {row.tercero.ruc}
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "date",
+      header: "Fecha Envío",
+      render: (row) =>
+        row.sentAt?.toDate().toLocaleDateString("es-PE") || "Sin fecha",
+    },
+    {
+      key: "responsible",
+      header: "Responsable",
+      render: (row) => (
+        <span className="text-xs font-bold text-slate-400 uppercase tracking-tighter">
+          {row.sentBy.split("@")[0]}
+        </span>
+      ),
+    },
+    {
+      key: "coils",
+      header: "Bobinas",
+      align: "center",
+      render: (row) => (
+        <span className="bg-slate-100 px-2 py-1 rounded-lg text-[11px] font-black text-slate-600">
+          {row.coils.length}
+        </span>
+      ),
+    },
+    {
+      key: "sentWeight",
+      header: "Peso Enviado",
+      align: "right",
+      render: (row) => (
+        <span className="font-black text-slate-700">
+          {row.sentWeightTotal.toLocaleString()} <small className="text-[10px] opacity-40">kg</small>
+        </span>
+      ),
+    },
+    {
+      key: "receivedWeight",
+      header: "Peso Recibido",
+      align: "right",
+      render: (row) => (
+        <span className="font-black text-emerald-600">
+          {row.receivedWeightTotal?.toLocaleString() || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "merma",
+      header: "Merma",
+      align: "right",
+      render: (row) => {
+        const merma =
+          row.status === "RECIBIDO" && row.receivedWeightTotal
+            ? row.sentWeightTotal - row.receivedWeightTotal
+            : null;
+        return (
+          <span className="font-black text-red-500">
+            {merma !== null ? `${merma.toLocaleString()} kg` : "—"}
+          </span>
+        );
+      },
+    },
+    {
+      key: "invoice",
+      header: "Factura",
+      render: (row) => (
+        <span
+          className={`text-[11px] font-black ${
+            row.invoice?.number ? "text-blue-600" : "text-slate-300 italic"
+          }`}
+        >
+          {row.invoice?.number || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Acciones",
+      align: "center",
+      render: (row) => {
+        if (row.status === "ANULADA") {
+          return (
+            <div className="flex justify-center">
+              <div className="relative group/tooltip">
+                <AlertCircle size={18} className="text-red-300" />
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] rounded-2xl shadow-xl opacity-0 group-hover/tooltip:opacity-100 pointer-events-none transition-opacity z-50">
+                  <p className="font-black uppercase tracking-widest mb-1 text-red-400">
+                    Motivo de Anulación
+                  </p>
+                  <p className="font-medium italic">
+                    {row.voidReason || "Sin motivo especificado"}
+                  </p>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        const items: RowAction[] = [];
+
+        if (row.status === "ENVIADO") {
+          items.push(
+            {
+              id: "receive",
+              label: "Registrar Recepción",
+              icon: <Save size={16} />,
+              variant: "primary",
+              onClick: () => setSelectedOrder(row),
+            },
+            {
+              id: "edit",
+              label: "Editar Orden",
+              icon: <Edit2 size={16} />,
+              onClick: () => handleOpenEdit(row),
+            }
+          );
+        }
+
+        if (row.status === "RECIBIDO") {
+          items.push({
+            id: "invoice",
+            label: row.invoice?.number ? "Ajustar Factura" : "Cargar Factura",
+            icon: <Receipt size={16} />,
+            onClick: () => setUpdatingInvoiceOrder(row),
+          });
+        }
+
+        items.push({
+          id: "void",
+          label: "Anular Orden",
+          icon: <Trash2 size={16} />,
+          variant: "danger",
+          section: "danger",
+          onClick: () => setVoidingOrder(row),
+        });
+
+        return <RowActionsMenu items={items} />;
+      },
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      <header className="flex justify-between items-center">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
             <Scissors className="text-blue-600" /> Órdenes de Corte (Tercerizado)
           </h1>
           <p className="text-sm text-slate-500 font-medium italic">Gestión de bobinas enviadas a slitter externo para Drywall.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-3 w-full md:w-auto">
           {isFetchingCoils && (
              <div className="flex items-center gap-2 bg-slate-100 px-4 py-2 rounded-xl text-[10px] font-black text-slate-400 uppercase tracking-widest animate-pulse">
                <Loader2 size={14} className="animate-spin" /> Cargando Datos...
              </div>
           )}
-          <Link 
+        </div>
+      </header>
+
+      <TableFilters
+        search={{
+          value: searchValue,
+          onChange: setSearchValue,
+          placeholder: "Buscar proveedor...",
+        }}
+        filterGroups={[
+          {
+            id: "status",
+            label: "Estado",
+            layout: "list",
+            value: filterValues.status || "TODOS",
+            onChange: (v) => setFilterValue("status", v),
+            options: [
+              { value: "TODOS", label: "Todas" },
+              { value: "ENVIADO", label: "Enviadas" },
+              { value: "RECIBIDO", label: "Recibidas" },
+              { value: "ANULADA", label: "Anuladas" },
+            ],
+          },
+        ]}
+        onClearAll={() => {
+          setSearchValue("");
+          setFilterValue("status", "TODOS");
+        }}
+        rightSlot={
+          <Link
             href="/admin/coils"
-            className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-black flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-200 uppercase tracking-tighter"
+            className="flex-1 md:flex-none text-center px-6 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black flex items-center justify-center gap-2 hover:bg-blue-600 transition shadow-xl shadow-slate-200 uppercase tracking-widest"
           >
             <Plus size={18} /> Nueva Orden
           </Link>
-        </div>
-      </header>
-      
-      {/* MODAL RECEPCIÓN */}
+        }
+      />
+
+      <DataTable
+        columns={columns}
+        data={pageItems}
+        getRowKey={(o) => o.id!}
+        isLoading={isLoading}
+        currentPage={currentPage}
+        pageSize={pageSize}
+        emptyState={{
+          icon: "Scissors",
+          title: "No hay órdenes de corte registradas",
+          description: orders.length === 0 
+            ? "Envía bobinas a corte desde el inventario de bobinas."
+            : "No hay órdenes con esos filtros.",
+        }}
+      />
+
+      <TablePagination
+        currentPage={currentPage}
+        pageSize={pageSize}
+        totalItems={totalFiltered}
+        onPageChange={setCurrentPage}
+      />
+
+      {/* MODALS */}
       {selectedOrder && (
         <ReceiveStripsModal 
           order={selectedOrder}
@@ -94,7 +361,6 @@ export default function CutOrdersPage() {
         />
       )}
 
-      {/* MODAL AJUSTE FACTURA */}
       {updatingInvoiceOrder && (
         <UpdateInvoiceModal 
           order={updatingInvoiceOrder}
@@ -107,7 +373,6 @@ export default function CutOrdersPage() {
         />
       )}
 
-      {/* MODAL ANULACIÓN */}
       {voidingOrder && (
         <VoidOrderModal 
           order={voidingOrder}
@@ -120,7 +385,6 @@ export default function CutOrdersPage() {
         />
       )}
 
-      {/* MODAL EDICIÓN */}
       {editingOrder && (
         <SendToCutModal 
           initialOrder={editingOrder.order}
@@ -133,110 +397,7 @@ export default function CutOrdersPage() {
           }}
         />
       )}
-
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-20">
-          <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
-          <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Cargando órdenes...</p>
-        </div>
-      ) : orders.length === 0 ? (
-        <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-[2rem] py-20 text-center">
-          <Scissors size={48} className="mx-auto text-slate-300 mb-4" />
-          <p className="text-slate-400 font-bold italic text-lg">No hay órdenes de corte registradas.</p>
-          <p className="text-slate-400 text-sm mt-2">Envía bobinas a corte desde el inventario de bobinas.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {orders.map(order => (
-            <div key={order.id} className="bg-white border border-slate-100 rounded-[2rem] p-6 shadow-sm hover:shadow-md transition group relative overflow-hidden">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                    order.status === 'RECIBIDO' ? 'bg-green-100 text-green-700' : 
-                    order.status === 'ANULADA' ? 'bg-red-100 text-red-700' :
-                    'bg-blue-100 text-blue-700'
-                  }`}>
-                    {order.status}
-                  </span>
-                  <h3 className="text-lg font-black text-slate-800 mt-2 truncate w-48">{order.tercero.nombre}</h3>
-                </div>
-                <div className="flex gap-2">
-                  {order.status === 'ENVIADO' && (
-                    <button 
-                      onClick={() => handleOpenEdit(order)}
-                      className="p-2 bg-slate-50 rounded-xl hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition"
-                      title="Editar Orden"
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                  )}
-                  {order.status !== 'ANULADA' && (
-                    <button 
-                      onClick={() => setVoidingOrder(order)}
-                      className="p-2 bg-slate-50 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition"
-                      title="Anular Orden"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-3 mb-6">
-                <div className="flex items-center gap-2 text-slate-500 text-sm font-bold">
-                  <Calendar size={14} />
-                  <span>{order.sentAt?.toDate().toLocaleDateString('es-PE')}</span>
-                </div>
-                <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
-                  <User size={14} />
-                  <span>{order.sentBy.split('@')[0]}</span>
-                </div>
-                <div className="flex items-center gap-2 text-slate-600 text-sm font-black">
-                  <Layers size={14} className="text-blue-400" />
-                  <span>{order.coils.length} Bobinas ({order.sentWeightTotal.toLocaleString()}kg)</span>
-                </div>
-              </div>
-
-              {order.status === 'ENVIADO' && (
-                <button 
-                  onClick={() => setSelectedOrder(order)}
-                  className="w-full py-3 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition shadow-lg shadow-slate-100"
-                >
-                  Registrar Recepción
-                </button>
-              )}
-
-              {order.status === 'RECIBIDO' && (
-                <div className="space-y-2">
-                  <button 
-                    onClick={() => setUpdatingInvoiceOrder(order)}
-                    className="w-full py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition shadow-sm flex items-center justify-center gap-2"
-                  >
-                    <Receipt size={14} />
-                    {order.invoice?.number ? 'Ajustar Factura' : 'Cargar Factura'}
-                  </button>
-                  {order.receivedWeightTotal && (
-                    <div className="px-4 py-2 bg-slate-50 rounded-xl flex justify-between items-center">
-                       <span className="text-[10px] font-black text-slate-400 uppercase">Recibido:</span>
-                       <span className="text-xs font-black text-green-600">{order.receivedWeightTotal.toLocaleString()} kg</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {order.status === 'ANULADA' && (
-                <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
-                   <div className="flex items-center gap-2 text-red-600 mb-1">
-                      <AlertCircle size={14} />
-                      <span className="text-[10px] font-black uppercase tracking-widest">Motivo de Anulación</span>
-                   </div>
-                   <p className="text-xs text-red-800 font-medium italic truncate">{order.voidReason || 'Sin motivo especificado'}</p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
+

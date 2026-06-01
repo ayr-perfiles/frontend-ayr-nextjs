@@ -70,8 +70,11 @@ export interface CutOrder {
     igv: number;
     detraccionPct?: number;
     detraccionAmount?: number;
+    detraction?: { amount: number; code: string } | null;
     total: number;
-    voided?: boolean; // Nota: implicancia tributaria se maneja fuera
+    voided?: boolean;
+    supplier?: { ruc: string; razonSocial: string } | null;
+    source?: 'XML' | 'MANUAL';
   };
   serviceCostPEN?: number;
   receivedWeightTotal?: number;
@@ -166,6 +169,22 @@ export interface Sale {
   status: "QUOTATION" | "COMPLETED" | "CANCELLED" | "CONVERTED" | "VOIDED";
   validUntil?: any;
   sellerId: string;
+  sunat?: {
+    tipoDoc: string;
+    serie: string;
+    correlativo: string;
+    documentId: string;
+    estado: "ACEPTADO" | "RECHAZADO" | "PENDIENTE" | "BAJA_PENDIENTE" | "BAJA_ACEPTADA";
+    xmlPath?: string;
+    cdrPath?: string;
+    pdfPath?: string;
+    hash?: string;
+    mensajeSunat?: string;
+    ticketBaja?: string;
+    motivoBaja?: string;
+    cdrBajaPath?: string;
+    emittedAt?: any;
+  };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   timestamp: any;
 }

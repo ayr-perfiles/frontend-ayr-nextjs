@@ -299,7 +299,9 @@ export default function Sidebar({
   const router = useRouter();
 
   const [collapsed, setCollapsed] = useState(initialCollapsed);
-  const [openLines, setOpenLines] = useState<Record<string, boolean>>({ drywall: true });
+  const [openLines, setOpenLines] = useState<Record<string, boolean>>({
+    drywall: true,
+  });
 
   useEffect(() => {
     setCollapsed(initialCollapsed);
@@ -320,10 +322,6 @@ export default function Sidebar({
     if (!allowedRoles) return true;
     return allowedRoles.includes(role || "");
   };
-
-  // ── Stats/Badges Mock ────────────────────────────────────────────────────
-  // En una app real, esto vendría de un store o hook global
-  const coilBadge = 3;
 
   return (
     <aside
@@ -380,13 +378,20 @@ export default function Sidebar({
             active={pathname === "/admin/sales"}
             collapsed={collapsed}
           />
+          {/* <NavItem
+            icon="Upload"
+            label="Importar Ventas"
+            href="/admin/sales/import"
+            active={pathname === "/admin/sales/import"}
+            collapsed={collapsed}
+          />
           <NavItem
             icon="FileText"
             label="Cotizaciones"
             href="/admin/quotations"
             active={pathname === "/admin/quotations"}
             collapsed={collapsed}
-          />
+          /> */}
           <NavItem
             icon="Contact2"
             label="Clientes"
@@ -436,13 +441,6 @@ export default function Sidebar({
             active={pathname === "/admin/coils/cut-orders"}
             collapsed={collapsed}
           />
-          <NavItem
-            icon="PackageCheck"
-            label="Recepción de flejes"
-            href="/admin/coils/strips-reception"
-            active={pathname === "/admin/coils/strips-reception"}
-            collapsed={collapsed}
-          />
         </Group>
 
         {/* MATERIA PRIMA */}
@@ -452,8 +450,6 @@ export default function Sidebar({
             label="Inventario Bobinas"
             href="/admin/coils"
             active={pathname === "/admin/coils"}
-            badge={coilBadge}
-            alertDot={coilBadge > 0}
             collapsed={collapsed}
           />
           <NavItem

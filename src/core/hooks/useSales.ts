@@ -12,6 +12,7 @@ export interface SalesFilters {
   searchTerm: string;
   startDate: string;
   endDate: string;
+  sunatFilter: string;
 }
 
 type Cursor = QueryDocumentSnapshot<DocumentData> | null;
@@ -45,6 +46,7 @@ export function useSales(filters: SalesFilters) {
           searchTerm: debouncedSearch,
           startDate: filters.startDate,
           endDate: filters.endDate,
+          sunatFilter: filters.sunatFilter,
           direction: dir,
           cursorDoc: dir === "next" ? lastDocRef.current : dir === "prev" ? firstDocRef.current : null,
         });
@@ -59,7 +61,7 @@ export function useSales(filters: SalesFilters) {
       }
     },
      
-    [debouncedSearch, filters.pageSize, filters.statusFilter, filters.businessLine, filters.startDate, filters.endDate],
+    [debouncedSearch, filters.pageSize, filters.statusFilter, filters.businessLine, filters.startDate, filters.endDate, filters.sunatFilter],
   );
 
   useEffect(() => {

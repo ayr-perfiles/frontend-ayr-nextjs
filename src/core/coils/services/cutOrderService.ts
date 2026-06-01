@@ -107,7 +107,10 @@ export const receiveStrips = async (params: {
     igv: number;
     detraccionPct?: number;
     detraccionAmount?: number;
+    detraction?: { amount: number; code: string } | null;
     total: number;
+    supplier?: { ruc: string; razonSocial: string } | null;
+    source?: 'XML' | 'MANUAL';
   };
   receivedStrips: {
     coilId: string;
@@ -275,7 +278,10 @@ export const updateCutOrderInvoice = async (params: {
     igv: number;
     detraccionPct?: number;
     detraccionAmount?: number;
+    detraction?: { amount: number; code: string } | null;
     total: number;
+    supplier?: { ruc: string; razonSocial: string } | null;
+    source?: 'XML' | 'MANUAL';
   };
   userEmail: string;
 }) => {

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Coil, CutOrder, ProductConfig } from "@/types";
-import { X, Scissors, Plus, Trash2, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { X, Scissors, Plus, Trash2, Loader2, AlertTriangle, CheckCircle2, Search } from "lucide-react";
 import { sendToCut, updateSentOrder } from "../services/cutOrderService";
 import { getCatalog } from "@/modules/drywall/services/catalogService";
 import toast from 'react-hot-toast';
@@ -20,6 +20,17 @@ interface PlanItem {
   count: number;
 }
 
+interface RucLookupResult {
+  razon_social: string;
+  numero_documento: string;
+  estado: string;
+  condicion: string;
+  direccion?: string;
+  distrito?: string;
+  provincia?: string;
+  departamento?: string;
+}
+
 export default function SendToCutModal({ coils, initialOrder, userEmail, onClose, onSuccess }: SendToCutModalProps) {
   const isEditMode = !!initialOrder;
   
@@ -31,6 +42,9 @@ export default function SendToCutModal({ coils, initialOrder, userEmail, onClose
     ruc: initialOrder?.tercero.ruc || '' 
   });
   
+  const [isLookingUpRuc, setIsLookingUpRuc] = useState(false);
+  const [rucInfo, setRucInfo] = useState<RucLookupResult | null>(null);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Plan por bobina: Record<coilId, PlanItem[]>
@@ -98,6 +112,35 @@ export default function SendToCutModal({ coils, initialOrder, userEmail, onClose
   }, [coilCalculations]);
 
   // 3. Handlers
+  const handleRucLookup = async () => {
+    const ruc = tercero.ruc.trim();
+    if (ruc.length !== 11 || !/^\d+$/.test(ruc)) {
+      toast.error("El RUC debe tener 11 dígitos numéricos.");
+      return;
+    }
+
+    setIsLookingUpRuc(true);
+    try {
+      const res = await fetch(`/api/consulta-doc?numero=${ruc}`, {
+        cache: 'no-store'
+      });
+      const data = await res.json();
+
+      if (res.ok && !data.error) {
+        setTercero(t => ({ ...t, nombre: data.razon_social }));
+        setRucInfo(data);
+        toast.success("Razón social cargada.");
+      } else {
+        toast.error(data.error || "No se encontró el RUC.");
+      }
+    } catch (error) {
+      console.error("Error lookup RUC:", error);
+      toast.error("Error al consultar el RUC.");
+    } finally {
+      setIsLookingUpRuc(false);
+    }
+  };
+
   const handleAddItem = (coilId: string) => {
     const currentItems = cutPlans[coilId] || [];
     const availableSkus = catalog
@@ -227,22 +270,54 @@ export default function SendToCutModal({ coils, initialOrder, userEmail, onClose
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">RUC (Opcional)</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={tercero.ruc}
+                    onChange={e => {
+                      setTercero(t => ({ ...t, ruc: e.target.value }));
+                      setRucInfo(null);
+                    }}
+                    onKeyDown={e => e.key === 'Enter' && handleRucLookup()}
+                    placeholder="2060..."
+                    className="flex-1 bg-slate-50 border-none rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all shadow-inner"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRucLookup}
+                    disabled={isLookingUpRuc}
+                    className="bg-blue-600 text-white p-4 rounded-2xl hover:bg-blue-700 transition disabled:opacity-50 shadow-lg shadow-blue-200"
+                    title="Buscar RUC"
+                  >
+                    {isLookingUpRuc ? <Loader2 size={20} className="animate-spin" /> : <Search size={20} />}
+                  </button>
+                </div>
+                {rucInfo && (
+                  <div className="mt-2 ml-2 flex flex-wrap gap-2">
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${rucInfo.estado === 'ACTIVO' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100 flex items-center gap-1'}`}>
+                      {rucInfo.estado !== 'ACTIVO' && <AlertTriangle size={10} />}
+                      {rucInfo.estado}
+                    </span>
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${rucInfo.condicion === 'HABIDO' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100 flex items-center gap-1'}`}>
+                      {rucInfo.condicion !== 'HABIDO' && <AlertTriangle size={10} />}
+                      {rucInfo.condicion}
+                    </span>
+                    {(rucInfo.estado !== 'ACTIVO' || rucInfo.condicion !== 'HABIDO') && (
+                      <span className="text-[10px] text-amber-600 font-bold italic flex items-center gap-1">
+                        <AlertTriangle size={12} /> Proveedor con alertas — verificar
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nombre / Razón Social</label>
                 <input 
                   type="text" 
                   value={tercero.nombre}
                   onChange={e => setTercero(t => ({ ...t, nombre: e.target.value }))}
                   placeholder="Ej: IMRED PERU SAC"
-                  className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all shadow-inner"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">RUC (Opcional)</label>
-                <input 
-                  type="text" 
-                  value={tercero.ruc}
-                  onChange={e => setTercero(t => ({ ...t, ruc: e.target.value }))}
-                  placeholder="2060..."
                   className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-blue-500 transition-all shadow-inner"
                 />
               </div>

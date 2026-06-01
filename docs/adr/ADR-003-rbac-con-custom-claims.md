@@ -37,3 +37,15 @@ Los roles oficiales de la plataforma son:
 - **Complejidad de Gestión:** La administración de los roles debe realizarse a través del panel de administrador que utilizará Cloud Functions o un entorno seguro con el `firebase-admin` SDK para llamar a `setCustomUserClaims`.
 - **Sincronización:** Los clientes deberán ser forzados a refrescar su sesión (`getIdToken(true)`) si su rol se actualiza mientras están utilizando la aplicación.
 - **Seguridad:** Cerramos la brecha crítica en `firestore.rules` al tiempo que preparamos el terreno para escalar los permisos granulares.
+
+---
+
+## 5. Estado de implementación (actualización 2026-05-31)
+
+> **Aclaración de coherencia:** esta decisión está **Aceptada pero PENDIENTE de implementación completa**. Estado real al cierre del Sprint 8:
+
+- ✅ **Parcial:** los Cloud Functions validan el rol vía custom claim (`request.auth.token.role === "ADMIN"`) en callables sensibles (ej. `initializeIntegrations`, `getNextSaleNumber`).
+- 🔴 **Pendiente (Sprint 7 — deuda crítica):** `firestore.rules` **sigue 100 % abierta**. La brecha NO está cerrada todavía; el cierre por colección+rol es trabajo del Sprint 7.
+- 🔴 **Pendiente:** migrar las escrituras críticas de cliente a Cloud Functions (`purchases`, `strips_*`, `cut_orders`, `audit_logs`, `inventory_stock`, `kardex_movements`).
+
+La sección 4 ("Cerramos la brecha crítica...") describe el **objetivo** de la decisión, no el estado actual. Se actualizará a "Implementada" cuando el Sprint 7 cierre las reglas.

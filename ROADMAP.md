@@ -197,7 +197,7 @@ function isOwner(userId) {
 ```
 src/modules/drywall/
 ├── components/
-│   ├── forms/           (AddCoilForm, ProductionForm, ConsumeStripForm)
+│   ├── forms/           (AddCoilForm, ProductionForm, OutsourcedProductionForm)
 │   ├── inventory/       (InventoryTable, CoilDetailsModal, EditCoilModal)
 │   ├── production/      (ProductionTable, ProductionFilters)
 │   └── operator/        (ProduceTab, HistoryTab)
@@ -222,7 +222,6 @@ Tarea: Mueve el código de drywall a src/modules/drywall/ siguiendo esta estruct
 2. Mueve componentes:
    - src/components/forms/AddCoilForm.tsx → modules/drywall/components/forms/
    - src/components/forms/ProductionForm.tsx → modules/drywall/components/forms/
-   - src/components/forms/ConsumeStripForm.tsx → modules/drywall/components/forms/
    - src/components/inventory/* → modules/drywall/components/inventory/
    - src/components/production/* → modules/drywall/components/production/
    - src/components/operator/* → modules/drywall/components/operator/

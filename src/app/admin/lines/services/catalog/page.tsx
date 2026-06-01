@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Wrench, Search, X } from "lucide-react";
+import { Plus, Wrench, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import { useServicesCatalog } from "@/modules/services/hooks/useServicesCatalog";
@@ -12,6 +12,9 @@ import {
   reactivateProduct,
 } from "@/modules/services/services/catalogService";
 import type { ServiceProduct } from "@/modules/services/types";
+import { TableFilters, FilterGroup } from "@/components/ui/TableFilters";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { useTableData } from "@/hooks/useTableData";
 
 export default function ServicesCatalogPage() {
   const { role } = useAuth();
@@ -26,6 +29,21 @@ export default function ServicesCatalogPage() {
   };
 
   const { products, loading, refresh } = useServicesCatalog(filters);
+
+  const {
+    pageItems,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
+    searchValue,
+    setSearchValue,
+    totalFiltered,
+  } = useTableData<ServiceProduct>({
+    data: products,
+    searchFields: ["sku", "displayName"],
+    pageSize: 50,
+  });
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ServiceProduct | null>(null);
@@ -74,7 +92,26 @@ export default function ServicesCatalogPage() {
     }
   }
 
-  const hasFilters = search || statusFilter !== "ALL";
+  const filterGroups: FilterGroup[] = [
+    {
+      id: "status",
+      label: "Estado",
+      value: statusFilter,
+      onChange: (v) => setStatusFilter(v as "ALL" | "ACTIVE" | "INACTIVE"),
+      options: [
+        { value: "ALL", label: "Todos" },
+        { value: "ACTIVE", label: "Activos" },
+        { value: "INACTIVE", label: "Inactivos" },
+      ],
+      layout: "list",
+    },
+  ];
+
+  const handleClearAll = () => {
+    setSearch("");
+    setStatusFilter("ALL");
+    setSearchValue("");
+  };
 
   return (
     <div className="space-y-6">
@@ -102,56 +139,39 @@ export default function ServicesCatalogPage() {
         )}
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-        <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por SKU o nombre…"
-              className="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl font-medium text-sm outline-none focus:border-violet-400 focus:bg-white transition"
-            />
-          </div>
-
-          <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm font-bold bg-gray-50">
-            {(["ALL", "ACTIVE", "INACTIVE"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-2.5 transition ${
-                  statusFilter === s ? "bg-violet-600 text-white" : "text-gray-500 hover:bg-gray-100"
-                }`}
-              >
-                {s === "ALL" ? "Todos" : s === "ACTIVE" ? "Activos" : "Inactivos"}
-              </button>
-            ))}
-          </div>
-
-          {hasFilters && (
-            <button
-              onClick={() => {
-                setSearch("");
-                setStatusFilter("ALL");
-              }}
-              className="flex items-center gap-1 px-3 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 transition"
-            >
-              <X size={14} /> Limpiar
-            </button>
-          )}
-        </div>
-      </div>
-
-      <ProductCatalogTable
-        products={products}
-        loading={loading}
-        canEdit={isAdmin}
-        onView={setViewingProduct}
-        onEdit={setEditingProduct}
-        onToggleActive={handleToggleActive}
+      <TableFilters
+        search={{
+          value: searchValue,
+          onChange: setSearchValue,
+          placeholder: "Buscar por SKU o nombre…",
+          isSearching: loading && !!searchValue,
+        }}
+        filterGroups={filterGroups}
+        onClearAll={handleClearAll}
       />
+
+      <div className="space-y-4">
+        <ProductCatalogTable
+          products={pageItems}
+          loading={loading}
+          canEdit={isAdmin}
+          onView={setViewingProduct}
+          onEdit={setEditingProduct}
+          onToggleActive={handleToggleActive}
+          currentPage={currentPage}
+          pageSize={pageSize}
+        />
+
+        <TablePagination
+          currentPage={currentPage}
+          pageSize={pageSize}
+          totalItems={totalFiltered}
+          onPageChange={setCurrentPage}
+          pageSizeOptions={[15, 30, 50, 100]}
+          onPageSizeChange={setPageSize}
+          totalLabel="Servicios"
+        />
+      </div>
 
       {/* Modals */}
       {showAddModal && (

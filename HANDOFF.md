@@ -1,70 +1,85 @@
 # Handoff — AYR Steel ERP (siguiente conversación)
 
-> Subir SIEMPRE al inicio: este `HANDOFF.md` + `CLAUDE.md` (v6.3).
-> Preferencias (ya en memoria del proyecto): generar **prompts para Claude Code** por defecto, NO archivos salvo que sea estrictamente necesario. Antes de generar (prompt o archivo), si hay dudas → **preguntar primero**, luego generar.
+> Subir SIEMPRE al inicio: este `HANDOFF.md` + `CLAUDE.md` (v6.4).
+> Preferencias (en memoria): generar **prompts para Claude Code** por defecto, NO archivos salvo estrictamente necesario. Antes de generar, si hay dudas → **preguntar primero**.
 
 ---
 
-## Estado actual — v6.3 (todo fusionado y verificado)
+## Estado actual — v6.4
 
-- **5 líneas de negocio operativas:** Drywall, Coberturas PVC (`roofing`), Coberturas Aluzinc (`metallic-roofing`), Reventa (`trading`), Servicios (`services`). Las 5 en `businessLineRegistry`.
-- **Bobina = materia prima compartida** (core/coils), pool único line-agnostic, con `finish` (acabado) gestionable (`coil_finishes`: GALVANIZADO→drywall, ALUZINC/NATURAL→metallic). Consumo filtrado por acabado (`COIL_FINISH_MISMATCH`).
-- **Corte TERCERIZADO (drywall):** la bobina se envía a un tercero (`cut_orders`, multi-bobina + factura), retorna como flejes (`strips_stock` / `strips_movements`), y en planta se producen piezas desde los flejes. Estado `coils.EN_TERCERO`. Costeo por peso retornado; servicio = gravada (sin IGV) × TC; merma externa absorbida; sin merma interna. Anulación/edición de órdenes con guarda `STRIPS_ALREADY_CONSUMED` + audit_logs.
-- **PVC compra-venta:** `roofing` pasó a modelo trading (sin producción, stock = terceros, avgCost). Colecciones `roofing_*` sin renombrar.
-- **Módulo Compras (`purchases`)** transversal (PVC/Reventa): ENTRADA a stock con PEPPS, costo desde gravada (sin IGV), idempotente por (ruc+nº factura), `voidPurchase` con guarda `STOCK_ALREADY_SOLD`.
-- **Ventas a 5 líneas:** importador masivo + formulario + vista usan el MISMO motor (getStockStrategy por línea). Importador: USD→PEN (TC por fecha), idempotencia por documentNumber, orden cronológico, costo desde stock, services no-op.
-- **Navegación:** sidebar por capacidad (Comercial / Producción / Abastecimiento / Materia Prima / Líneas / Administración), 5 líneas listadas y expandibles, colapsable, rutas unificadas `/admin/lines/[lineId]/...` (fin del "active line" global; `BusinessLineContext` deprecado).
-- **Dashboard ejecutivo** en `/admin` y **Centro de Reportes** (registro de ReportDefinition) en `/admin/reports`.
-- **Costeo consistente en todo el sistema:** IGV = crédito fiscal, detracción = forma de pago → NUNCA inflan el costo del producto. Inventario por promedio ponderado (PEPPS). Stock negativo permitido (warning).
+### Lo nuevo de esta sesión (Sprint 8)
+
+**1. Módulo Facturación Electrónica SUNAT (Cloud Functions v2)**
+- Emisión DIRECTA (cert `.p12` + SOL propios), reutilizando proyecto de referencia funcional (`sunat/`).
+- Secretos en Secret Manager (`defineSecret`), binding mínimo por callable. `ALL_SECRETS` eliminado.
+- Colección `integrations` (config no-secreta): `sunat-emision`, `sunat-consulta`, `apisnet`, `algolia`.
+- Callables: `emitirComprobante`, `comunicarBaja`, `consultarEstadoBaja` (Factura/Boleta/Baja); `validarCpeSunat` (validez oficial SUNAT); `consultarRuc`/`consultarDni` (decolecta.com).
+- **Funcionando:** consultas RUC/DNI (tras migrar apis.net→decolecta y arreglar serverTimestamp + binding mínimo).
+- **Pendiente:** prueba real de emisión contra SUNAT BETA (requiere `.p12` válido cargado).
+
+**2. Refactor Importador Masivo de Ventas** — en curso, cola de prompts (abajo).
+
+### Archivos clave tocados / creados
+- `functions/src/config/secrets.ts` (defineSecret, sin ALL_SECRETS).
+- `functions/src/config/integrations.ts` (getIntegrationConfig, tipado por integración, sin `any`).
+- `functions/src/index.ts` (initializeIntegrations seed + callables + triggers audit).
+- `functions/src/services/apisnet.ts` (decolecta v1, RUC/DNI).
+- `functions/src/callables/integrations.ts` (consultarRuc/Dni — fix serverTimestamp + binding `[APISNET_TOKEN]`).
+- `functions/scripts/seedIntegrations.ts` (seed standalone para emulador).
+- `src/components/sales/BulkUploadSales.tsx` → migrando a página `/admin/sales/import`.
+- `public/templates/Plantilla_Importacion_Ventas_AYR.xlsx` (plantilla cliente, 15 columnas).
+
+---
+
+## Cola de prompts — Importador de Ventas (ORDEN DE APLICACIÓN)
+
+> 14 ya aplicado. Aplicar en este orden. 19 y 20 DESCARTADOS (el 21 los reemplaza).
+
+1. **PROMPT 15** — Página propia `/admin/sales/import` + descarga plantilla + drawer de columnas + validación de archivo vacío + alta de SKU faltante (form completo por línea).
+2. **PROMPT 14** ✅ APLICADO — Peso por UM (`calcPesoKg`) + manejo NC/ND + TC sin fallback silencioso.
+3. **PROMPT 22** — Rename de atributos a inglés (`documentType`, `unitOfMeasure`, `adjustedDocument`) SOLO nombres, valores en español; ELIMINAR `affectaStock`.
+4. **PROMPT 21** — `ncStockAction` (enum inglés `RETURNS_STOCK`/`MONEY_ONLY`/`UNDECIDED`) + arreglar propagación (quedaba "NADA") + peso NETO de inventario ramificado por acción + test Fase 2 que distingue ramas.
+5. **PROMPT 16** — Idempotencia anti doble-import: leer `sales/{documentNumber}` dentro del `runTransaction`; omitir si existe. Test doble-corrida = stock baja una vez.
+6. **PROMPT 17** — Preview: badge moneda+TC por ítem + decisión inline de NC sin definir.
+7. **PROMPT 18** — Barra de indicadores totales (recalculo en vivo, alertas gobiernan Guardar).
+
+(Nota: el orden lógico es 15 → 22 → 21 → 16 → 17 → 18; el 14 ya está. Ajustar si en desarrollo conviene.)
 
 ---
 
 ## Frentes abiertos (prioridad)
 
-| Frente                                 | Estado                | Detalle                                                                                                                                                                                   |
-| -------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 🔴 **Sprint 6B — Producción Metallic** | BLOQUEADO por cliente | Conformado de aluzinc consumiendo el pool de bobinas vía `coilConsumptionService`. Esperando 3 respuestas (abajo).                                                                        |
-| 🔴 **Sprint 7 — Seguridad**            | Deuda crítica         | `firestore.rules` por colección+rol (hoy 100% abierta) + mover writes de cliente a Functions: `purchases`, `strips_*`, `cut_orders`, `audit_logs`, `inventory_stock`, `kardex_movements`. |
-| 🟡 Tests + CI                          | En vuelo              | Tests nuevos (purchases, ventas 5 líneas, sidebar) + CI corriendo Fase 2 con emulador Firestore.                                                                                          |
-| 🟡 Índices Firestore                   | En vuelo              | `firestore.indexes.json` derivado de queries reales; validar contra staging (el emulador NO exige índices).                                                                               |
-
-### Sprint 6B — preguntas pendientes al cliente (desbloquean el sprint)
-
-1. ¿Cómo se mide el consumo de bobina en el conformado? (kg reportado / metros × peso teórico / piezas × peso unitario)
-2. ¿Producción con plan previo (estado IN_PROGRESS → ejecuta) o directa (elige bobina → produce)?
-3. ¿Hay merma/despunte en el conformado que afecte el costo?
-
-**Patrón recomendado 6B:** clonar la estructura del ProductionEngine drywall (`planOperation`/`executeOperation` + Result + runTransaction) pero dominio por **peso** (sin slitter/masterWidth/stripWidth); costo = pricePerKg × kg; salida a `metallic_roofing_stock` con PEPPS; consumir vía `coilConsumptionService` filtrado por acabado ALUZINC/NATURAL.
+| Frente | Estado | Detalle |
+|---|---|---|
+| 🏗️ **Sprint 8 — Import Ventas** | En curso | Cola de prompts arriba. Revisar cada uno en desarrollo. |
+| 🟡 **Emisión SUNAT prueba real** | Pendiente | Cargar `.p12` válido + probar sendBill contra BETA. |
+| 🔴 **Sprint 6B — Producción Metallic** | BLOQUEADO | 3 preguntas al cliente (kg vs ML×peso; plan previo vs directo; merma despunte). |
+| 🔴 **Sprint 7 — Seguridad** | Deuda crítica | `firestore.rules` por colección+rol (hoy 100% abierta) + writes críticos a Functions. |
+| 🟡 Validación CPE compras (UI) | Pendiente | Botón "Validar en SUNAT" sobre `purchases` usando `validarCpeSunat`. |
 
 ---
 
-## TODOs menores (no bloquean)
+## Notas técnicas / trampas conocidas
 
-- Migrar la **compra de bobinas** al módulo `purchases` genérico (hoy mantiene su flujo propio).
-- **Emisión electrónica de VENTAS** vía PSE/OSE (módulo grande; hoy solo se registran comprobantes de COMPRA). El PSE que aparece en facturas del proveedor es referencia, no integración aún.
-- **Branch protection** master/develop (CI required + PR) para que el CI bloquee el deploy de Vercel. Setup: master=prod, develop=dev, auto-deploy Vercel.
-- Bobina vendida directa (BOB\*): hoy ajuste manual; futura `coilStockStrategy` por prefijo de SKU.
-
----
-
-## Archivos clave a subir según la tarea
-
-- **Siempre:** `CLAUDE.md` (v6.3) + este `HANDOFF.md`.
-- **6B (metallic):** `core/contracts/BusinessLineModule.ts`, `core/coils/` (coilConsumptionService + finishCompat), `engines/production.ts` de drywall (molde), `modules/metallic-roofing/` completo, `core/sales/strategies/index.ts`.
-- **Sprint 7 (rules):** `firestore.rules`, lista de colecciones y quién escribe cada una.
-- **Ventas/stock:** `core/sales/strategies/index.ts`.
+- **Recompilar Functions** (`npm run build`) tras editar TS — el emulador corre `lib/*.js`.
+- **Emulador + secretos:** valores en `functions/.secret.local`; cada secreto bindeado necesita su línea (dummy si no se prueba). firebase-tools ≥ 13.15.1.
+- **Emulador arranca Firestore vacío:** correr `npm run seed:emulator` o no existe `integrations` → callables fallan con "Integración no encontrada".
+- **Validez CPE:** confirmar grant OAuth (`client_credentials` vs `password`) contra el manual oficial antes de cablear `validarCpeSunat`.
+- **NC:** SUNAT NO da el motivo → `ncStockAction` lo decide el usuario, no se adivina.
+- **TC:** sin fallback 3.75; si falla la API, bloquear y avisar.
 
 ---
 
-## Convenciones del proyecto (recordatorio)
+## Convenciones (recordatorio)
 
-- 0 `any` nuevos · errores en español · patrón Strategy (no if/else por línea) · `runTransaction` con lecturas antes de escrituras · stock negativo permitido (warning, no bloquea).
-- Build debe estar 100% verde (el antiguo error `coils/page.js` ya fue resuelto — NO volver a "ignorarlo").
-- NUNCA borrado físico: usar status ANULADA/VOIDED + audit_logs.
+- 0 `any` nuevos · **nombres en inglés, valores/datos y errores de usuario en español** · patrón Strategy (no if/else por línea) · `runTransaction` lee antes de escribir · stock negativo permitido (warning).
+- Build 100% verde, `tsc --noEmit` limpio.
+- NUNCA borrado físico: status ANULADA/VOIDED + audit_logs.
+- Secretos: solo Secret Manager, nunca Firestore/UI. Binding mínimo por callable.
 - Tests: Fase 1 (sin emulador, lógica/strategies) + Fase 2 (emulador Firestore, transacciones/E2E).
 
 ---
 
 ## Próximo paso sugerido
 
-Cuando el cliente responda las 3 preguntas → **6B**, e inmediatamente después **Sprint 7** (seguridad) para cerrar el núcleo y bajar la deuda crítica antes de sumar más features.
+Aplicar la cola del importador (15 → 22 → 21 → 16 → 17 → 18), probando cada uno en desarrollo. En paralelo, cuando haya `.p12` válido, probar emisión contra BETA. Luego retomar Sprint 7 (seguridad) para bajar la deuda crítica.
