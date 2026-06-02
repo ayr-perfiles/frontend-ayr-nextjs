@@ -12,6 +12,7 @@ import toast from "react-hot-toast";
 
 import { approveQuotation, cancelQuotation } from "@/services/salesService";
 import { useAuth } from "@/context/AuthContext";
+import { useConfirm } from "@/context/ConfirmContext";
 import { useSales } from "@/core/hooks/useSales";
 import { SalesMetrics } from "@/components/sales/SalesMetrics";
 import { SalesFilters } from "@/components/sales/SalesFilters";
@@ -55,6 +56,7 @@ function HeaderOptions({ onExport }: { onExport: () => void }) {
 
 export default function SalesPage() {
   const { user, role } = useAuth();
+  const confirm = useConfirm();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -94,7 +96,14 @@ export default function SalesPage() {
   };
 
   const handleCancel = async (saleId: string) => {
-    if (!confirm(`¿Deseas cancelar la cotización ${saleId}? Esto la marcará como rechazada.`)) return;
+    if (
+      !(await confirm({
+        title: "Cancelar Cotización",
+        message: `¿Deseas cancelar la cotización ${saleId}? Esto la marcará como rechazada.`,
+        variant: "danger",
+      }))
+    )
+      return;
     setIsProcessing(true);
     try {
       await cancelQuotation(saleId, user?.email || "usuario");
@@ -131,7 +140,12 @@ export default function SalesPage() {
         </div>
       </div>
 
-      <SalesMetrics totalRevenue={totalRevenue} totalProfit={totalProfit} totalWeight={totalWeight} />
+      <SalesMetrics
+        totalRevenue={totalRevenue}
+        totalProfit={totalProfit}
+        totalWeight={totalWeight}
+        count={sales.length}
+      />
 
       <SalesFilters
         searchTerm={searchTerm}
@@ -146,27 +160,27 @@ export default function SalesPage() {
         setStartDate={setStartDate}
         endDate={endDate}
         setEndDate={setEndDate}
-        isSearching={loading && searchTerm !== ""}
-        onClearSearch={() => {}}
+        onClear={() => {
+          setSearchTerm("");
+          setStatusFilter("ALL");
+          setBusinessLine("ALL");
+          setSunatFilter("ALL");
+          setStartDate("");
+          setEndDate("");
+        }}
       />
 
       <div className="relative">
         <SalesTable
-          displaySales={sales}
-          isLoading={loading}
-          role={role}
-          isProcessing={isProcessing}
-          currentPage={currentPage}
-          pageSize={pageSize}
-          onPrint={() => window.print()}
-          onDuplicate={(id) => toast.success(`Duplicando ${id}`)}
+          sales={sales}
+          onView={setViewingSale}
           onApprove={handleApprove}
-          onViewDetails={setViewingSale}
-          onEdit={(id) => (window.location.href = `/admin/sales/new?editId=${id}`)}
           onCancel={handleCancel}
+          isProcessing={isProcessing}
+          role={role}
         />
         {loading && (
-          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-xl">
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-2xl">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
           </div>
         )}
