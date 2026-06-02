@@ -15,6 +15,7 @@ import { functions, storage } from "@/lib/firebase/clientApp";
 import { httpsCallable } from "firebase/functions";
 import { getDownloadURL, ref } from "firebase/storage";
 import toast from "react-hot-toast";
+import { useConfirm } from "@/context/ConfirmContext";
 
 interface SunatPanelProps {
   saleId: string;
@@ -23,6 +24,7 @@ interface SunatPanelProps {
 }
 
 export function SunatPanel({ saleId, sunatData, onRefresh }: SunatPanelProps) {
+  const confirm = useConfirm();
   const [isLoading, setIsLoading] = useState(false);
   const [isVoiding, setIsVoiding] = useState(false);
 
@@ -65,15 +67,26 @@ export function SunatPanel({ saleId, sunatData, onRefresh }: SunatPanelProps) {
   };
 
   const handleVoid = async () => {
-    const motivo = prompt("Ingrese el motivo de la anulación ante SUNAT:");
-    if (!motivo) return;
+    const res = await confirm({
+      title: "Anular ante SUNAT",
+      message: "Se enviará una comunicación de baja a SUNAT para invalidar este comprobante.",
+      variant: "danger",
+      confirmLabel: "Anular",
+      requireInput: {
+        label: "Motivo de la anulación",
+        required: true,
+        placeholder: "Ej: Error en el monto, devolución de mercadería...",
+      },
+    });
+
+    if (!res.confirmed) return;
 
     setIsVoiding(true);
     const voidFn = httpsCallable(functions, "comunicarBaja");
     toast.loading("Enviando comunicación de baja...", { id: "sunat-void" });
 
     try {
-      const result: any = await voidFn({ saleId, motivo });
+      const result: any = await voidFn({ saleId, motivo: res.value });
       if (result.data.success) {
         toast.success("Comunicación de baja enviada a SUNAT", {
           id: "sunat-void",

@@ -22,8 +22,11 @@ import { useAuth } from "@/context/AuthContext"; // <-- Necessário para o log d
 import toast from "react-hot-toast";
 import { fixAllHistoricalCosts } from "@/services/seedService";
 
+import { useConfirm } from "@/context/ConfirmContext";
+
 export default function SettingsPage() {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState<
     "general" | "integrations" | "users" | "danger"
   >("general");
@@ -45,9 +48,11 @@ export default function SettingsPage() {
 
   const handleFixCosts = async () => {
     if (
-      !confirm(
-        "¿Estás seguro de querer recalcular los costos de los flejes en progreso?",
-      )
+      !(await confirm({
+        title: "Recalcular Costos",
+        message: "¿Estás seguro de querer recalcular los costos de los flejes en progreso?",
+        variant: "warning",
+      }))
     )
       return;
 
@@ -76,18 +81,30 @@ export default function SettingsPage() {
   };
 
   const handleSystemReset = async () => {
-    const confirm1 = window.confirm(
-      "⚠️ ADVERTENCIA EXTREMA\n\nEstás a punto de ELIMINAR TODAS las Bobinas, Stocks, Producciones y Ventas.\n\n¿Estás completamente seguro?",
-    );
-    if (!confirm1) return;
+    const res = await confirm({
+      title: "⚠️ ELIMINAR TODA LA BASE DE DATOS",
+      message: (
+        <div className="space-y-3">
+          <p>
+            Estás a punto de <strong>ELIMINAR PERMANENTEMENTE</strong> todas las
+            colecciones de bobinas, stocks, producciones y ventas.
+          </p>
+          <p className="text-red-600 font-black uppercase text-[10px] tracking-widest">
+            ESTA ACCIÓN NO SE PUEDE DESHACER.
+          </p>
+        </div>
+      ),
+      variant: "danger",
+      confirmLabel: "Eliminar todo",
+      requireInput: {
+        label: 'Escribe "ELIMINAR" para confirmar',
+        required: true,
+        placeholder: "ELIMINAR",
+        matchValue: "ELIMINAR",
+      },
+    });
 
-    const confirm2 = window.prompt(
-      "Para confirmar la eliminación, escribe la palabra: ELIMINAR",
-    );
-    if (confirm2 !== "ELIMINAR") {
-      toast.error("Operación cancelada. La palabra no coincide.");
-      return;
-    }
+    if (!res.confirmed) return;
 
     setIsResetting(true);
     try {

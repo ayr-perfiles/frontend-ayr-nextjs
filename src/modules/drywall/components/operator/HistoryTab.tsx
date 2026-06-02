@@ -23,9 +23,11 @@ import {
   ArrowRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useConfirm } from "@/context/ConfirmContext";
 
 export function HistoryTab() {
   const { user, role } = useAuth();
+  const confirm = useConfirm();
   const [logs, setLogs] = useState<ProductionLog[]>([]);
   const [limitCount, setLimitCount] = useState(15);
 
@@ -89,9 +91,12 @@ export function HistoryTab() {
   const handleRevert = async (log: ProductionLog) => {
     if (!log.id) return;
     if (
-      confirm(
-        `¿Estás seguro de anular la producción de ${log.piecesProduced} piezas?`,
-      )
+      await confirm({
+        title: "Anular Producción",
+        message: `¿Estás seguro de anular la producción de ${log.piecesProduced} piezas?`,
+        variant: "danger",
+        confirmLabel: "Anular",
+      })
     ) {
       try {
         await revertProductionLog(log.id, user?.email || "Admin");

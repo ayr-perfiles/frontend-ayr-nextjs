@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useProduction } from "@/modules/drywall/hooks/useProduction";
-import { EmptyState } from "@/components/ui/EmptyState";
 import {
   Factory,
   History,
@@ -20,9 +19,11 @@ import { ProductionTable } from "@/modules/drywall/components/production/Product
 import { StripsProductionModal } from "../../components/production/StripsProductionModal";
 import { OutsourcedProductionForm } from "../../components/forms/OutsourcedProductionForm";
 import { StripStock } from "@/types";
+import { useConfirm } from "@/context/ConfirmContext";
 
 export default function ProductionPage() {
   const { user, role } = useAuth();
+  const confirm = useConfirm();
   const searchParams = useSearchParams();
   const skuParam = searchParams.get("sku");
 
@@ -74,9 +75,12 @@ export default function ProductionPage() {
 
   const handleVoidLog = async (logId: string, pieces: number) => {
     if (
-      confirm(
-        `¿Estás seguro de ANULAR este registro de ${pieces} piezas? El inventario se restará y se ajustará el costo.`,
-      )
+      await confirm({
+        title: "Anular Registro",
+        message: `¿Estás seguro de ANULAR este registro de ${pieces} piezas? El inventario se restará y se ajustará el costo.`,
+        variant: "danger",
+        confirmLabel: "Anular",
+      })
     ) {
       try {
         await revertProductionLog(logId, user?.email || "Admin");
@@ -109,10 +113,6 @@ export default function ProductionPage() {
         </div>
       </div>
 
-      {/* 
-        TODO: Migrar este selector a la nueva página de Inventario de Flejes (/admin/coils/strips)
-        para centralizar la gestión de stock tercerizado.
-      */}
       {showStartModal && (
         <StripsProductionModal
           onClose={() => setShowStartModal(false)}

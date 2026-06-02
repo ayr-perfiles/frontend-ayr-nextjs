@@ -22,8 +22,10 @@ import { RowActionsMenu, RowAction } from "@/components/ui/RowActionsMenu";
 import { TableFilters } from "@/components/ui/TableFilters";
 import { TablePagination } from "@/components/ui/TablePagination";
 import { useTableData } from "@/hooks/useTableData";
+import { useConfirm } from "@/context/ConfirmContext";
 
 export function CatalogManager() {
+  const confirm = useConfirm();
   const [products, setProducts] = useState<ProductConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -59,9 +61,11 @@ export function CatalogManager() {
 
   const handleMigrateOldCatalog = async () => {
     if (
-      !confirm(
-        "¿Deseas importar los productos de tu archivo local a la base de datos?",
-      )
+      !(await confirm({
+        title: "Migrar Catálogo",
+        message: "¿Deseas importar los productos de tu archivo local a la base de datos?",
+        variant: "warning",
+      }))
     )
       return;
     setIsLoading(true);
@@ -115,7 +119,14 @@ export function CatalogManager() {
   };
 
   const handleDelete = async (sku: string) => {
-    if (!confirm(`¿Estás seguro de eliminar permanentemente el SKU: ${sku}?`))
+    if (
+      !(await confirm({
+        title: "Eliminar Producto",
+        message: `¿Estás seguro de eliminar permanentemente el SKU: ${sku}?`,
+        variant: "danger",
+        confirmLabel: "Eliminar",
+      }))
+    )
       return;
     try {
       await deleteProduct(sku);

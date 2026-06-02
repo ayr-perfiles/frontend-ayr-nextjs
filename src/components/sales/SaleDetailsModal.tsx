@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState } from "react";
 import {
   X,
@@ -23,6 +25,8 @@ import { SunatPanel } from "./SunatPanel";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/clientApp";
 
+import { useConfirm } from "@/context/ConfirmContext";
+
 interface SaleDetailsModalProps {
   sale: Sale;
   onClose: () => void;
@@ -35,6 +39,7 @@ export function SaleDetailsModal({
   onSuccess,
 }: SaleDetailsModalProps) {
   const { user, role } = useAuth();
+  const confirm = useConfirm();
   const [isAnnuling, setIsAnnuling] = useState(false);
   const [sale, setSale] = useState(initialSale);
 
@@ -90,7 +95,16 @@ export function SaleDetailsModal({
   // Lógica de Anulación
   const handleAnnul = async () => {
     const confirmMsg = `¿ESTÁS SEGURO?\n\nEsta acción anulará la factura ${sale.id}, devolverá el stock al inventario y creará un registro en auditoría.\n\nESTA ACCIÓN NO SE PUEDE DESHACER.`;
-    if (!confirm(confirmMsg)) return;
+    
+    if (
+      !(await confirm({
+        title: "Anular Venta",
+        message: confirmMsg,
+        variant: "danger",
+        confirmLabel: "Anular",
+      }))
+    )
+      return;
 
     setIsAnnuling(true);
     toast.loading("Anulando operación...", { id: "annul" });

@@ -72,7 +72,15 @@ export default function SalesPage() {
   });
 
   const handleApprove = async (sale: Sale) => {
-    if (!confirm(`¿Deseas convertir la cotización ${sale.id} en una Venta Real? Esto descontará stock.`)) return;
+    if (
+      !(await confirm({
+        title: "Convertir Cotización",
+        message: `¿Deseas convertir la cotización ${sale.id} en una Venta Real? Esto descontará stock.`,
+        variant: "default",
+        confirmLabel: "Convertir",
+      }))
+    )
+      return;
     setIsProcessing(true);
     try {
       await approveQuotation(sale.id!);

@@ -92,7 +92,13 @@ export default function UsersPage() {
 
   const handleToggleStatus = async (userId: string, currentStatus: boolean, userEmail: string) => {
     if (userEmail === user?.email) return toast.error("⚠️ No puedes desactivar tu propia cuenta.");
-    if (confirm(`¿Estás seguro de ${currentStatus ? "desactivar" : "reactivar"} a ${userEmail}?`)) {
+    if (
+      await confirm({
+        title: `${currentStatus ? "Desactivar" : "Reactivar"} Usuario`,
+        message: `¿Estás seguro de ${currentStatus ? "desactivar" : "reactivar"} a ${userEmail}?`,
+        variant: "warning",
+      })
+    ) {
       try {
         await updateUserStatus(userId, !currentStatus);
         toast.success(`Usuario ${!currentStatus ? "reactivado" : "suspendido"}.`);

@@ -24,6 +24,7 @@ import {
 } from "@/core/coils/services/coilService";
 import { fetchAvailableCoilsForExport } from "@/core/coils/services/coilService";
 import { useAuth } from "@/context/AuthContext";
+import { useConfirm } from "@/context/ConfirmContext";
 
 import { InventoryFilters } from "@/core/coils/components/InventoryFilters";
 import { EditData } from "@/core/coils/components/EditCoilModal";
@@ -36,6 +37,7 @@ import { TablePagination } from "@/components/ui/TablePagination";
 
 export default function CoilsPage() {
   const { user, role } = useAuth();
+  const confirm = useConfirm();
   
   // 1. Estados de UI y Filtros
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -240,7 +242,14 @@ export default function CoilsPage() {
   };
 
   const handleVoidCoil = async (coilId: string) => {
-    if (confirm(`¿Estás seguro de anular la bobina ${coilId}?`)) {
+    if (
+      await confirm({
+        title: "Anular Bobina",
+        message: `¿Estás seguro de anular la bobina ${coilId}?`,
+        variant: "danger",
+        confirmLabel: "Anular",
+      })
+    ) {
       toast
         .promise(voidCoil(coilId, user?.email || "Admin"), {
           loading: "Anulando...",
@@ -252,7 +261,13 @@ export default function CoilsPage() {
   };
 
   const handleCancelPlan = async (coilId: string) => {
-    if (confirm(`¿Estás seguro de cancelar el plan de la bobina ${coilId}?`)) {
+    if (
+      await confirm({
+        title: "Cancelar Plan",
+        message: `¿Estás seguro de cancelar el plan de la bobina ${coilId}?`,
+        variant: "warning",
+      })
+    ) {
       toast
         .promise(cancelCoilPlan(coilId, user?.email || "Admin"), {
           loading: "Cancelando plan...",

@@ -33,8 +33,11 @@ import { TablePagination } from "@/components/ui/TablePagination";
 import { RowActionsMenu } from "@/components/ui/RowActionsMenu";
 import { useTableData } from "@/hooks/useTableData";
 
+import { useConfirm } from "@/context/ConfirmContext";
+
 export default function PurchasesPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTool, setActiveTool] = useState<"SIRE" | "XML" | "EXCEL" | null>(null);
@@ -63,11 +66,22 @@ export default function PurchasesPage() {
   }, []);
 
   const handleVoid = async (id: string, invoiceNum: string) => {
-    const reason = prompt(`¿Motivo de anulación para la factura ${invoiceNum}?`);
-    if (!reason) return;
+    const res = await confirm({
+      title: "Anular compra",
+      message: `Factura ${invoiceNum}`,
+      variant: "danger",
+      confirmLabel: "Anular",
+      requireInput: {
+        label: "Motivo de anulación",
+        required: true,
+        placeholder: "Describe el motivo...",
+      },
+    });
+
+    if (!res.confirmed) return;
 
     try {
-      await voidPurchase(id, reason);
+      await voidPurchase(id, res.value);
       toast.success("Compra anulada correctamente.");
     } catch (error: any) {
       toast.error(error.message || "Error al anular compra.");

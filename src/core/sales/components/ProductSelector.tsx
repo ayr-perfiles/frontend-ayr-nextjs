@@ -22,6 +22,7 @@ import type { ServiceProduct } from "@/modules/services/types";
 
 import type { SystemSettings } from "@/services/settingsService";
 import { AlertTriangle, Factory, Home, Package, Plus, ShoppingBag, Wrench } from "lucide-react";
+import { useConfirm } from "@/context/ConfirmContext";
 
 export type CartItem = SaleItem;
 
@@ -234,7 +235,9 @@ function DrywallTab({
     setQty("");
   }, [selectedSku, stock, settings]);
 
-  function handleAdd() {
+  const confirm = useConfirm();
+
+  async function handleAdd() {
     if (!selectedSku || !qty || !price) return;
     const numQty = Number(qty);
     const numPrice = Number(price);
@@ -242,7 +245,15 @@ function DrywallTab({
     const product = catalog.find((p) => p.sku === selectedSku);
 
     if (unitValue < baseCost) {
-      if (!confirm(`⚠️ ALERTA: El precio sin IGV (S/ ${unitValue.toFixed(2)}) es menor al costo (S/ ${baseCost.toFixed(2)}). ¿Vender a pérdida?`)) return;
+      if (
+        !(await confirm({
+          title: "Venta bajo costo",
+          message: `El precio sin IGV (S/ ${unitValue.toFixed(2)}) es menor al costo (S/ ${baseCost.toFixed(2)}). ¿Vender a pérdida?`,
+          variant: "warning",
+          confirmLabel: "Vender igual",
+        }))
+      )
+        return;
     }
 
     onAdd({
@@ -331,14 +342,24 @@ function RoofingTab({
     setQty("");
   }, [selectedSku, catalog, stock, settings]);
 
-  function handleAdd() {
+  const confirm = useConfirm();
+
+  async function handleAdd() {
     if (!selectedSku || !qty || !price) return;
     const numQty = Number(qty);
     const numPrice = Number(price);
     const unitValue = numPrice / (1 + IGV_RATE);
 
     if (unitValue < baseCost) {
-      if (!confirm(`⚠️ ALERTA: Precio sin IGV (S/ ${unitValue.toFixed(2)}) < costo (S/ ${baseCost.toFixed(2)}). ¿Continuar?`)) return;
+      if (
+        !(await confirm({
+          title: "Venta bajo costo",
+          message: `El precio sin IGV (S/ ${unitValue.toFixed(2)}) es menor al costo (S/ ${baseCost.toFixed(2)}). ¿Continuar?`,
+          variant: "warning",
+          confirmLabel: "Vender igual",
+        }))
+      )
+        return;
     }
 
     onAdd({
@@ -427,14 +448,24 @@ function MetallicTab({
     setQty("");
   }, [selectedSku, catalog, stock, settings]);
 
-  function handleAdd() {
+  const confirm = useConfirm();
+
+  async function handleAdd() {
     if (!selectedSku || !qty || !price) return;
     const numQty = Number(qty);
     const numPrice = Number(price);
     const unitValue = numPrice / (1 + IGV_RATE);
 
     if (unitValue < baseCost) {
-      if (!confirm(`⚠️ ALERTA: Precio sin IGV < costo. ¿Continuar?`)) return;
+      if (
+        !(await confirm({
+          title: "Venta bajo costo",
+          message: "El precio sin IGV es menor al costo. ¿Continuar?",
+          variant: "warning",
+          confirmLabel: "Vender igual",
+        }))
+      )
+        return;
     }
 
     onAdd({
@@ -668,7 +699,9 @@ function CoilsTab({
 
   const alreadyInCart = cartItems.some((i) => i.sku === selectedId && i.isCoil);
 
-  function handleAdd() {
+  const confirm = useConfirm();
+
+  async function handleAdd() {
     if (!selectedId || !price || !coil) return;
     const numPrice = Number(price);
     const unitValue = numPrice / (1 + IGV_RATE);
@@ -679,7 +712,15 @@ function CoilsTab({
     }
 
     if (unitValue < baseCost) {
-      if (!confirm(`⚠️ ALERTA: Precio sin IGV (S/ ${unitValue.toFixed(2)}) < costo (S/ ${baseCost.toFixed(2)}). ¿Continuar?`)) return;
+      if (
+        !(await confirm({
+          title: "Venta bajo costo",
+          message: `El precio sin IGV (S/ ${unitValue.toFixed(2)}) es menor al costo (S/ ${baseCost.toFixed(2)}). ¿Continuar?`,
+          variant: "warning",
+          confirmLabel: "Vender igual",
+        }))
+      )
+        return;
     }
 
     onAdd({
