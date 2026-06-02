@@ -10,8 +10,7 @@ interface SalesFiltersProps {
   setStartDate: (val: string) => void;
   endDate: string;
   setEndDate: (val: string) => void;
-  isSearching: boolean;
-  onClearSearch: () => void;
+  onClear: () => void;
   businessLine: string;
   setBusinessLine: (val: "ALL" | "drywall" | "roofing" | "metallic-roofing" | "trading" | "services") => void;
   sunatFilter: string;
@@ -28,8 +27,7 @@ export function SalesFilters(props: SalesFiltersProps) {
     setStartDate,
     endDate,
     setEndDate,
-    isSearching,
-    onClearSearch,
+    onClear,
     businessLine,
     setBusinessLine,
     sunatFilter,
@@ -89,7 +87,7 @@ export function SalesFilters(props: SalesFiltersProps) {
     setBusinessLine("ALL");
     setSunatFilter("ALL");
     setSearchTerm("");
-    onClearSearch();
+    onClear();
   };
 
   return (
@@ -98,7 +96,6 @@ export function SalesFilters(props: SalesFiltersProps) {
         value: searchTerm,
         onChange: setSearchTerm,
         placeholder: "Buscar cliente, documento o correlativo...",
-        isSearching,
         onClear: () => setSearchTerm(""),
       }}
       filterGroups={filterGroups}

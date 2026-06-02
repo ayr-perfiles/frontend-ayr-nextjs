@@ -8,7 +8,7 @@ interface UserFiltersProps {
   setRoleFilter: (val: string) => void;
   statusFilter: string;
   setStatusFilter: (val: string) => void;
-  isSearching: boolean;
+  onClear?: () => void;
 }
 
 export function UserFilters({
@@ -18,7 +18,7 @@ export function UserFilters({
   setRoleFilter,
   statusFilter,
   setStatusFilter,
-  isSearching,
+  onClear,
 }: UserFiltersProps) {
   const filterGroups: FilterGroup[] = [
     {
@@ -52,6 +52,7 @@ export function UserFilters({
     setRoleFilter("ALL");
     setStatusFilter("ALL");
     setSearchTerm("");
+    onClear?.();
   };
 
   return (
@@ -60,7 +61,6 @@ export function UserFilters({
         value: searchTerm,
         onChange: (val) => setSearchTerm(val.toLowerCase()),
         placeholder: "Buscar por correo electrónico...",
-        isSearching,
       }}
       filterGroups={filterGroups}
       onClearAll={handleClearAll}
