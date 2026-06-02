@@ -124,12 +124,30 @@ export const fetchCustomersPaginated = async (params: FetchCustomersParams) => {
 };
 
 // 2. OBTENER EL PERFIL COMPLETO DEL CLIENTE (Datos, Contactos e Historial)
-export const getCustomerProfile = async (documentNumber: string) => {
+export interface CustomerProfile {
+  customerData: {
+    id: string;
+    name: string;
+    address?: string;
+    [key: string]: any;
+  };
+  contacts: any[];
+  salesHistory: any[];
+}
+
+export const getCustomerProfile = async (documentNumber: string): Promise<CustomerProfile | null> => {
   try {
     const customerRef = doc(db, "customers", documentNumber);
     const customerSnap = await getDoc(customerRef);
     if (!customerSnap.exists()) throw new Error("Cliente no encontrado");
-    const customerData = { id: customerSnap.id, ...customerSnap.data() };
+    
+    const data = customerSnap.data();
+    const customerData = { 
+      id: customerSnap.id, 
+      name: data.name || "SIN NOMBRE",
+      address: data.address || "",
+      ...data 
+    };
 
     const contactsQuery = query(
       collection(db, "contacts"),
@@ -143,7 +161,7 @@ export const getCustomerProfile = async (documentNumber: string) => {
       collection(db, "sales"),
       where("documentNumber", "==", String(documentNumber).trim()),
       orderBy("timestamp", "desc"), // Requiere el índice compuesto en Firebase
-      limit(50), // <--- ESTO SALVA TU FACTURA Y LA MEMORIA DEL NAVEGADOR
+      limit(50), 
     );
 
     const salesSnap = await getDocs(salesQuery);
@@ -155,6 +173,7 @@ export const getCustomerProfile = async (documentNumber: string) => {
     return null;
   }
 };
+
 
 // 3. ACTUALIZAR ESTADO DE PAGO (Cuentas por Cobrar)
 export const updatePaymentStatus = async (

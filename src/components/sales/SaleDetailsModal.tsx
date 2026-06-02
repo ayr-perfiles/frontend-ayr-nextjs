@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState } from "react";
 import {
   X,
@@ -19,6 +21,11 @@ import { Sale } from "@/types";
 import { useAuth } from "@/context/AuthContext";
 import { annulSale } from "@/services/salesService";
 import toast from "react-hot-toast";
+import { SunatPanel } from "./SunatPanel";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase/clientApp";
+
+import { useConfirm } from "@/context/ConfirmContext";
 
 interface SaleDetailsModalProps {
   sale: Sale;
@@ -27,12 +34,28 @@ interface SaleDetailsModalProps {
 }
 
 export function SaleDetailsModal({
-  sale,
+  sale: initialSale,
   onClose,
   onSuccess,
 }: SaleDetailsModalProps) {
   const { user, role } = useAuth();
+  const confirm = useConfirm();
   const [isAnnuling, setIsAnnuling] = useState(false);
+  const [sale, setSale] = useState(initialSale);
+
+  const refreshSale = async () => {
+    if (!sale.id) return;
+    try {
+      const docRef = doc(db, "sales", sale.id);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        setSale({ id: docSnap.id, ...docSnap.data() } as Sale);
+        if (onSuccess) onSuccess();
+      }
+    } catch (error) {
+      console.error("Error refreshing sale:", error);
+    }
+  };
 
   // Configuración y cálculos financieros
   const IGV_RATE = 0.18;
@@ -72,7 +95,16 @@ export function SaleDetailsModal({
   // Lógica de Anulación
   const handleAnnul = async () => {
     const confirmMsg = `¿ESTÁS SEGURO?\n\nEsta acción anulará la factura ${sale.id}, devolverá el stock al inventario y creará un registro en auditoría.\n\nESTA ACCIÓN NO SE PUEDE DESHACER.`;
-    if (!confirm(confirmMsg)) return;
+    
+    if (
+      !(await confirm({
+        title: "Anular Venta",
+        message: confirmMsg,
+        variant: "danger",
+        confirmLabel: "Anular",
+      }))
+    )
+      return;
 
     setIsAnnuling(true);
     toast.loading("Anulando operación...", { id: "annul" });
@@ -229,6 +261,7 @@ export function SaleDetailsModal({
                 <table className="w-full text-left text-sm">
                   <thead className="bg-gray-50 border-b border-gray-100 text-[10px] font-black text-gray-500 uppercase">
                     <tr>
+                      <th className="p-3 text-center">Línea</th>
                       <th className="p-3">SKU</th>
                       <th className="p-3 text-center">Cant.</th>
                       <th className="p-3 text-right">Precio Unit.</th>
@@ -236,22 +269,39 @@ export function SaleDetailsModal({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {items.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50/50 transition">
-                        <td className="p-3 font-bold text-gray-800">
-                          {item.sku}
-                        </td>
-                        <td className="p-3 text-center font-medium text-gray-600">
-                          {item.quantity}
-                        </td>
-                        <td className="p-3 text-right text-gray-600">
-                          {formatMoney(item.unitPrice)}
-                        </td>
-                        <td className="p-3 text-right font-bold text-gray-800">
-                          {formatMoney(item.quantity * item.unitPrice)}
-                        </td>
-                      </tr>
-                    ))}
+                    {items.map((item, idx) => {
+                      const line = item.businessLine || "drywall";
+                      const lineConfig: Record<string, { label: string; cls: string }> = {
+                        drywall: { label: "DRY", cls: "bg-blue-50 text-blue-600 border-blue-100" },
+                        roofing: { label: "PVC", cls: "bg-emerald-50 text-emerald-600 border-emerald-100" },
+                        "metallic-roofing": { label: "ALU", cls: "bg-zinc-50 text-zinc-600 border-zinc-100" },
+                        trading: { label: "TRD", cls: "bg-amber-50 text-amber-600 border-amber-100" },
+                        services: { label: "SRV", cls: "bg-violet-50 text-violet-600 border-violet-100" },
+                      };
+                      const conf = lineConfig[line] || { label: "???", cls: "bg-gray-50 text-gray-400" };
+                      
+                      return (
+                        <tr key={idx} className="hover:bg-gray-50/50 transition">
+                          <td className="p-3 text-center">
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${conf.cls}`}>
+                              {conf.label}
+                            </span>
+                          </td>
+                          <td className="p-3 font-bold text-gray-800">
+                            {item.sku}
+                          </td>
+                          <td className="p-3 text-center font-medium text-gray-600">
+                            {item.quantity}
+                          </td>
+                          <td className="p-3 text-right text-gray-600">
+                            {formatMoney(item.unitPrice)}
+                          </td>
+                          <td className="p-3 text-right font-bold text-gray-800">
+                            {formatMoney(item.quantity * item.unitPrice)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -331,6 +381,17 @@ export function SaleDetailsModal({
                     </div>
                   )}
                 </div>
+
+                {/* 🔥 PANEL SUNAT INTEGRADO */}
+                {sale.status === "COMPLETED" && (
+                  <div className="mt-6">
+                    <SunatPanel 
+                      saleId={sale.id!} 
+                      sunatData={sale.sunat} 
+                      onRefresh={refreshSale} 
+                    />
+                  </div>
+                )}
 
                 <div className="pt-4 space-y-3">
                   <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 flex justify-between items-center text-xs">

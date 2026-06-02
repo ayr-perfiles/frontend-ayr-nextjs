@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import {
   Settings,
-  BookOpen,
   Users,
   Plug,
   AlertTriangle,
@@ -18,16 +17,18 @@ import {
   SystemSettings,
 } from "@/services/settingsService";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
-import { CatalogSettings } from "@/components/settings/CatalogSettings";
 import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
 import { useAuth } from "@/context/AuthContext"; // <-- Necessário para o log de auditoria
 import toast from "react-hot-toast";
 import { fixAllHistoricalCosts } from "@/services/seedService";
 
+import { useConfirm } from "@/context/ConfirmContext";
+
 export default function SettingsPage() {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState<
-    "general" | "catalog" | "integrations" | "users" | "danger"
+    "general" | "integrations" | "users" | "danger"
   >("general");
 
   const [settingsData, setSettingsData] = useState<SystemSettings | null>(null);
@@ -47,9 +48,11 @@ export default function SettingsPage() {
 
   const handleFixCosts = async () => {
     if (
-      !confirm(
-        "¿Estás seguro de querer recalcular los costos de los flejes en progreso?",
-      )
+      !(await confirm({
+        title: "Recalcular Costos",
+        message: "¿Estás seguro de querer recalcular los costos de los flejes en progreso?",
+        variant: "warning",
+      }))
     )
       return;
 
@@ -78,18 +81,30 @@ export default function SettingsPage() {
   };
 
   const handleSystemReset = async () => {
-    const confirm1 = window.confirm(
-      "⚠️ ADVERTENCIA EXTREMA\n\nEstás a punto de ELIMINAR TODAS las Bobinas, Stocks, Producciones y Ventas.\n\n¿Estás completamente seguro?",
-    );
-    if (!confirm1) return;
+    const res = await confirm({
+      title: "⚠️ ELIMINAR TODA LA BASE DE DATOS",
+      message: (
+        <div className="space-y-3">
+          <p>
+            Estás a punto de <strong>ELIMINAR PERMANENTEMENTE</strong> todas las
+            colecciones de bobinas, stocks, producciones y ventas.
+          </p>
+          <p className="text-red-600 font-black uppercase text-[10px] tracking-widest">
+            ESTA ACCIÓN NO SE PUEDE DESHACER.
+          </p>
+        </div>
+      ),
+      variant: "danger",
+      confirmLabel: "Eliminar todo",
+      requireInput: {
+        label: 'Escribe "ELIMINAR" para confirmar',
+        required: true,
+        placeholder: "ELIMINAR",
+        matchValue: "ELIMINAR",
+      },
+    });
 
-    const confirm2 = window.prompt(
-      "Para confirmar la eliminación, escribe la palabra: ELIMINAR",
-    );
-    if (confirm2 !== "ELIMINAR") {
-      toast.error("Operación cancelada. La palabra no coincide.");
-      return;
-    }
+    if (!res.confirmed) return;
 
     setIsResetting(true);
     try {
@@ -113,7 +128,7 @@ export default function SettingsPage() {
         </h1>
         <p className="text-gray-500 text-sm font-medium mt-1">
           Administra la identidad corporativa, impuestos, integraciones y
-          catálogos.
+          configuraciones globales.
         </p>
       </div>
 
@@ -125,13 +140,6 @@ export default function SettingsPage() {
             className={`w-full text-left p-4 rounded-xl font-bold flex items-center gap-3 transition ${activeTab === "general" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "bg-white text-gray-600 hover:bg-gray-50"}`}
           >
             <Settings size={18} /> General y Operaciones
-          </button>
-
-          <button
-            onClick={() => setActiveTab("catalog")}
-            className={`w-full text-left p-4 rounded-xl font-bold flex items-center gap-3 transition ${activeTab === "catalog" ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-          >
-            <BookOpen size={18} /> Catálogo de Perfiles
           </button>
 
           <button
@@ -169,8 +177,6 @@ export default function SettingsPage() {
                   isSaving={isSaving}
                 />
               )}
-
-              {activeTab === "catalog" && <CatalogSettings />}
 
               {activeTab === "integrations" && (
                 <IntegrationsSettings

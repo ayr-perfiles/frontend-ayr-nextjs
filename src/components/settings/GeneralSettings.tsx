@@ -7,7 +7,11 @@ import {
   Hash,
   AlertTriangle,
   Loader2,
+  Search,
 } from "lucide-react";
+import { functions } from "@/lib/firebase/clientApp";
+import { httpsCallable } from "firebase/functions";
+import toast from "react-hot-toast";
 
 interface GeneralSettingsProps {
   initialSettings: SystemSettings | null;
@@ -20,6 +24,7 @@ export function GeneralSettings({
   onSave,
   isSaving,
 }: GeneralSettingsProps) {
+  const [isSearching, setIsSearching] = useState(false);
   // Se agregan los campos faltantes para que coincida con la interfaz SystemSettings
   const [formData, setFormData] = useState<SystemSettings>({
     companyName: "",
@@ -40,11 +45,19 @@ export function GeneralSettings({
   useEffect(() => {
     if (initialSettings) {
       setFormData({
-        ...initialSettings,
+        companyName: initialSettings.companyName || "",
+        companyRuc: initialSettings.companyRuc || "",
+        companyAddress: initialSettings.companyAddress || "",
+        companyEmail: initialSettings.companyEmail || "",
+        companyPhone: initialSettings.companyPhone || "",
+        igvRate: initialSettings.igvRate ?? 0.18,
         nextSaleNumber: initialSettings.nextSaleNumber || 1,
         nextQuotationNumber: initialSettings.nextQuotationNumber || 1,
         minMarginPercent: initialSettings.minMarginPercent || 10,
         lowStockProduct: initialSettings.lowStockProduct || 100,
+        algoliaAppId: initialSettings.algoliaAppId || "",
+        algoliaSearchKey: initialSettings.algoliaSearchKey || "",
+        sunatApiToken: initialSettings.sunatApiToken || "",
       });
     }
   }, [initialSettings]);
@@ -62,6 +75,33 @@ export function GeneralSettings({
     onSave(formData);
   };
 
+  const handleSearchRuc = async () => {
+    if (formData.companyRuc.length !== 11) {
+      return toast.error("El RUC debe tener 11 dígitos");
+    }
+
+    setIsSearching(true);
+    const consultFn = httpsCallable(functions, "consultarRuc");
+    try {
+      const result: any = await consultFn({ ruc: formData.companyRuc });
+      if (result.data.success) {
+        const data = result.data.data;
+        setFormData((prev) => ({
+          ...prev,
+          companyName:
+            data.razonSocial || data.razon_social || prev.companyName,
+          companyAddress: data.direccion || data.address || prev.companyAddress,
+        }));
+        toast.success("Datos de la empresa actualizados");
+      }
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "Error al consultar RUC");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* SECCIÓN 1: DATOS DE LA EMPRESA */}
@@ -71,6 +111,35 @@ export function GeneralSettings({
           Empresa
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="flex flex-col">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
+              RUC
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                name="companyRuc"
+                value={formData.companyRuc}
+                onChange={handleChange}
+                required
+                maxLength={11}
+                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:border-blue-500 pr-12"
+              />
+              <button
+                type="button"
+                onClick={handleSearchRuc}
+                disabled={isSearching || formData.companyRuc.length !== 11}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition disabled:opacity-30"
+                title="Buscar en SUNAT"
+              >
+                {isSearching ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Search size={18} />
+                )}
+              </button>
+            </div>
+          </div>
           <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
               Razón Social
@@ -79,19 +148,6 @@ export function GeneralSettings({
               type="text"
               name="companyName"
               value={formData.companyName}
-              onChange={handleChange}
-              required
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:border-blue-500"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
-              RUC
-            </label>
-            <input
-              type="text"
-              name="companyRuc"
-              value={formData.companyRuc}
               onChange={handleChange}
               required
               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-800 outline-none focus:border-blue-500"

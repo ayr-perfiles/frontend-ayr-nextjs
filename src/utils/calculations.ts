@@ -15,9 +15,11 @@ export const calculateExpectedPiecesByDensity = (
   densityFactor: number = 7.85,
 ): number => {
   if (
+    !weightKg ||
     !widthMm ||
     !thicknessMm ||
     !pieceLengthM ||
+    weightKg <= 0 ||
     widthMm <= 0 ||
     thicknessMm <= 0 ||
     pieceLengthM <= 0

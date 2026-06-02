@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import NextTopLoader from "nextjs-toploader";
-import { Toaster } from "react-hot-toast"; // <-- IMPORTAMOS EL TOASTER
+import { Toaster } from "react-hot-toast";
+import { ConfirmProvider } from "@/context/ConfirmContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -64,7 +65,9 @@ export default function RootLayout({
           }}
         />
 
-        {children}
+        <ConfirmProvider>
+          {children}
+        </ConfirmProvider>
       </body>
     </html>
   );

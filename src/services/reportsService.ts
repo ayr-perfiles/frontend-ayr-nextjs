@@ -420,11 +420,23 @@ export const getSlowMovingStockReport = async (daysThreshold: number = 60) => {
  * REPORTE 5: KARDEX HISTÓRICO (FORMATO SUNAT)
  * Extrae todos los movimientos de entrada y salida cronológicamente.
  */
+export interface KardexMovement {
+  id: string;
+  date: Date;
+  sku: string;
+  type: "OUT" | "IN";
+  quantity: number;
+  balance: number;
+  reference: string;
+  description: string;
+  user: string;
+}
+
 export const getKardexMovementsReport = async (
   startDate: string,
   endDate: string,
   skuFilter: string = "",
-) => {
+): Promise<KardexMovement[]> => {
   try {
     let constraints: any[] = [];
 
@@ -449,12 +461,20 @@ export const getKardexMovementsReport = async (
       const data = doc.data();
       return {
         id: doc.id,
+        sku: data.sku || "",
+        type: data.type || "IN",
+        quantity: data.quantity || 0,
+        balance: data.balance || 0,
+        reference: data.reference || "",
+        description: data.description || "",
+        user: data.user || "",
         ...data,
         date: data.date?.toDate ? data.date.toDate() : new Date(data.date),
-      };
+      } as KardexMovement;
     });
   } catch (error) {
     console.error("Error obteniendo Kardex:", error);
     throw new Error("No se pudo generar el reporte de Kardex.");
   }
 };
+

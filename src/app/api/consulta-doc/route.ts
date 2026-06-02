@@ -1,6 +1,43 @@
 import { NextResponse } from "next/server";
 import { getSystemSettings } from "@/services/settingsService";
 
+// ejemplo de respuesta dni
+
+// {
+// 	"first_name": "ROXANA KARINA",
+// 	"first_last_name": "DELGADO",
+// 	"second_last_name": "HUAMANI",
+// 	"full_name": "DELGADO HUAMANI ROXANA KARINA",
+// 	"document_number": "46027897"
+// }
+
+// ejemplo de respuest ruc
+
+// {
+// 	"razon_social": "REXTIE S.A.C.",
+// 	"numero_documento": "20601030013",
+// 	"estado": "ACTIVO",
+// 	"condicion": "HABIDO",
+// 	"direccion": "AV. JOSE GALVEZ BARRENECHEA NRO 566 INT. 101 URB. CORPAC ",
+// 	"ubigeo": "150131",
+// 	"via_tipo": "AV.",
+// 	"via_nombre": "JOSE GALVEZ BARRENECHEA",
+// 	"zona_codigo": "URB.",
+// 	"zona_tipo": "CORPAC",
+// 	"numero": "566",
+// 	"interior": "101",
+// 	"lote": "-",
+// 	"dpto": "-",
+// 	"manzana": "-",
+// 	"kilometro": "-",
+// 	"distrito": "SAN ISIDRO",
+// 	"provincia": "LIMA",
+// 	"departamento": "LIMA",
+// 	"es_agente_retencion": false,
+// 	"es_buen_contribuyente": false,
+// 	"locales_anexos": null
+// }
+
 export async function GET(request: Request) {
   // 1. Obtenemos el número de la URL (ej: /api/consulta-doc?numero=20123456789)
   const { searchParams } = new URL(request.url);

@@ -12,6 +12,7 @@ import {
   FirebaseStorage,
   connectStorageEmulator,
 } from "firebase/storage";
+import { getFunctions, Functions, connectFunctionsEmulator } from "firebase/functions";
 
 // Configuración para Vercel (Variables de entorno)
 export const firebaseConfig = {
@@ -30,14 +31,18 @@ export const firebaseApp: FirebaseApp =
 const auth: Auth = getAuth(firebaseApp);
 const db: Firestore = getFirestore(firebaseApp);
 const storage: FirebaseStorage = getStorage(firebaseApp);
+const functions: Functions = getFunctions(firebaseApp, "us-central1");
 
-// // --- CONFIGURACIÓN DE EMULADORES (SOLO DESARROLLO) ---
-// // Usamos '127.0.0.1' para evitar problemas de resolución de 'localhost' en algunos sistemas
-// if (process.env.NODE_ENV === "development") {
-//   connectFirestoreEmulator(db, "127.0.0.1", 8080);
-//   connectAuthEmulator(auth, "http://127.0.0.1:9099");
-//   connectStorageEmulator(storage, "127.0.0.1", 9199);
-//   console.log("🚀 Conectado a Firebase Local Emulators");
-// }
+// --- CONFIGURACIÓN DE EMULADORES (DESARROLLO Y TESTS) ---
+// Usamos '127.0.0.1' para evitar problemas de resolución de 'localhost' en algunos sistemas
+if (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") {
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  connectAuthEmulator(auth, "http://127.0.0.1:9099");
+  connectStorageEmulator(storage, "127.0.0.1", 9199);
+  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+  if (process.env.NODE_ENV === "development") {
+    console.log("🚀 Conectado a Firebase Local Emulators");
+  }
+}
 
-export { auth, db, storage };
+export { auth, db, storage, functions };

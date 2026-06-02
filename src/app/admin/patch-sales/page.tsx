@@ -11,13 +11,22 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
+import { useConfirm } from "@/context/ConfirmContext";
+
 export default function PatchSalesPage() {
+  const confirm = useConfirm();
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
 
   const runPatch = async () => {
-    if (!confirm("⚠️ ¿Deseas actualizar la estructura de las ventas antiguas?"))
+    if (
+      !(await confirm({
+        title: "Parche Estructural",
+        message: "⚠️ ¿Deseas actualizar la estructura de las ventas antiguas?",
+        variant: "warning",
+      }))
+    )
       return;
 
     setIsLoading(true);

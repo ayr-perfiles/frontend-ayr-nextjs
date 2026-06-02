@@ -1,0 +1,88 @@
+# Cursor AI Rules — AYR Steel ERP
+
+## Contexto
+ERP de acero con 5 líneas de negocio. Stack: Next.js 16 + Firebase + TypeScript + Algolia.
+Lee CLAUDE.md antes de cualquier cambio grande.
+
+## Reglas obligatorias
+
+### Transacciones
+- Todo cambio a stock/kardex/ventas/producción va en runTransaction
+- Patrón: TODAS las lecturas primero (transaction.get), DESPUÉS todas las escrituras
+- Añadir audit_logs doc en la misma transacción para operaciones sensibles
+
+### Tipado
+- NO uses any — usa unknown + type guard o define el tipo
+- Prioriza eliminar any's existentes si tocas un archivo
+
+### Seguridad
+- NO hagas más permisivas las firestore.rules "para que pase"
+- Secretos van en .env, NO en settings/general_settings de Firestore
+- RBAC debe estar en AuthGuard + middleware.ts + firestore.rules (los 3)
+
+### Arquitectura modular
+- core/ → compartido entre todas las líneas
+- domain/ → lógica pura sin Firebase
+- modules/<linea>/ → específico de cada línea de negocio
+- NO mezcles lógica de drywall en core/ o viceversa
+
+### Convenciones
+- UI y errores → español (es-PE)
+- Código, tipos, funciones → inglés
+- Servicios devuelven Promise<Result> o throw Error("mensaje en español")
+- Commits: Conventional Commits (feat/fix/refactor/chore)
+
+### Constantes de dominio
+NO hardcodees:
+- 7.85 → usar STEEL_DENSITY_G_CM3 de constants.ts
+- 1.05 → PRODUCTION_TOLERANCE_FACTOR
+- 40 → LEFTOVER_THRESHOLD_MM
+- 0.85 → SCRAP_WEIGHT_FACTOR_KG_MM
+- 3.0 → DEFAULT_PIECE_LENGTH_M
+- 0.18 → IGV_RATE_PERU
+
+### Antes de commitear
+- [ ] Funciona en emulator (npm run emulate)
+- [ ] Build pasa (npm run build)
+- [ ] Lint pasa (npm run lint)
+- [ ] Si toqué transacciones, verifiqué lecturas-antes-escrituras
+- [ ] Si toqué seguridad, actualicé rules + RBAC + middleware
+- [ ] Textos de error en español y útiles
+- [ ] Dejé el archivo más limpio que como lo encontré
+
+## Fórmulas críticas (no modificar sin aprobación)
+```ts
+// Densidad — piezas máximas
+const totalMeters = weightKg / (thicknessMm * widthMm * (STEEL_DENSITY_G_CM3 / 1000));
+const expectedPieces = Math.floor(totalMeters / pieceLengthM);
+const maxAllowed = Math.ceil(expectedPieces * PRODUCTION_TOLERANCE_FACTOR);
+
+// Costo efectivo por mm
+const effectiveCostPerMm = (leftover <= LEFTOVER_THRESHOLD_MM && leftover > 0)
+  ? totalCoilCost / totalPlannedWidth
+  : totalCoilCost / coil.masterWidth;
+
+// Promedio ponderado kardex
+newAvgCost = ((qty * avgCost) + batchCost) / (qty + newPieces);
+```
+
+## Glosario
+- Bobina madre = Coil (rollo de acero del proveedor)
+- Fleje = PlannedStrip (tira longitudinal cortada por slitter)
+- Scrap = sobrante no utilizable
+- Kardex = libro de movimientos de inventario
+- Yield = rendimiento (% ancho usado vs total)
+
+## Trampas conocidas
+- Firestore NO permite where("status", "in", [...]) + filtros de rango (fechas) juntos
+- Algolia trae IDs pero datos desactualizados → siempre hidratar con getDocs de Firestore
+- runTransaction reintenta automáticamente → NO metas side effects no idempotentes (emails, APIs)
+- storage.rules expira 30/01/2026
+- patch-sales y migrate-kardex son scripts one-off, no invocar en prod sin entender
+
+## Cuándo parar y preguntar
+- Si vas a modificar firestore.rules o storage.rules
+- Si vas a cambiar constantes físicas (densidad, tolerancias)
+- Si vas a tocar la transacción de processSale o processSingleStrip
+- Si vas a borrar/renombrar colecciones de Firestore
+- Si vas a ejecutar resetDatabaseDevOnly o seedService

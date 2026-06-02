@@ -18,16 +18,21 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
+import { useConfirm } from "@/context/ConfirmContext";
+
 export default function MigrateKardexPage() {
+  const confirm = useConfirm();
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
 
   const runMigration = async () => {
     if (
-      !confirm(
-        "⚠️ ¿Deseas recalcular todo el Kardex? Esto limpiará errores anteriores.",
-      )
+      !(await confirm({
+        title: "Recalcular Kardex",
+        message: "⚠️ ¿Deseas recalcular todo el Kardex? Esto limpiará errores anteriores.",
+        variant: "warning",
+      }))
     )
       return;
 
