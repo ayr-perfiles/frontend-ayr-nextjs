@@ -4,6 +4,7 @@ interface SalesMetricsProps {
   totalRevenue: number;
   totalProfit: number;
   totalWeight: number;
+  count?: number;
 }
 
 export function SalesMetrics({

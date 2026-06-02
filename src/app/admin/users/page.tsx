@@ -146,7 +146,10 @@ export default function UsersPage() {
       <div className="relative">
         <UserTable
           users={users}
-          role={role}
+          currentUserId={user?.uid}
+          isLoading={loading}
+          currentPage={currentPage}
+          pageSize={pageSize}
           onResetPassword={handleResetPassword}
           onToggleStatus={handleToggleStatus}
           onRoleChange={handleRoleChange}

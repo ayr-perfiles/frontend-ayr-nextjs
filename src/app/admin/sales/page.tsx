@@ -69,7 +69,7 @@ export default function SalesPage() {
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const { sales, loading, filteredTotal, currentPage, hasNextPage, nextPage, prevPage, refresh } = useSales({
+  const { sales, loading, filteredTotal, currentPage, nextPage, prevPage, refresh } = useSales({
     pageSize, statusFilter, businessLine, searchTerm, startDate, endDate, sunatFilter,
   });
 
@@ -172,12 +172,18 @@ export default function SalesPage() {
 
       <div className="relative">
         <SalesTable
-          sales={sales}
-          onView={setViewingSale}
+          displaySales={sales}
+          isLoading={loading}
+          onViewDetails={(sale) => setViewingSale(sale)}
           onApprove={handleApprove}
           onCancel={handleCancel}
           isProcessing={isProcessing}
           role={role}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          onPrint={(sale) => window.open(`/admin/sales/${sale.id}/print`, "_blank")}
+          onDuplicate={(saleId) => (window.location.href = `/admin/sales/new?from=${saleId}`)}
+          onEdit={(saleId) => (window.location.href = `/admin/sales/${saleId}/edit`)}
         />
         {loading && (
           <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-2xl">
