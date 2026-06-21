@@ -35,7 +35,7 @@ const COLOR_ALIASES: Record<string, string> = {
 
 /** Prefijos de familia — ordenados de más largo a más corto para evitar ACCES vs COB/BOB match incorrecto. */
 const FAMILY_PREFIXES: Array<{ prefix: string; family: MetallicFamily }> = [
-  { prefix: 'ACCES', family: 'ACCESORIO' },
+
   { prefix: 'COB', family: 'COBERTURA' },
   { prefix: 'PL', family: 'PLANCHA' },
 ];
@@ -119,7 +119,6 @@ function toProductKind(family: MetallicFamily): ProductKind {
   switch (family) {
     case 'COBERTURA': return 'COBERTURA_ML';
     case 'PLANCHA': return 'PLANCHA_UND';
-    case 'ACCESORIO': return 'ACCESSORY';
   }
 }
 
@@ -146,6 +145,18 @@ export function parseCoverageMetadata(sku: string, name = ''): ParsedCoverageMet
       notes: 'Código BOB... no corresponde al catálogo de productos terminados; las bobinas se registran en Inventario de Bobinas',
     };
   }
+  if (skuUpper.startsWith('ACCES')) {
+    return {
+      family: null,
+      productKind: null,
+      thicknessMm: null,
+      colorFinish: null,
+      widthMm: WIDTH_MM_DEFAULT,
+      lengthM: null,
+      parseConfidence: 'unparseable',
+      notes: 'ACCES... pertenece a Trading, no al catálogo de coberturas',
+    };
+  }
 
   // 2. Detectar prefijo/familia
   const prefixMatch = FAMILY_PREFIXES.find((p) => skuUpper.startsWith(p.prefix));
@@ -165,22 +176,6 @@ export function parseCoverageMetadata(sku: string, name = ''): ParsedCoverageMet
 
   const { family } = prefixMatch;
 
-  // ACCESORIO: no aplican fórmula de peso/ML
-  if (family === 'ACCESORIO') {
-    const body = skuUpper.slice(prefixMatch.prefix.length);
-    const thicknessMatch = /^(\d{2,3})/.exec(body);
-    const thicknessMm = thicknessMatch ? parseThicknessToken(thicknessMatch[1]) : null;
-
-    return {
-      family,
-      productKind: toProductKind(family),
-      thicknessMm,
-      colorFinish: null,
-      widthMm: WIDTH_MM_DEFAULT,
-      lengthM: null,
-      parseConfidence: 'high',
-    };
-  }
 
   // 2. Extraer espesor (2-3 dígitos obligatorio después del prefijo)
   const body = skuUpper.slice(prefixMatch.prefix.length);

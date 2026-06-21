@@ -20,7 +20,7 @@ import type { MetallicProduct, MetallicFamily } from "@/modules/metallic-roofing
 import { useForm } from "@/core/hooks/useForm";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
 
-const FAMILY_OPTIONS: MetallicFamily[] = ["COBERTURA", "PLANCHA", "ACCESORIO"];
+const FAMILY_OPTIONS: MetallicFamily[] = ["COBERTURA", "PLANCHA"];
 const UNIT_OPTIONS = ["PIEZA", "METRO", "KILOGRAMO", "TONELADA"] as const;
 
 interface ProductModalProps {
@@ -38,13 +38,11 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
 
   const isLegacyFamily = !isCreate && product?.family && !FAMILY_OPTIONS.includes(product.family as any);
   const isLegacyFinish = !isCreate && product?.finish && !finishesLoading && !metallicFinishIds.includes(product.finish);
-  const isLegacyColor = !isCreate && product?.color && !finishesLoading && !metallicFinishIds.includes(product.color);
 
   const initialValues: AddMetallicProductFormState = isCreate || !product
     ? {
         family: "COBERTURA",
         finish: "",
-        color: "",
         thickness: "0.35",
         width: "",
         length: "",
@@ -56,7 +54,6 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
     : {
         family: product.family,
         finish: product.finish,
-        color: product.color ?? "",
         thickness: product.thickness.toString(),
         width: product.width?.toString() ?? "",
         length: product.length?.toString() ?? "",
@@ -132,7 +129,7 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
           family: form.family as MetallicFamily,
           finish: form.finish,
           thickness,
-          color: form.color || undefined,
+
           length: form.length ? parseFloat(form.length) : undefined,
         });
       } catch {
@@ -145,7 +142,7 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
     const displayName = generateDisplayName({
       family: form.family as MetallicFamily,
       finish: form.finish,
-      color: form.color || undefined,
+
       thickness,
       width: form.width ? parseFloat(form.width) : undefined,
       length: form.length ? parseFloat(form.length) : undefined,
@@ -167,7 +164,7 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
   useEffect(() => {
     applyPreview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.family, form.finish, form.color, form.thickness, form.width, form.length]);
+  }, [form.family, form.finish, form.thickness, form.width, form.length]);
 
   async function handleSubmit() {
     if (!validate()) return;
@@ -175,7 +172,7 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
     const input: MetallicProductInput = {
       family: form.family as MetallicFamily,
       finish: form.finish,
-      color: form.color || undefined,
+
       thickness: parseFloat(form.thickness),
       unit: form.unit as MetallicProductInput["unit"],
       active: true,
@@ -281,7 +278,7 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
           )}
 
           {/* Legacy Warning */}
-          {!isCreate && (isLegacyFamily || isLegacyFinish || isLegacyColor) && (
+          {!isCreate && (isLegacyFamily || isLegacyFinish) && (
             <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex gap-3">
               <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={18} />
               <div>
@@ -331,20 +328,7 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
 
           {/* Color + Unidad */}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">
-                Color <span className="normal-case font-normal">— opcional</span>
-              </label>
-              <select
-                value={form.color}
-                onChange={(e) => set("color", e.target.value)}
-                className={`w-full p-3 border rounded-xl font-bold outline-none focus:border-zinc-500 ${isLegacyColor && form.color === product?.color ? "bg-amber-50 border-amber-300 text-amber-900" : "bg-gray-50 border-gray-200"}`}
-              >
-                <option value="">— Sin color —</option>
-                {isLegacyColor && <option value={product.color}>{product.color} (heredado)</option>}
-                {metallicFinishIds.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
+          {/* Color removed */}
 
             <div>
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">

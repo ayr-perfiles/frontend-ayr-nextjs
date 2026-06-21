@@ -34,11 +34,12 @@ describe('parseCoverageMetadata', () => {
     expect(r.parseConfidence).toBe('high');
   });
 
-  it('ACCES030ROJO → ACCESSORY (fuera de fórmula densidad)', () => {
-    const r = parseCoverageMetadata('ACCES030ROJO', 'CUMBRERA 0.30 ROJO');
-    expect(r.family).toBe('ACCESORIO');
-    expect(r.productKind).toBe('ACCESSORY');
-    expect(r.parseConfidence).toBe('high');
+  it('ACCES030 → unparseable (pertenece a trading)', () => {
+    const r = parseCoverageMetadata('ACCES030');
+    expect(r.family).toBeNull();
+    expect(r.productKind).toBeNull();
+    expect(r.parseConfidence).toBe('unparseable');
+    expect(r.notes).toMatch(/pertenece a Trading/i);
   });
 
   it('BOB045GALV → unparseable (se registra en inventario de bobinas, no en catálogo)', () => {
@@ -46,7 +47,7 @@ describe('parseCoverageMetadata', () => {
     expect(r.family).toBeNull();
     expect(r.productKind).toBeNull();
     expect(r.parseConfidence).toBe('unparseable');
-    expect(r.notes).toContain('Código BOB... no corresponde al catálogo');
+    expect(r.notes).toMatch(/no corresponde al catálogo/i);
   });
 
   it('BOB28NAT → unparseable', () => {

@@ -2,7 +2,7 @@ import { LucideIcon } from 'lucide-react';
 
 export type ReportCategory = 'VENTAS' | 'INVENTARIO' | 'MATERIA_PRIMA' | 'PRODUCCIÓN' | 'EJECUTIVO';
 
-export type FilterType = 'PERIOD' | 'LINE' | 'CUSTOMER' | 'SELLER' | 'SKU' | 'FINISH' | 'STATUS' | 'TEXT' | 'DAYS' | 'BOOLEAN';
+export type FilterType = 'PERIOD' | 'LINE' | 'CUSTOMER' | 'SELLER' | 'SKU' | 'FINISH' | 'STATUS' | 'TEXT' | 'DAYS' | 'BOOLEAN' | 'MULTISELECT';
 
 export interface FilterSpec {
   id: string;

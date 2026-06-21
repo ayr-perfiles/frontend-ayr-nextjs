@@ -21,7 +21,7 @@ import { RowActionsMenu, RowAction } from "@/components/ui/RowActionsMenu";
 import StockAdjustmentModal from "@/modules/metallic-roofing/components/inventory/StockAdjustmentModal";
 import MovementsHistoryModal from "@/modules/metallic-roofing/components/inventory/MovementsHistoryModal";
 
-const FAMILY_OPTIONS = ["COBERTURA", "PLANCHA", "ACCESORIO"];
+const FAMILY_OPTIONS = ["COBERTURA", "PLANCHA"];
 const FINISH_OPTIONS = ["GALV", "ALUZINC", "NATURAL", "PREPINTADO"];
 
 const COLOR_CHIPS: Record<string, string> = {
@@ -68,7 +68,7 @@ export default function MetallicRoofingInventoryPage() {
     searchTerm: search,
     family: familyFilter,
     finish: finishFilter,
-    color: colorFilter,
+
     showOnlyWithStock,
     showOnlyNegative,
   });
@@ -106,7 +106,7 @@ export default function MetallicRoofingInventoryPage() {
             <span className="font-medium text-gray-700 leading-snug">
               {item.product?.displayName ?? item.productName}
             </span>
-            {item.product?.color && <ColorChip color={item.product.color} />}
+            {item.product?.finish && <ColorChip color={item.product.finish} />}
           </div>
           {item.product && (
             <p className="text-[11px] text-gray-400 font-medium mt-0.5">

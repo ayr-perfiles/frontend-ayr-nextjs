@@ -10,7 +10,8 @@ import {
   Table as TableIcon, 
   BarChart3 as ChartIcon,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  AlertTriangle
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -22,12 +23,14 @@ import { useAuth } from '@/context/AuthContext';
 
 interface ReportRunnerProps {
   report: ReportDefinition;
+  filters: any;
+  onFiltersChange: (vals: any) => void;
   onBack: () => void;
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'];
 
-export function ReportRunner({ report, onBack }: ReportRunnerProps) {
+export function ReportRunner({ report, filters, onFiltersChange, onBack }: ReportRunnerProps) {
   const { role } = useAuth();
   
   const visibleColumns = useMemo(() => {
@@ -37,17 +40,9 @@ export function ReportRunner({ report, onBack }: ReportRunnerProps) {
     });
   }, [report.columns, role]);
 
-  const [filters, setFilters] = useState<any>(() => {
-    const initial: any = {};
-    report.filters.forEach(f => {
-      initial[f.id] = f.defaultValue;
-    });
-    return initial;
-  });
-
   const [data, setData] = useState<ReportResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
+  const [viewMode, setViewMode] = useState<'chart' | 'table'>('table');
   
   // Pagination
   const [page, setPage] = useState(1);
@@ -127,8 +122,14 @@ export function ReportRunner({ report, onBack }: ReportRunnerProps) {
       <ReportFilters 
         specs={report.filters} 
         values={filters} 
-        onChange={(id, val) => setFilters((prev: any) => ({ ...prev, [id]: val }))} 
-        onClear={() => setFilters({})}
+        onChange={(id, val) => onFiltersChange({ ...filters, [id]: val })} 
+        onClear={() => {
+          const cleared: any = {};
+          report.filters.forEach(f => {
+            cleared[f.id] = f.defaultValue;
+          });
+          onFiltersChange(cleared);
+        }}
       />
 
       {isLoading ? (
@@ -138,6 +139,16 @@ export function ReportRunner({ report, onBack }: ReportRunnerProps) {
         </div>
       ) : data ? (
         <div className="space-y-8">
+          {/* BANNER DE EXCLUSION */}
+          {data.totals?.ventasExcluidas && data.totals.ventasExcluidas > 0 ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 text-amber-800 text-sm font-bold animate-in fade-in slide-in-from-top-2">
+              <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                {data.totals.ventasExcluidas} {data.totals.ventasExcluidas === 1 ? 'venta fue excluida' : 'ventas fueron excluidas'} por falta de tipo de cambio (ventas en USD).
+              </div>
+            </div>
+          ) : null}
+
           {/* TOTALS BAR */}
           {data.totals && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

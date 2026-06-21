@@ -99,9 +99,7 @@ function MetallicProductionForm() {
     const fetchCoils = async () => {
       setLoadingCoils(true);
       try {
-        const requiredFinish = selectedProduct.color && selectedProduct.color !== "NATURAL" && selectedProduct.color !== "" 
-          ? selectedProduct.color 
-          : selectedProduct.finish;
+        const requiredFinish = selectedProduct.finish;
         
         const qSnap = await getDocs(query(collection(db, "coils"), where("status", "in", ["AVAILABLE", "IN_PROGRESS"])));
         const validFinishIds = finishes.filter(f => f.lines.includes('metallic-roofing')).map(f => f.id);
@@ -526,7 +524,7 @@ function CoilRowCard({
             </div>
           ) : eligibleCoils.length === 0 ? (
             <div className="w-full border border-red-200 rounded-lg p-2.5 text-sm font-bold text-red-500 bg-red-50">
-              No hay bobinas {selectedProduct.color || selectedProduct.finish} {selectedProduct.thickness} disponibles
+              No hay bobinas {selectedProduct.finish} {selectedProduct.thickness} disponibles
             </div>
           ) : (
             <select

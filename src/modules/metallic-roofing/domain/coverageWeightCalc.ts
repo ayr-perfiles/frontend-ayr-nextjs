@@ -45,10 +45,7 @@ export interface CoverageWeightResult {
 export function calcCoverageWeightKg(input: CoverageWeightInput): CoverageWeightResult {
   const { family, quantity, thicknessMm, widthMm, densityFactor, lengthM } = input;
 
-  // ACCESSORY: fuera de fórmula
-  if (family === 'ACCESORIO') {
-    return { pesoKg: null, metrosTotales: null, factorUsado: null };
-  }
+
 
   // Sin densityFactor no se puede calcular
   if (densityFactor === null || densityFactor <= 0) {

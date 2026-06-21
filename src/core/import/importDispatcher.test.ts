@@ -46,7 +46,7 @@ describe('dispatchImportRow', () => {
     expect(metallicService.createProduct).toHaveBeenCalledWith(expect.objectContaining({
       sku: 'COB030ROJO',
       family: 'COBERTURA',
-      color: 'ROJO'
+
     }));
   });
 

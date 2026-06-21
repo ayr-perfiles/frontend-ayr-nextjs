@@ -485,7 +485,7 @@ function MetallicTab({
         widthMm: product.widthMm ?? 1200,
         densityFactor: finishFactor,
         lengthM: product.length ?? null,
-        colorFinish: product.color ?? "",
+        colorFinish: product.finish ?? "",
       });
       if (calc.pesoKg !== null && calc.metrosTotales !== null) {
         weightSnapshot = {
@@ -493,7 +493,7 @@ function MetallicTab({
           metrosTotales: calc.metrosTotales,
           thicknessMm: product.thickness,
           widthMm: product.widthMm ?? 1200,
-          colorFinish: product.color ?? "",
+          colorFinish: product.finish ?? "",
           densityFactor: finishFactor ?? 0,
         };
       } else {

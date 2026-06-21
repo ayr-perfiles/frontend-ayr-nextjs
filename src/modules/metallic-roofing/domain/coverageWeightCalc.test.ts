@@ -43,16 +43,6 @@ const PL040ROJO6M = {
   colorFinish: 'ROJO',
 };
 
-const ACCES030ROJO = {
-  family: 'ACCESORIO' as const,
-  unit: 'PIEZA' as const,
-  thicknessMm: 0.30,
-  widthMm: 1200,
-  densityFactor: null,
-  lengthM: null,
-  colorFinish: 'ROJO',
-};
-
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 describe('calcCoverageWeightKg — COBERTURA_ML', () => {
@@ -104,12 +94,6 @@ describe('calcCoverageWeightKg — PLANCHA_UND', () => {
 });
 
 describe('calcCoverageWeightKg — ACCESSORY / RAW_COIL', () => {
-  it('ACCESORIO → pesoKg null, fuera de fórmula', () => {
-    const r = calcCoverageWeightKg({ ...ACCES030ROJO, quantity: 5 });
-    expect(r.pesoKg).toBeNull();
-    expect(r.metrosTotales).toBeNull();
-    expect(r.factorUsado).toBeNull();
-  });
 
   it('BOBINA → pesoKg null', () => {
     const r = calcCoverageWeightKg({

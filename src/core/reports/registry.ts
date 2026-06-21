@@ -240,8 +240,8 @@ export const REPORT_REGISTRY: ReportDefinition[] = [
     icon: Scale,
     filters: [
       { id: 'period', label: 'Período', type: 'PERIOD', defaultValue: 'MES' },
-      { id: 'colorFilter', label: 'Color', type: 'TEXT' },
-      { id: 'espesorFilter', label: 'Espesor (mm)', type: 'TEXT' },
+      { id: 'colorFilter', label: 'Color', type: 'MULTISELECT', defaultValue: [] },
+      { id: 'espesorFilter', label: 'Espesor (mm)', type: 'MULTISELECT', defaultValue: [] },
     ],
     run: functions.runAluzincVentas,
     columns: [
@@ -266,8 +266,8 @@ export const REPORT_REGISTRY: ReportDefinition[] = [
     icon: Scale,
     filters: [
       { id: 'period', label: 'Período', type: 'PERIOD', defaultValue: 'MES' },
-      { id: 'colorFilter', label: 'Color', type: 'TEXT' },
-      { id: 'espesorFilter', label: 'Espesor (mm)', type: 'TEXT' },
+      { id: 'colorFilter', label: 'Color', type: 'MULTISELECT', defaultValue: [] },
+      { id: 'espesorFilter', label: 'Espesor (mm)', type: 'MULTISELECT', defaultValue: [] },
     ],
     run: functions.runAluzincCosto,
     columns: [

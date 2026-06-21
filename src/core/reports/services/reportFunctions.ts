@@ -41,15 +41,28 @@ const getPeriodDates = (period: string, startDate?: string, endDate?: string) =>
     start.setHours(0, 0, 0, 0);
   } else if (period === 'MES') {
     start = new Date(now.getFullYear(), now.getMonth(), 1);
+    start.setHours(0, 0, 0, 0);
   } else if (period === 'MES_ANTERIOR') {
     start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    end = new Date(now.getFullYear(), now.getMonth(), 0);
+    start.setHours(0, 0, 0, 0);
+    end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+  } else if (period === 'TRIMESTRE') {
+    const currentMonth = now.getMonth();
+    const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
+    start = new Date(now.getFullYear(), quarterStartMonth, 1);
+    start.setHours(0, 0, 0, 0);
+    end = new Date(now.getFullYear(), quarterStartMonth + 3, 0, 23, 59, 59, 999);
+  } else if (period === 'ANIO') {
+    start = new Date(now.getFullYear(), 0, 1);
+    start.setHours(0, 0, 0, 0);
+    end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
   } else if (period === 'CUSTOM' && startDate && endDate) {
     start = new Date(`${startDate}T00:00:00`);
     end = new Date(`${endDate}T23:59:59`);
   } else {
     // Default This Month
     start = new Date(now.getFullYear(), now.getMonth(), 1);
+    start.setHours(0, 0, 0, 0);
   }
 
   return { start, end };
@@ -582,13 +595,29 @@ export const runAluzincVentas = async (params: {
   let rows = result.rows;
 
   if (colorFilter) {
-    const term = colorFilter.toLowerCase();
-    rows = rows.filter((r) => r.colorFinish.toLowerCase().includes(term));
+    if (Array.isArray(colorFilter)) {
+      if (colorFilter.length > 0) {
+        rows = rows.filter((r) => colorFilter.includes(r.colorFinish));
+      }
+    } else if (typeof colorFilter === "string" && colorFilter.trim() !== "") {
+      const term = colorFilter.toLowerCase();
+      rows = rows.filter((r) => r.colorFinish.toLowerCase().includes(term));
+    }
   }
+
   if (espesorFilter) {
-    const num = parseFloat(espesorFilter);
-    if (!isNaN(num)) {
-      rows = rows.filter((r) => r.thicknessMm === num);
+    if (Array.isArray(espesorFilter)) {
+      if (espesorFilter.length > 0) {
+        const numericList = espesorFilter.map((val) => parseFloat(val)).filter((n) => !isNaN(n));
+        if (numericList.length > 0) {
+          rows = rows.filter((r) => numericList.includes(r.thicknessMm));
+        }
+      }
+    } else if (typeof espesorFilter === "string" && espesorFilter.trim() !== "") {
+      const num = parseFloat(espesorFilter);
+      if (!isNaN(num)) {
+        rows = rows.filter((r) => r.thicknessMm === num);
+      }
     }
   }
 
@@ -783,13 +812,29 @@ export const runAluzincCosto = async (params: {
   let rows = result.rows;
 
   if (colorFilter) {
-    const term = colorFilter.toLowerCase();
-    rows = rows.filter((r) => r.colorFinish.toLowerCase().includes(term));
+    if (Array.isArray(colorFilter)) {
+      if (colorFilter.length > 0) {
+        rows = rows.filter((r) => colorFilter.includes(r.colorFinish));
+      }
+    } else if (typeof colorFilter === "string" && colorFilter.trim() !== "") {
+      const term = colorFilter.toLowerCase();
+      rows = rows.filter((r) => r.colorFinish.toLowerCase().includes(term));
+    }
   }
+
   if (espesorFilter) {
-    const num = parseFloat(espesorFilter);
-    if (!isNaN(num)) {
-      rows = rows.filter((r) => r.thicknessMm === num);
+    if (Array.isArray(espesorFilter)) {
+      if (espesorFilter.length > 0) {
+        const numericList = espesorFilter.map((val) => parseFloat(val)).filter((n) => !isNaN(n));
+        if (numericList.length > 0) {
+          rows = rows.filter((r) => numericList.includes(r.thicknessMm));
+        }
+      }
+    } else if (typeof espesorFilter === "string" && espesorFilter.trim() !== "") {
+      const num = parseFloat(espesorFilter);
+      if (!isNaN(num)) {
+        rows = rows.filter((r) => r.thicknessMm === num);
+      }
     }
   }
 

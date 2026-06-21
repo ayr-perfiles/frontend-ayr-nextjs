@@ -15,7 +15,7 @@ import type { MetallicProduct } from "@/modules/metallic-roofing/types";
 import { TableFilters, FilterGroup } from "@/components/ui/TableFilters";
 import { TablePagination } from "@/components/ui/TablePagination";
 
-const FAMILY_OPTIONS = ["COBERTURA", "PLANCHA", "ACCESORIO"];
+const FAMILY_OPTIONS = ["COBERTURA", "PLANCHA"];
 const FINISH_OPTIONS = ["GALV", "ALUZINC", "NATURAL", "PREPINTADO"];
 type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
 
@@ -34,7 +34,7 @@ export default function MetallicRoofingCatalogPage() {
     searchTerm: search || undefined,
     family: familyFilter || undefined,
     finish: finishFilter || undefined,
-    color: colorFilter || undefined,
+
     status: statusFilter,
   });
 
@@ -298,7 +298,7 @@ function ProductDetailModal({ product, onClose }: { product: MetallicProduct; on
     ["Nombre", product.displayName],
     ["Familia", product.family],
     ["Acabado", product.finish],
-    ["Color", product.color || "—"],
+
     ["Espesor", `${product.thickness} mm`],
     ...(product.width != null ? ([["Ancho", `${product.width.toFixed(3)} m`]] as [string, string][]) : []),
     ...(product.length != null ? ([["Largo", `${product.length.toFixed(2)} m`]] as [string, string][]) : []),
