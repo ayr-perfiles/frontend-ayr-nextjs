@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   FileText,
   AlertCircle,
+  AlertTriangle,
 } from "lucide-react";
 import { DataTable, ColumnDef } from "@/components/ui/DataTable";
 
@@ -46,17 +47,27 @@ export function KardexTable({
     {
       key: "type",
       header: "Tipo",
-      render: (mov) => (
-        mov.type === "IN" ? (
-          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border border-emerald-200">
-            <ArrowDownRight size={12} /> Entrada
-          </span>
-        ) : (
+      render: (mov) => {
+        if (mov.type === "IN") {
+          return (
+            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border border-emerald-200">
+              <ArrowDownRight size={12} /> Entrada
+            </span>
+          );
+        }
+        if (mov.type === "SCRAP") {
+          return (
+            <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border border-amber-200">
+              <AlertTriangle size={12} /> Merma
+            </span>
+          );
+        }
+        return (
           <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border border-red-200">
             <ArrowUpRight size={12} /> Salida
           </span>
-        )
-      ),
+        );
+      },
     },
     {
       key: "reference",

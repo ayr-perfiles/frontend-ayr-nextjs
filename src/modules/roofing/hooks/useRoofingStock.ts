@@ -53,7 +53,7 @@ export function useRoofingStock(filters: RoofingStockFilters) {
       setItems(data);
       setKpis(kpiData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al cargar inventario PVC");
+      setError(err instanceof Error ? err.message : "Error al cargar inventario UPVC");
     } finally {
       setLoading(false);
     }

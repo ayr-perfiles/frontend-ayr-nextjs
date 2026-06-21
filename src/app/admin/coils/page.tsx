@@ -82,6 +82,8 @@ export default function CoilsPage() {
     invoiceDate: "",
   });
   const [viewingCoil, setViewingCoil] = useState<Coil | null>(null);
+  const [splittingCoil, setSplittingCoil] = useState<Coil | null>(null);
+  const [scrappingCoil, setScrappingCoil] = useState<Coil | null>(null);
   const [showXmlModal, setShowXmlModal] = useState(false);
   const [showExcelModal, setShowExcelModal] = useState(false);
 
@@ -449,6 +451,8 @@ export default function CoilsPage() {
             setSelectedIds([coil.id]);
             setShowCutModal(true);
           }}
+          onSplit={setSplittingCoil}
+          onScrap={setScrappingCoil}
           onViewDetails={setViewingCoil}
           onAssignFinish={handleOpenEdit}
           isLoading={loading}
@@ -485,6 +489,12 @@ export default function CoilsPage() {
         }}
         viewingCoil={viewingCoil}
         onCloseDetails={() => setViewingCoil(null)}
+        splittingCoil={splittingCoil}
+        onCloseSplit={() => setSplittingCoil(null)}
+        onSplitSuccess={refresh}
+        scrappingCoil={scrappingCoil}
+        onCloseScrap={() => setScrappingCoil(null)}
+        onScrapSuccess={refresh}
         showXmlModal={showXmlModal}
         onCloseXml={() => {
           setShowXmlModal(false);

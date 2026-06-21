@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { Eye, AlertTriangle, ExternalLink, Tag, AlertCircle, RotateCcw, Scissors, Edit2, Trash2 } from "lucide-react";
+import { Eye, AlertTriangle, ExternalLink, Tag, AlertCircle, RotateCcw, Scissors, Edit2, Trash2, Scale } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 import { Coil } from "@/types";
 import { WeightIndicator } from "./WeightIndicator";
@@ -22,8 +22,10 @@ interface InventoryTableProps {
   onVoid: (coilId: string) => void;
   onCancelPlan: (coilId: string) => void;
   onSendToCut?: (coil: Coil) => void;
+  onSplit?: (coil: Coil) => void;
   onViewDetails: (coil: Coil) => void;
   onAssignFinish?: (coil: Coil) => void;
+  onScrap?: (coil: Coil) => void;
   isLoading?: boolean;
 }
 
@@ -34,6 +36,8 @@ function StatusBadge({ status, orderId }: { status: string; orderId?: string }) 
     PROCESSED: "bg-slate-100 text-slate-600 border-slate-200",
     VOIDED: "bg-red-100 text-red-700 border-red-200 line-through opacity-80",
     EN_TERCERO: "bg-amber-100 text-amber-700 border-amber-200",
+    SOLD: "bg-purple-100 text-purple-700 border-purple-200",
+    SPLIT_PARENT: "bg-sky-100 text-sky-700 border-sky-200",
   };
   const labels: Record<string, string> = {
     AVAILABLE: "DISPONIBLE",
@@ -41,6 +45,8 @@ function StatusBadge({ status, orderId }: { status: string; orderId?: string }) 
     PROCESSED: "PROCESADA",
     VOIDED: "ANULADA",
     EN_TERCERO: "EN TERCERO",
+    SOLD: "VENDIDA",
+    SPLIT_PARENT: "PARTIDA",
   };
   return (
     <div className="flex flex-col gap-1 items-center">
@@ -129,8 +135,10 @@ export default function InventoryTable({
   onVoid,
   onCancelPlan,
   onSendToCut,
+  onSplit,
   onViewDetails,
   onAssignFinish,
+  onScrap,
   isLoading = false,
 }: InventoryTableProps) {
   const { finishes } = useFinishes(true);
@@ -301,6 +309,16 @@ export default function InventoryTable({
 
         const actions: RowAction[] = [];
 
+        if (role === "ADMIN" && !["SOLD"].includes(coil.status)) {
+          actions.push({
+            id: "scrap",
+            label: "Registrar Merma",
+            icon: <Scale size={16} />,
+            variant: "warning",
+            onClick: () => onScrap?.(coil),
+          });
+        }
+
         if (role === "ADMIN" && coil.status === "IN_PROGRESS") {
           actions.push({
             id: "cancelPlan",
@@ -329,6 +347,13 @@ export default function InventoryTable({
               icon: <Scissors size={16} />,
               variant: "primary",
               onClick: () => onSendToCut?.(coil),
+            },
+            {
+              id: "split",
+              label: "Partir Bobina",
+              icon: <Scissors size={16} />,
+              variant: "warning",
+              onClick: () => onSplit?.(coil),
             },
             {
               id: "edit",

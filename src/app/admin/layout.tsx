@@ -16,6 +16,7 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/admin/coils": ["ADMIN", "SUPERVISOR"],
   "/admin/lines": ["ADMIN", "SUPERVISOR"],
   "/admin/lines/drywall/operator": ["ADMIN", "SUPERVISOR", "OPERATOR"],
+  "/admin/lines/metallic-roofing/production": ["ADMIN", "SUPERVISOR", "OPERATOR"],
   "/admin": ["ADMIN", "SUPERVISOR"],
 };
 

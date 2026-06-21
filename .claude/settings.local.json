@@ -28,7 +28,9 @@
       "Bash(.\\\\node_modules\\\\.bin\\\\vitest.cmd run *)",
       "Bash(node *)",
       "Bash(.\\\\node_modules\\\\.bin\\\\tsc.cmd --noEmit)",
-      "Bash(npx next *)"
+      "Bash(npx next *)",
+      "mcp__ide__getDiagnostics",
+      "Bash(xargs cat)"
     ],
     "additionalDirectories": [
       "c:\\Users\\User\\Documents\\workspace\\ayr\\frontend-ayr"

@@ -17,7 +17,7 @@ export interface KardexMovement {
   id: string;
   sku: string;
   date: Date;
-  type: "IN" | "OUT";
+  type: "IN" | "OUT" | "SCRAP";
   quantity: number;
   balance: number;
   reference: string;

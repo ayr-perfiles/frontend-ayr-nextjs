@@ -12,7 +12,7 @@ export const calculateExpectedPiecesByDensity = (
   widthMm: number,
   thicknessMm: number,
   pieceLengthM: number,
-  densityFactor: number = 7.85,
+  densityFactor: number,
 ): number => {
   if (
     !weightKg ||
@@ -22,13 +22,14 @@ export const calculateExpectedPiecesByDensity = (
     weightKg <= 0 ||
     widthMm <= 0 ||
     thicknessMm <= 0 ||
-    pieceLengthM <= 0
+    pieceLengthM <= 0 ||
+    !densityFactor ||
+    densityFactor <= 0
   ) {
     return 0;
   }
 
-  const metricFactor = densityFactor / 1000;
-  const totalMeters = weightKg / (thicknessMm * widthMm * metricFactor);
+  const totalMeters = weightKg / (thicknessMm * widthMm * densityFactor);
 
   return Math.floor(totalMeters / pieceLengthM);
 };

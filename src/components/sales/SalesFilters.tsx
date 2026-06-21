@@ -57,7 +57,7 @@ export function SalesFilters(props: SalesFiltersProps) {
       options: [
         { value: "ALL", label: "Todas" },
         { value: "drywall", label: "Drywall", cls: "text-blue-600" },
-        { value: "roofing", label: "PVC", cls: "text-emerald-600" },
+        { value: "roofing", label: "UPVC", cls: "text-emerald-600" },
         { value: "metallic-roofing", label: "Aluzinc", cls: "text-zinc-600" },
         { value: "trading", label: "Reventa", cls: "text-amber-600" },
         { value: "services", label: "Servicios", cls: "text-violet-600" },

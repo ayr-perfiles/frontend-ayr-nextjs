@@ -1,8 +1,9 @@
-# CLAUDE.md — AYR Steel ERP (v6.5)
+# CLAUDE.md — AYR Steel ERP (v6.6)
 
 > **Sprint actual:** Sprint 8 (SUNAT + Estandarización UI + Flejes v2) — En progreso 🏗️
 > **Estado:** Build 🟢 | Functions v2 operativa. UI estandarizada con Kit Reutilizable.
-> **v6.5:** Estandarización UI de tablas (kit `@/components/ui/`), migración de datos de "flejes atrapados" completada, sistema de confirmación modal (`useConfirm`), flujo oficial Flejes → Producción, backfill de campo `line` en logs históricos.
+> **v6.6:** Cierre del Sprint 6B (Aluzinc completo). Pipeline conformado, corte y mermas funcional. Handoff de migración y saneo listo para la siguiente sesión.
+
 
 ---
 

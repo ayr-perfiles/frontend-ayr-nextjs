@@ -1,10 +1,18 @@
 import type { Timestamp } from 'firebase/firestore';
 
 /** Familia de producto de la línea aluzinc. UPVC es mono-familia; aluzinc no. */
-export type MetallicFamily = 'COBERTURA' | 'PLANCHA' | 'BOBINA' | 'ACCESORIO';
+export type MetallicFamily = 'COBERTURA' | 'PLANCHA' | 'ACCESORIO';
 
 /** Espejo de roofing/types.ts — mantener idéntico para reutilizar componentes de kardex. */
 export type StockMovementType = 'ENTRADA' | 'SALIDA' | 'AJUSTE';
+
+/**
+ * productKind se deriva de family+unit (A1):
+ *   COBERTURA+METRO  → COBERTURA_ML
+ *   PLANCHA+PIEZA    → PLANCHA_UND
+ *   ACCESORIO        → ACCESSORY
+ */
+export type ProductKind = 'COBERTURA_ML' | 'PLANCHA_UND' | 'ACCESSORY';
 
 export interface MetallicProduct {
   sku: string;
@@ -23,6 +31,12 @@ export interface MetallicProduct {
   unit: 'PIEZA' | 'METRO' | 'KILOGRAMO' | 'TONELADA';
   active: boolean;
   avgCost: number;
+  /** Ancho desarrollado (bobina) en mm. Default 1200. Override manual posterior. */
+  widthMm?: number;
+  /** Factor de densidad para peso/ML: 0.008 todo aluzinc (natural o prepintado) · 0.00785 galvanizado/drywall. */
+  densityFactor?: number;
+  /** Origen del widthMm/densityFactor: 'parser' (migración) | 'manual' (editado por usuario). */
+  metaSource?: 'parser' | 'manual';
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
 }

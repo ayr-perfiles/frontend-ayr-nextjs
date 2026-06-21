@@ -203,7 +203,7 @@ export default function NewPurchasePage() {
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500"
                 >
                   <option value="trading">Reventa / Trading</option>
-                  <option value="roofing">Coberturas PVC</option>
+                  <option value="roofing">Coberturas UPVC</option>
                 </select>
               </div>
               <div className="flex flex-col">

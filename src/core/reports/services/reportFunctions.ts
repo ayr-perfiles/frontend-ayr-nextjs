@@ -10,6 +10,15 @@ import {
 import { getSystemSettings } from "@/services/settingsService";
 import { ReportResult } from "../types";
 import { Sale, SaleItem } from "@/types";
+import {
+  buildAluzincSalesReport,
+  type AluzincSaleInput,
+} from "@/modules/metallic-roofing/domain/aluzincSalesReport";
+import {
+  buildAluzincCostReport,
+  buildAluzincProfitSummary,
+  type AluzincCostSaleInput,
+} from "@/modules/metallic-roofing/domain/aluzincCostReport";
 
 /**
  * UTILS
@@ -522,6 +531,94 @@ export const runMargenBruto = async (params: any): Promise<ReportResult> => {
 };
 
 /**
+ * P-M3: ALUZINC — VENTAS POR ESPESOR/COLOR
+ * Usa weightSnapshot congelado al momento de venta. No recalcula.
+ * Ventas USD sin exchangeRate se excluyen íntegramente.
+ */
+export const runAluzincVentas = async (params: {
+  period: string;
+  startDate?: string;
+  endDate?: string;
+  colorFilter?: string;
+  espesorFilter?: string;
+}): Promise<ReportResult> => {
+  const { period, startDate, endDate, colorFilter, espesorFilter } = params;
+  const { start, end } = getPeriodDates(period, startDate, endDate);
+
+  const salesSnap = await getDocs(
+    query(
+      collection(db, "sales"),
+      where("timestamp", ">=", Timestamp.fromDate(start)),
+      where("timestamp", "<=", Timestamp.fromDate(end)),
+      where("status", "==", "COMPLETED"),
+    ),
+  );
+
+  type SaleDoc = Sale & { metadata?: { currency?: string; exchangeRate?: number } };
+
+  const saleInputs: AluzincSaleInput[] = [];
+  for (const docSnap of salesSnap.docs) {
+    const sale = docSnap.data() as SaleDoc;
+    const metallicItems = (sale.items ?? []).filter(
+      (item: SaleItem) =>
+        item.businessLine === "metallic-roofing" && item.weightSnapshot != null,
+    );
+    if (metallicItems.length === 0) continue;
+
+    saleInputs.push({
+      saleId: docSnap.id,
+      currency: sale.metadata?.currency === "USD" ? "USD" : "PEN",
+      exchangeRate: sale.metadata?.exchangeRate ?? null,
+      items: metallicItems.map((item: SaleItem) => ({
+        sku: item.sku,
+        quantity: item.quantity,
+        unitValue: item.unitValue,
+        weightSnapshot: item.weightSnapshot ?? null,
+      })),
+    });
+  }
+
+  const result = buildAluzincSalesReport(saleInputs);
+  let rows = result.rows;
+
+  if (colorFilter) {
+    const term = colorFilter.toLowerCase();
+    rows = rows.filter((r) => r.colorFinish.toLowerCase().includes(term));
+  }
+  if (espesorFilter) {
+    const num = parseFloat(espesorFilter);
+    if (!isNaN(num)) {
+      rows = rows.filter((r) => r.thicknessMm === num);
+    }
+  }
+
+  const totals: Record<string, number> = rows.reduce(
+    (acc, row) => ({
+      pesoKg: acc.pesoKg + row.pesoKg,
+      toneladas: acc.toneladas + row.toneladas,
+      metrosTotales: acc.metrosTotales + row.metrosTotales,
+      montoSoles: acc.montoSoles + row.montoSoles,
+    }),
+    { pesoKg: 0, toneladas: 0, metrosTotales: 0, montoSoles: 0 },
+  );
+
+  if (result.excludedSaleIds.length > 0) {
+    totals.ventasExcluidas = result.excludedSaleIds.length;
+  }
+
+  return {
+    rows,
+    totals,
+    series: [
+      {
+        name: "Peso (Kg)",
+        data: rows.map((r) => ({ label: r.label, value: r.pesoKg })),
+      },
+    ],
+  };
+};
+
+/**
  * P2: VENTAS POR PRODUCTO / SKU (DETALLADO)
  */
 export const runVentasPorProducto = async (params: {
@@ -628,10 +725,192 @@ export const runVentasPorProducto = async (params: {
       quantity: rows.reduce((acc, r) => acc + r.quantity, 0)
     },
     series: [
-      { 
-        name: 'Ventas (Monto)', 
-        data: rows.slice(0, 10).map(r => ({ label: r.sku, value: r.amount })) 
+      {
+        name: 'Ventas (Monto)',
+        data: rows.slice(0, 10).map(r => ({ label: r.sku, value: r.amount }))
       }
     ]
+  };
+};
+
+// ─── P-M7: ALUZINC — COSTO ───────────────────────────────────────────────────
+
+/** Agrupa el COSTO (baseCost × qty) de cobertura aluzinc vendida por espesor+color. */
+export const runAluzincCosto = async (params: {
+  period: string;
+  startDate?: string;
+  endDate?: string;
+  colorFilter?: string;
+  espesorFilter?: string;
+}): Promise<ReportResult> => {
+  const { period, startDate, endDate, colorFilter, espesorFilter } = params;
+  const { start, end } = getPeriodDates(period, startDate, endDate);
+
+  const salesSnap = await getDocs(
+    query(
+      collection(db, "sales"),
+      where("timestamp", ">=", Timestamp.fromDate(start)),
+      where("timestamp", "<=", Timestamp.fromDate(end)),
+      where("status", "==", "COMPLETED"),
+    ),
+  );
+
+  type SaleDoc = Sale & { metadata?: { currency?: string; exchangeRate?: number } };
+
+  const costInputs: AluzincCostSaleInput[] = [];
+  for (const docSnap of salesSnap.docs) {
+    const sale = docSnap.data() as SaleDoc;
+    const metallicItems = (sale.items ?? []).filter(
+      (item: SaleItem) =>
+        item.businessLine === "metallic-roofing" && item.weightSnapshot != null,
+    );
+    if (metallicItems.length === 0) continue;
+
+    costInputs.push({
+      saleId: docSnap.id,
+      currency: sale.metadata?.currency === "USD" ? "USD" : "PEN",
+      exchangeRate: sale.metadata?.exchangeRate ?? null,
+      items: metallicItems.map((item: SaleItem) => ({
+        sku: item.sku,
+        quantity: item.quantity,
+        baseCost: item.baseCost ?? 0,
+        weightSnapshot: item.weightSnapshot ?? null,
+      })),
+    });
+  }
+
+  const result = buildAluzincCostReport(costInputs);
+  let rows = result.rows;
+
+  if (colorFilter) {
+    const term = colorFilter.toLowerCase();
+    rows = rows.filter((r) => r.colorFinish.toLowerCase().includes(term));
+  }
+  if (espesorFilter) {
+    const num = parseFloat(espesorFilter);
+    if (!isNaN(num)) {
+      rows = rows.filter((r) => r.thicknessMm === num);
+    }
+  }
+
+  const totals: Record<string, number> = {
+    pesoKg: rows.reduce((acc, r) => acc + r.pesoKg, 0),
+    toneladas: rows.reduce((acc, r) => acc + r.toneladas, 0),
+    metrosTotales: rows.reduce((acc, r) => acc + r.metrosTotales, 0),
+    costoTotal: rows.reduce((acc, r) => acc + r.costoTotal, 0),
+  };
+
+  if (result.excludedSaleIds.length > 0) {
+    totals.ventasExcluidas = result.excludedSaleIds.length;
+  }
+
+  return {
+    rows,
+    totals,
+    series: [
+      {
+        name: "Costo Total (S/)",
+        data: rows.map((r) => ({ label: r.label, value: r.costoTotal })),
+      },
+    ],
+  };
+};
+
+// ─── P-M7: ALUZINC — RESUMEN (Venta + Costo + Merma + Ganancia) ──────────────
+
+/** Combina ventas, costo y merma del periodo en un resumen por color. */
+export const runAluzincResumen = async (params: {
+  period: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<ReportResult> => {
+  const { period, startDate, endDate } = params;
+  const { start, end } = getPeriodDates(period, startDate, endDate);
+
+  // Una sola fetch de ventas para construir tanto inputs de ventas como de costo
+  const salesSnap = await getDocs(
+    query(
+      collection(db, "sales"),
+      where("timestamp", ">=", Timestamp.fromDate(start)),
+      where("timestamp", "<=", Timestamp.fromDate(end)),
+      where("status", "==", "COMPLETED"),
+    ),
+  );
+
+  type SaleDoc = Sale & { metadata?: { currency?: string; exchangeRate?: number } };
+
+  const saleInputs: AluzincSaleInput[] = [];
+  const costInputs: AluzincCostSaleInput[] = [];
+
+  for (const docSnap of salesSnap.docs) {
+    const sale = docSnap.data() as SaleDoc;
+    const metallicItems = (sale.items ?? []).filter(
+      (item: SaleItem) =>
+        item.businessLine === "metallic-roofing" && item.weightSnapshot != null,
+    );
+    if (metallicItems.length === 0) continue;
+
+    const currency = sale.metadata?.currency === "USD" ? "USD" : "PEN";
+    const exchangeRate = sale.metadata?.exchangeRate ?? null;
+
+    saleInputs.push({
+      saleId: docSnap.id,
+      currency,
+      exchangeRate,
+      items: metallicItems.map((item: SaleItem) => ({
+        sku: item.sku,
+        quantity: item.quantity,
+        unitValue: item.unitValue,
+        weightSnapshot: item.weightSnapshot ?? null,
+      })),
+    });
+
+    costInputs.push({
+      saleId: docSnap.id,
+      currency,
+      exchangeRate,
+      items: metallicItems.map((item: SaleItem) => ({
+        sku: item.sku,
+        quantity: item.quantity,
+        baseCost: item.baseCost ?? 0,
+        weightSnapshot: item.weightSnapshot ?? null,
+      })),
+    });
+  }
+
+  // Merma del periodo (scrap_logs)
+  const scrapSnap = await getDocs(
+    query(
+      collection(db, "scrap_logs"),
+      where("timestamp", ">=", Timestamp.fromDate(start)),
+      where("timestamp", "<=", Timestamp.fromDate(end)),
+    ),
+  );
+  const totalMermaSoles = scrapSnap.docs.reduce(
+    (acc, d) => acc + ((d.data().scrapCostPEN as number) ?? 0),
+    0,
+  );
+
+  const ventasResult = buildAluzincSalesReport(saleInputs);
+  const costoResult = buildAluzincCostReport(costInputs);
+  const summary = buildAluzincProfitSummary(ventasResult, costoResult, totalMermaSoles);
+
+  return {
+    rows: summary.rows,
+    totals: {
+      ventaSoles: summary.totals.ventaSoles,
+      costoSoles: summary.totals.costoSoles,
+      mermaSoles: summary.totals.mermaSoles,
+      gananciaSoles: summary.totals.gananciaSoles,
+    },
+    series: [
+      {
+        name: "Venta vs Costo",
+        data: summary.rows.map((r) => ({
+          label: r.colorFinish || "NATURAL",
+          value: r.ventaSoles,
+        })),
+      },
+    ],
   };
 };

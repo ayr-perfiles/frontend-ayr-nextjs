@@ -8,7 +8,6 @@ import type { MetallicFamily } from '../types';
 const FAMILY_PREFIX: Record<MetallicFamily, string> = {
   COBERTURA: 'COB',
   PLANCHA: 'PL',
-  BOBINA: 'BOB',
   ACCESORIO: 'ACCES',
 };
 

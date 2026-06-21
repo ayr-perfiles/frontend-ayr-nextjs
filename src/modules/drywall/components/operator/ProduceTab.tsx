@@ -10,6 +10,7 @@ import {
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { processSingleStrip } from "@/modules/drywall/services/productionService";
 import { useAuth } from "@/context/AuthContext";
+import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { Coil } from "@/types";
 import {
   Factory,
@@ -36,6 +37,7 @@ export function ProduceTab() {
   const [pieces, setPieces] = useState<number | string>("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [catalog, setCatalog] = useState<ProductConfig[]>([]);
+  const { finishes } = useFinishes(true);
 
   // Search state
   const [searchTerm, setSearchTerm] = useState("");
@@ -133,23 +135,35 @@ export function ProduceTab() {
     const weightPerMm = selectedCoil.initialWeight / selectedCoil.masterWidth;
     const stripWeight = activeStrip.width * weightPerMm;
 
+    const coilFinish = finishes.find((f) => f.id === selectedCoil.finish);
+    if (!coilFinish?.densityFactor) {
+      return 0;
+    }
+
     return calculateExpectedPiecesByDensity(
       stripWeight,
       activeStrip.width,
       selectedCoil.thickness,
       product.lengthMeters || 3.0,
+      coilFinish.densityFactor
     );
-  }, [selectedStripSku, catalog, selectedCoil]);
+  }, [selectedStripSku, catalog, selectedCoil, finishes]);
 
   const numericPieces = typeof pieces === "number" ? pieces : Number(pieces);
   const isExceeding = numericPieces > Math.ceil(expectedPieces * 1.05);
 
   const handleProcess = async () => {
+    if (!selectedCoil || !selectedStrip) return;
+    
+    const coilFinish = finishes.find((f) => f.id === selectedCoil.finish);
+    if (!coilFinish?.densityFactor) {
+      return toast.error(`La bobina no tiene factor de densidad configurado (Acabado: ${selectedCoil.finish || 'Ninguno'}). Imposible validar límite.`);
+    }
+
     if (numericPieces <= 0)
       return toast.error("Ingresa una cantidad mayor a 0");
     if (isExceeding)
       return toast.error("La cantidad supera el límite físico del fleje.");
-    if (!selectedCoil || !selectedStrip) return;
 
     setIsProcessing(true);
     const processPromise = processSingleStrip(

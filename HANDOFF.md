@@ -1,85 +1,86 @@
-# Handoff — AYR Steel ERP (siguiente conversación)
+# Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> Subir SIEMPRE al inicio: este `HANDOFF.md` + `CLAUDE.md` (v6.4).
-> Preferencias (en memoria): generar **prompts para Claude Code** por defecto, NO archivos salvo estrictamente necesario. Antes de generar, si hay dudas → **preguntar primero**.
-
----
-
-## Estado actual — v6.4
-
-### Lo nuevo de esta sesión (Sprint 8)
-
-**1. Módulo Facturación Electrónica SUNAT (Cloud Functions v2)**
-- Emisión DIRECTA (cert `.p12` + SOL propios), reutilizando proyecto de referencia funcional (`sunat/`).
-- Secretos en Secret Manager (`defineSecret`), binding mínimo por callable. `ALL_SECRETS` eliminado.
-- Colección `integrations` (config no-secreta): `sunat-emision`, `sunat-consulta`, `apisnet`, `algolia`.
-- Callables: `emitirComprobante`, `comunicarBaja`, `consultarEstadoBaja` (Factura/Boleta/Baja); `validarCpeSunat` (validez oficial SUNAT); `consultarRuc`/`consultarDni` (decolecta.com).
-- **Funcionando:** consultas RUC/DNI (tras migrar apis.net→decolecta y arreglar serverTimestamp + binding mínimo).
-- **Pendiente:** prueba real de emisión contra SUNAT BETA (requiere `.p12` válido cargado).
-
-**2. Refactor Importador Masivo de Ventas** — en curso, cola de prompts (abajo).
-
-### Archivos clave tocados / creados
-- `functions/src/config/secrets.ts` (defineSecret, sin ALL_SECRETS).
-- `functions/src/config/integrations.ts` (getIntegrationConfig, tipado por integración, sin `any`).
-- `functions/src/index.ts` (initializeIntegrations seed + callables + triggers audit).
-- `functions/src/services/apisnet.ts` (decolecta v1, RUC/DNI).
-- `functions/src/callables/integrations.ts` (consultarRuc/Dni — fix serverTimestamp + binding `[APISNET_TOKEN]`).
-- `functions/scripts/seedIntegrations.ts` (seed standalone para emulador).
-- `src/components/sales/BulkUploadSales.tsx` → migrando a página `/admin/sales/import`.
-- `public/templates/Plantilla_Importacion_Ventas_AYR.xlsx` (plantilla cliente, 15 columnas).
+> **Subir SIEMPRE al inicio:** este `HANDOFF.md` + `CLAUDE.md` (v6.6).
+> **Foco de la próxima sesión:** Correr migraciones/saneo pendientes + retomar deuda técnica (Sprint 7, ACCESORIO).
+> **Ajuste de preferencias:** Generar **prompts para Claude Code** por defecto, NO crear archivos innecesarios. Preguntar antes de generar si hay dudas.
 
 ---
 
-## Cola de prompts — Importador de Ventas (ORDEN DE APLICACIÓN)
+## 1. Estado del Proyecto (Sprint 6B Aluzinc Cerrado)
 
-> 14 ya aplicado. Aplicar en este orden. 19 y 20 DESCARTADOS (el 21 los reemplaza).
-
-1. **PROMPT 15** — Página propia `/admin/sales/import` + descarga plantilla + drawer de columnas + validación de archivo vacío + alta de SKU faltante (form completo por línea).
-2. **PROMPT 14** ✅ APLICADO — Peso por UM (`calcPesoKg`) + manejo NC/ND + TC sin fallback silencioso.
-3. **PROMPT 22** — Rename de atributos a inglés (`documentType`, `unitOfMeasure`, `adjustedDocument`) SOLO nombres, valores en español; ELIMINAR `affectaStock`.
-4. **PROMPT 21** — `ncStockAction` (enum inglés `RETURNS_STOCK`/`MONEY_ONLY`/`UNDECIDED`) + arreglar propagación (quedaba "NADA") + peso NETO de inventario ramificado por acción + test Fase 2 que distingue ramas.
-5. **PROMPT 16** — Idempotencia anti doble-import: leer `sales/{documentNumber}` dentro del `runTransaction`; omitir si existe. Test doble-corrida = stock baja una vez.
-6. **PROMPT 17** — Preview: badge moneda+TC por ítem + decisión inline de NC sin definir.
-7. **PROMPT 18** — Barra de indicadores totales (recalculo en vivo, alertas gobiernan Guardar).
-
-(Nota: el orden lógico es 15 → 22 → 21 → 16 → 17 → 18; el 14 ya está. Ajustar si en desarrollo conviene.)
+- **Línea Aluzinc (metallic-roofing):** ¡COMPLETA y en verde! El pipeline end-to-end es funcional y consistente:
+  $$\text{Bobina} \longrightarrow \text{Slitting} \longrightarrow \text{Producción Conformado} \longrightarrow \text{Mermas/Despunte} \longrightarrow \text{Venta} \longrightarrow \text{Reporte (Venta/Costo/Ganancia)}$$
+- **Build & Compilación:** 🟢 Compilación con `npm run build` y `tsc` limpia.
+- **Última Feature Aplicada:** P-M9 (rendimiento teórico vs real, controlando contra el umbral global del 5%).
+- **Fuente de verdad:** Ver detalles arquitectónicos actualizados directamente en [CLAUDE.md](file:///home/gsm/Documents/workspace/ayr/frontend-ayr-nextjs/CLAUDE.md) (v6.6).
 
 ---
 
-## Frentes abiertos (prioridad)
+## 2. Decisiones de Diseño Lockeadas (NO Revertir)
 
-| Frente | Estado | Detalle |
-|---|---|---|
-| 🏗️ **Sprint 8 — Import Ventas** | En curso | Cola de prompts arriba. Revisar cada uno en desarrollo. |
-| 🟡 **Emisión SUNAT prueba real** | Pendiente | Cargar `.p12` válido + probar sendBill contra BETA. |
-| 🔴 **Sprint 6B — Producción Metallic** | BLOQUEADO | 3 preguntas al cliente (kg vs ML×peso; plan previo vs directo; merma despunte). |
-| 🔴 **Sprint 7 — Seguridad** | Deuda crítica | `firestore.rules` por colección+rol (hoy 100% abierta) + writes críticos a Functions. |
-| 🟡 Validación CPE compras (UI) | Pendiente | Botón "Validar en SUNAT" sobre `purchases` usando `validarCpeSunat`. |
-
----
-
-## Notas técnicas / trampas conocidas
-
-- **Recompilar Functions** (`npm run build`) tras editar TS — el emulador corre `lib/*.js`.
-- **Emulador + secretos:** valores en `functions/.secret.local`; cada secreto bindeado necesita su línea (dummy si no se prueba). firebase-tools ≥ 13.15.1.
-- **Emulador arranca Firestore vacío:** correr `npm run seed:emulator` o no existe `integrations` → callables fallan con "Integración no encontrada".
-- **Validez CPE:** confirmar grant OAuth (`client_credentials` vs `password`) contra el manual oficial antes de cablear `validarCpeSunat`.
-- **NC:** SUNAT NO da el motivo → `ncStockAction` lo decide el usuario, no se adivina.
-- **TC:** sin fallback 3.75; si falla la API, bloquear y avisar.
+- **Densidad Centralizada:** La densidad se define como **un valor único por acabado** en `coil_finishes`, y el SKU terminado la hereda vía lookup.
+  - $\delta$ Galvanizado / Drywall: `0.00785` (kg/mm²·m)
+  - $\delta$ Aluzinc (natural/colores): `0.008` (kg/mm²·m)
+  - *Regla de Oro:* El proceso de conformado no modifica la densidad física; se utiliza idéntico factor tanto para consumos como para cálculos de ventas. (Evitar reintroducir la lógica de "dos factores").
+- **Atributos de Bobina (Color):** El color del SKU terminado es equivalente al acabado de la bobina consumida.
+  - Los acabados/colores se gestionan de forma centralizada en la colección de acabados.
+  - El selector de color de SKU lee dinámicamente de `coil_finishes`.
+  - El formulario tolera campos legacy para no romper la edición de registros antiguos.
+- **Modelo de Materiales:**
+  - **Bobina:** Representa un documento individual único en la colección `coils`.
+  - **Slitting (Corte de flejes):** Divide la bobina madre por **ancho** (masterWidth). El peso de los flejes resultantes se calcula de forma proporcional y heredan el `pricePerKg` de la bobina de origen.
+  - **Catálogo:** Se eliminó la familia `BOBINA` del catálogo de productos. Si se vende material crudo, se utiliza la propiedad `isCoil: true` de la bobina.
+- **Flexibilidad Operativa:** Se permite peso y stock negativo en consumo y venta (dispara advertencia/warning en UI sin bloquear).
+- **Finanzas:** Todo costo se almacena en Soles (PEN). Las transacciones en dólares (USD) se convierten utilizando el tipo de cambio (TC) real al momento del registro.
 
 ---
 
-## Convenciones (recordatorio)
+## 3. Pendientes Operativos (Ejecutar en Orden, Dry-Run Primero)
 
-- 0 `any` nuevos · **nombres en inglés, valores/datos y errores de usuario en español** · patrón Strategy (no if/else por línea) · `runTransaction` lee antes de escribir · stock negativo permitido (warning).
-- Build 100% verde, `tsc --noEmit` limpio.
-- NUNCA borrado físico: status ANULADA/VOIDED + audit_logs.
-- Secretos: solo Secret Manager, nunca Firestore/UI. Binding mínimo por callable.
-- Tests: Fase 1 (sin emulador, lógica/strategies) + Fase 2 (emulador Firestore, transacciones/E2E).
+1. **Correr Migraciones Pendientes:**
+   - Habilitar e inyectar factores en `migrateFinishDensityFactors`.
+   - Ejecutar script `migrate-cobertura-metadata` para alinear estructura.
+   - Correr script `fix-density-factor-natural` para el acabado natural de aluzinc.
+2. **Sembrado de Acabados de Color:**
+   - Asegurar la presencia de al menos 5 acabados base en Firestore (AZUL, BLANCO, NATURAL, ROJO, VERDE) con sus líneas asignadas.
+3. **Saneo de SKUs en Producción (`fix_skus_prod.ts`):**
+   - *Nota:* La base de pruebas en el tenant `ayrsteel-test` ya está limpia, pero PRODUCCIÓN requiere saneo.
+   - **Flujo:** Correr con `--dry-run` usando credenciales de prod $\rightarrow$ validar $\rightarrow$ aplicar con `--apply`.
+   - **Acción sobre SKUs erróneos:**
+     - SKUs erróneamente clasificados como familia `BOBINA` con ventas asociadas: **NO anular**, reclasificar al tipo correcto.
+     - Corregir typo en `COB030ROJO` (ej. typo `RRR` $\rightarrow$ `ROJO`).
+     - Marcar `COB035GALV` como `VOIDED`.
+4. **Validación del Flujo Completo:**
+   - Importar SKUs reales, registrar las primeras producciones de cobertura y corroborar que el reporte de ganancia se comporte según la progresión esperada.
+5. **Backtest Histórico:**
+   - Cargar y validar marzo (~44.7 TM consumidas, ~S/.148k valorizado, rango de precio/kg: `3.2` a `3.6`).
 
 ---
 
-## Próximo paso sugerido
+## 4. Deuda Técnica Prioritaria (Sprint 7 & Futuro)
 
-Aplicar la cola del importador (15 → 22 → 21 → 16 → 17 → 18), probando cada uno en desarrollo. En paralelo, cuando haya `.p12` válido, probar emisión contra BETA. Luego retomar Sprint 7 (seguridad) para bajar la deuda crítica.
+- **Seguridad en DB (Crítico - Sprint 7):** Cerrar la colección Firestore en `firestore.rules` (actualmente abierta a escrituras públicas). Delegar escrituras críticas a Cloud Functions (`splitCoilAction`, `produceFromCoils`, `registerCoilScrap`, registro de ventas).
+- **Línea ACCESORIO $\rightarrow$ Trading:** Migración transversal de documentos y stocks de accesorios desde la línea de aluzinc/roofing hacia el módulo `trading`.
+- **Tipo de Cambio Manual:** Implementar la opción de fijar tipo de cambio manual en ventas en USD para los casos donde la API de SUNAT falle o retorne datos sin TC (ej: incidencias en comprobantes históricos como `FFA1-912/913/933`).
+- **Control de Tolerancia P-M9:** Extender el umbral del 5% del rendimiento (teórico vs real) para que sea configurable por tipo de perfil (actualmente es un valor global).
+- **Exportación de Reportes:** Habilitar la exportación a formato PDF (actualmente limitado a XLSX/CSV).
+
+---
+
+## 5. Convenciones del Proyecto
+
+- **Strict TypeScript:** Cero (`0`) declaraciones `any` nuevas.
+- **Idioma del Código:** Variables, nombres de funciones y base de datos en **inglés**; interfaz de usuario, mensajes de error y datos operacionales en **español**.
+- **Diseño Modular:** Uso estricto del patrón **Strategy** para evitar branching `if/else` condicionado por líneas de negocio.
+- **Acceso a Firestore:** Todas las operaciones de escritura en transacciones deben ir después de las lecturas (`runTransaction` lee antes de escribir).
+- **Integridad de Datos:** Prohibido el borrado físico de registros de negocio. Utilizar estados como `VOIDED` / `ANULADA` y registrar log en `audit_logs`.
+- **Valores Financieros:** Costo unitario en soles y control exacto de consumos en kilogramos.
+- **Modo Operativo:** *Caveman mode* activo (paso a paso, cambios incrementales limpios y seguros).
+
+---
+
+## 6. Skills Recomendadas
+
+- **`grill-me`:** Utilizar para realizar un *stress-test* del plan de migración de la línea ACCESORIO antes de iniciar la escritura de código.
+- **`diagnose`:** Para diagnosticar inconsistencias durante el saneamiento de SKUs en producción.
+- **`tdd`:** Diseñar las nuevas Cloud Functions del Sprint 7 utilizando testing de integración.

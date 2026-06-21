@@ -19,7 +19,7 @@ export default function SetupPage() {
         setCatalogStatus(products.length > 0 ? "populated" : "empty");
       })
       .catch(() => {
-        toast.error("Error al verificar el catálogo PVC");
+        toast.error("Error al verificar el catálogo UPVC");
         setCatalogStatus("empty");
       });
   }, []);
@@ -51,14 +51,14 @@ export default function SetupPage() {
         </p>
       </div>
 
-      {/* ── Tarjeta: Catálogo PVC ─────────────────────────────────────── */}
+      {/* ── Tarjeta: Catálogo UPVC ────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="flex items-center gap-4 p-6 border-b border-slate-100">
           <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
             <Home size={20} className="text-emerald-600" />
           </div>
           <div>
-            <h2 className="font-black text-slate-900">Catálogo PVC — Coberturas Roofing</h2>
+            <h2 className="font-black text-slate-900">Catálogo UPVC — Coberturas Roofing</h2>
             <p className="text-sm text-slate-500 font-medium">
               Productos base UPVC en colores Rojo y Azul, largos 3.6m y 6.0m.
             </p>
@@ -96,7 +96,7 @@ export default function SetupPage() {
                 ) : (
                   <PackagePlus size={16} />
                 )}
-                {isSeeding ? "Inicializando..." : "Inicializar Catálogo PVC"}
+                {isSeeding ? "Inicializando..." : "Inicializar Catálogo UPVC"}
               </button>
             </div>
           )}
@@ -119,7 +119,7 @@ export default function SetupPage() {
               <p className="text-xs text-slate-400 font-medium">
                 Para agregar más productos, usa el{" "}
                 <a href="/admin/lines/roofing/catalog" className="text-blue-600 hover:underline font-bold">
-                  Catálogo PVC
+                  Catálogo UPVC
                 </a>
                 .
               </p>

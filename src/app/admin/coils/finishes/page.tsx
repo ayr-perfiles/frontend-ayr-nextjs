@@ -1,14 +1,15 @@
 "use client";
 
+"use client";
+
 import { useState } from "react";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
-import { createFinish, updateFinish, CoilFinish } from "@/core/coils/services/finishService";
-import { Plus, Edit2, Tag, Check, X, Loader2 } from "lucide-react";
+import { createFinish, updateFinish, migrateFinishDensityFactors, CoilFinish } from "@/core/coils/services/finishService";
+import { Plus, Edit2, Tag, Check, X, Loader2, Zap } from "lucide-react";
 import toast from "react-hot-toast";
 import { BusinessLine } from "@/types";
 
-const ALL_LINES: BusinessLine[] = ['drywall', 'roofing', 'metallic-roofing', 'trading', 'services'];
-
+const PRODUCTION_LINES: BusinessLine[] = ['drywall', 'metallic-roofing'];
 export default function FinishesPage() {
   const { finishes, loading, error } = useFinishes(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -19,11 +20,16 @@ export default function FinishesPage() {
     label: "",
     active: true,
     lines: [],
+    densityFactor: undefined,
   });
 
   const handleSave = async () => {
     if (!formData.id || !formData.label) {
       toast.error("ID y Etiqueta son obligatorios");
+      return;
+    }
+    if (formData.lines.length !== 1) {
+      toast.error("Debes seleccionar exactamente una línea de producción");
       return;
     }
     try {
@@ -42,13 +48,14 @@ export default function FinishesPage() {
     }
   };
 
-  const toggleLine = (line: BusinessLine) => {
-    setFormData(prev => ({
-      ...prev,
-      lines: prev.lines.includes(line)
-        ? prev.lines.filter(l => l !== line)
-        : [...prev.lines, line]
-    }));
+  const handleMigrate = async () => {
+    try {
+      await migrateFinishDensityFactors();
+      toast.success("Factor de densidad migrado en ALUZINC y NATURAL");
+      window.location.reload();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Error en migración");
+    }
   };
 
   return (
@@ -58,16 +65,25 @@ export default function FinishesPage() {
           <h1 className="text-2xl font-black text-gray-900 tracking-tight">Acabados de Bobina</h1>
           <p className="text-gray-500 font-medium">Gestiona los tipos de material y sus compatibilidades</p>
         </div>
-        <button
-          onClick={() => {
-            setIsAdding(true);
-            setEditingId(null);
-            setFormData({ id: "", label: "", active: true, lines: [] });
-          }}
-          className="bg-blue-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-blue-700 transition font-black shadow-md shadow-blue-200"
-        >
-          <Plus size={20} /> Nuevo Acabado
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleMigrate}
+            className="bg-slate-100 text-slate-600 px-4 py-2.5 rounded-xl flex items-center gap-2 hover:bg-slate-200 transition font-black text-sm"
+            title="Inyectar densityFactor en ALUZINC y NATURAL (idempotente)"
+          >
+            <Zap size={16} /> Migrar Factores
+          </button>
+          <button
+            onClick={() => {
+              setIsAdding(true);
+              setEditingId(null);
+              setFormData({ id: "", label: "", active: true, lines: [], densityFactor: undefined });
+            }}
+            className="bg-blue-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-blue-700 transition font-black shadow-md shadow-blue-200"
+          >
+            <Plus size={20} /> Nuevo Acabado
+          </button>
+        </div>
       </div>
 
       {(isAdding || editingId) && (
@@ -98,18 +114,44 @@ export default function FinishesPage() {
             </div>
           </div>
           <div>
-            <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Líneas de Negocio que pueden usar este material</label>
+            <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Línea de producción</label>
             <div className="flex flex-wrap gap-2">
-              {ALL_LINES.map(line => (
+              {PRODUCTION_LINES.map(line => (
                 <button
                   key={line}
-                  onClick={() => toggleLine(line)}
+                  type="button"
+                  onClick={() => {
+                    setFormData(prev => {
+                      let newDensity = prev.densityFactor;
+                      if (newDensity === undefined) {
+                        newDensity = line === 'drywall' ? 0.00785 : 0.008;
+                      }
+                      return { ...prev, lines: [line], densityFactor: newDensity };
+                    });
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${formData.lines.includes(line) ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                 >
                   {line}
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Factor de densidad conformado (kg/mm²·m)</label>
+            <input
+              type="number"
+              step="0.00001"
+              min="0.001"
+              max="0.02"
+              className="w-full p-2.5 border rounded-lg font-bold outline-none focus:border-blue-500"
+              placeholder="0.00785 / 0.008"
+              value={formData.densityFactor ?? ""}
+              onChange={e => setFormData({
+                ...formData,
+                densityFactor: e.target.value !== "" ? Number(e.target.value) : undefined,
+              })}
+            />
+            <p className="text-[10px] text-gray-400 mt-1">Típico: 0.008 (aluzinc — natural o prepintado) · 0.00785 (galvanizado/drywall). Requerido para registrar producción conformado.</p>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -157,7 +199,7 @@ export default function FinishesPage() {
                   </span>
                 ))}
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center justify-between">
                 {f.active ? (
                   <span className="flex items-center gap-1 text-[10px] font-black text-green-600 uppercase">
                     <Check size={12} /> Activo
@@ -165,6 +207,11 @@ export default function FinishesPage() {
                 ) : (
                   <span className="flex items-center gap-1 text-[10px] font-black text-gray-400 uppercase">
                     <X size={12} /> Inactivo
+                  </span>
+                )}
+                {f.densityFactor != null && (
+                  <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+                    δ = {f.densityFactor}
                   </span>
                 )}
               </div>

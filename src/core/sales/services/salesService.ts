@@ -93,6 +93,7 @@ export const processSale = async (
         if (!snap?.exists()) throw new Error(`La bobina ${item.sku} no existe.`);
         if (snap.data().status !== 'AVAILABLE') throw new Error(`La bobina ${item.sku} no está disponible.`);
 
+        const coilData = snap.data();
         transaction.update(doc(db, 'coils', item.sku), {
           status: 'SOLD',
           soldAt: serverTimestamp(),
@@ -104,6 +105,8 @@ export const processSale = async (
           date: serverTimestamp(),
           type: 'OUT',
           quantity: 1,
+          weightKg: coilData.currentWeight ?? 0,
+          costPerKg: coilData.pricePerKg ?? 0,
           balance: 0,
           reference: saleId,
           description: `Venta de Materia Prima a ${customerName}`,
@@ -258,6 +261,7 @@ export const approveQuotation = async (quotationId: string): Promise<{ success: 
         if (!snap?.exists()) throw new Error(`La bobina ${item.sku} no existe.`);
         if (snap.data().status !== 'AVAILABLE') throw new Error(`La bobina ${item.sku} no está disponible.`);
 
+        const coilData = snap.data();
         transaction.update(doc(db, 'coils', item.sku), {
           status: 'SOLD',
           soldAt: serverTimestamp(),
@@ -269,6 +273,8 @@ export const approveQuotation = async (quotationId: string): Promise<{ success: 
           date: serverTimestamp(),
           type: 'OUT',
           quantity: 1,
+          weightKg: coilData.currentWeight ?? 0,
+          costPerKg: coilData.pricePerKg ?? 0,
           balance: 0,
           reference: newSaleId,
           description: `Conversión Cot. ${quotationId} (Materia Prima)`,
@@ -365,6 +371,8 @@ export const annulSale = async ({ saleId, userEmail }: AnnulSaleParams): Promise
     // ── ESCRITURAS ──────────────────────────────────────────────────────────
     for (const item of saleData.items as CartItem[]) {
       if (item.isCoil) {
+        const coilSnap = coilSnapshots.get(item.sku);
+        const coilData = coilSnap?.data();
         transaction.update(doc(db, 'coils', item.sku), {
           status: 'AVAILABLE',
           soldAt: null,
@@ -377,6 +385,8 @@ export const annulSale = async ({ saleId, userEmail }: AnnulSaleParams): Promise
           date: serverTimestamp(),
           type: 'IN',
           quantity: 1,
+          weightKg: coilData?.currentWeight ?? 0,
+          costPerKg: coilData?.pricePerKg ?? 0,
           balance: 1,
           reference: saleId,
           description: `Anulación Venta MP: ${saleData.customerName}`,

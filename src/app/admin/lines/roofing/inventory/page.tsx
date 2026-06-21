@@ -258,7 +258,7 @@ export default function RoofingInventoryPage() {
             <Package className="text-emerald-700" size={22} />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Inventario PVC</h1>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Inventario UPVC</h1>
             <p className="text-sm text-gray-500 font-medium">
               {loading ? "Cargando…" : `${items.length} producto${items.length !== 1 ? "s" : ""} encontrados`}
             </p>

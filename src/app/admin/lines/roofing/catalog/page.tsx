@@ -141,7 +141,7 @@ export default function RoofingCatalogPage() {
           </div>
           <div>
             <h1 className="text-2xl font-black text-gray-900 tracking-tight">
-              Catálogo PVC
+              Catálogo UPVC
             </h1>
             <p className="text-sm text-gray-500 font-medium">
               {loading
@@ -336,7 +336,7 @@ function ProductDetailModal({
           <div>
             <h2 className="text-xl font-black">Ficha del Producto</h2>
             <p className="text-emerald-200 text-xs font-bold uppercase tracking-widest">
-              Coberturas PVC
+              Coberturas UPVC
             </p>
           </div>
           <button

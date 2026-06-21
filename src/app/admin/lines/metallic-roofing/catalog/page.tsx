@@ -15,7 +15,7 @@ import type { MetallicProduct } from "@/modules/metallic-roofing/types";
 import { TableFilters, FilterGroup } from "@/components/ui/TableFilters";
 import { TablePagination } from "@/components/ui/TablePagination";
 
-const FAMILY_OPTIONS = ["COBERTURA", "PLANCHA", "BOBINA", "ACCESORIO"];
+const FAMILY_OPTIONS = ["COBERTURA", "PLANCHA", "ACCESORIO"];
 const FINISH_OPTIONS = ["GALV", "ALUZINC", "NATURAL", "PREPINTADO"];
 type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
 
@@ -305,6 +305,12 @@ function ProductDetailModal({ product, onClose }: { product: MetallicProduct; on
     ["Unidad", product.unit],
     ["Costo promedio", product.avgCost > 0 ? `S/ ${product.avgCost.toFixed(2)}` : "Sin costo"],
     ["Estado", product.active ? "Activo" : "Inactivo"],
+    ...(product.widthMm != null
+      ? ([["Ancho bobina", `${product.widthMm} mm ${product.metaSource ? `(${product.metaSource})` : ""}`]] as [string, string][])
+      : []),
+    ...(product.densityFactor != null
+      ? ([["Factor densidad", product.densityFactor.toString()]] as [string, string][])
+      : []),
   ];
 
   return (

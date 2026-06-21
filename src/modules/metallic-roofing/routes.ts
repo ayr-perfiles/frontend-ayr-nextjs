@@ -13,4 +13,10 @@ export const metallicRoofingRoutes: RouteConfig[] = [
     protected: true,
     roles: ['ADMIN', 'SUPERVISOR'],
   },
+  {
+    path: '/admin/lines/metallic-roofing/production',
+    component: 'components/production/ProductionPage',
+    protected: true,
+    roles: ['ADMIN', 'SUPERVISOR', 'OPERATOR'],
+  },
 ];

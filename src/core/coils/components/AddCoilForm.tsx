@@ -214,7 +214,14 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     // 1. Validate header
     if (!validate()) return;
 
-    // 2. Validate coil rows
+    // 2. Bloquear si la moneda es USD y el TC no fue obtenido
+    if (values.currency === 'USD' && values.exchangeRate <= 1) {
+      toast.error('Tipo de cambio USD inválido. Verifica la fecha o ingresa el TC manualmente (debe ser mayor a 1).');
+      setErrors((prev) => ({ ...prev, exchangeRate: 'TC inválido para USD — debe ser mayor a 1' }));
+      return;
+    }
+
+    // 3. Validate coil rows
     const rowErrors: Record<string, RowErrors> = {};
     for (const coil of coils) {
       const result = coilEntryFormSchema.safeParse({
@@ -688,6 +695,20 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                         }
                       />
                     </div>
+                    {(() => {
+                      const w = Number(coil.weight);
+                      const v = Number(coil.value);
+                      if (w > 0 && v > 0) {
+                        const totalPEN = values.currency === 'USD' ? v * values.exchangeRate : v;
+                        const pricePerKg = totalPEN / w;
+                        return (
+                          <p className="text-[10px] font-black text-emerald-600 mt-1">
+                            Costo: S/ {pricePerKg.toFixed(4)}/kg
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
                     {rowErr.value && (
                       <p className="text-red-500 text-xs mt-1">
                         {rowErr.value}

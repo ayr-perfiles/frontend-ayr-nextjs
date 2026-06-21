@@ -21,7 +21,7 @@ import { RowActionsMenu, RowAction } from "@/components/ui/RowActionsMenu";
 import StockAdjustmentModal from "@/modules/metallic-roofing/components/inventory/StockAdjustmentModal";
 import MovementsHistoryModal from "@/modules/metallic-roofing/components/inventory/MovementsHistoryModal";
 
-const FAMILY_OPTIONS = ["COBERTURA", "PLANCHA", "BOBINA", "ACCESORIO"];
+const FAMILY_OPTIONS = ["COBERTURA", "PLANCHA", "ACCESORIO"];
 const FINISH_OPTIONS = ["GALV", "ALUZINC", "NATURAL", "PREPINTADO"];
 
 const COLOR_CHIPS: Record<string, string> = {

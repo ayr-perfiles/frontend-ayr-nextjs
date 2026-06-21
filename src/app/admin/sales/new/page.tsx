@@ -406,7 +406,7 @@ export default function NewSalePage() {
             <ShoppingCart className="text-blue-600" /> Nuevo Documento
           </h1>
           <p className="text-gray-500 text-sm font-medium">
-            Cotización o Venta Directa — Drywall · Coberturas PVC · Bobinas M.P.
+            Cotización o Venta Directa — Drywall · Coberturas UPVC · Bobinas M.P.
           </p>
         </div>
         <button

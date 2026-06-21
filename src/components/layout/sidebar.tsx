@@ -419,7 +419,6 @@ export default function Sidebar({
                 label={`Producción ${l.displayName.split(" ")[0]}`}
                 href={`/admin/lines/${l.id}/production`}
                 active={pathname === `/admin/lines/${l.id}/production`}
-                soon={l.id === "metallic-roofing"}
                 collapsed={collapsed}
               />
             ))}

@@ -30,6 +30,7 @@ import {
 import { db } from "@/lib/firebase/clientApp";
 import { Coil, CutOrder } from "@/types";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
+import { useCoilYield } from "@/modules/metallic-roofing/hooks/useCoilYield";
 import Link from "next/link";
 
 interface CoilDetailsModalProps {
@@ -99,6 +100,9 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
     ?.filter((s) => s.coilId === coil.id)
     .reduce((sum, s) => sum + s.weight, 0);
 
+  // --- RENDIMIENTO TEÓRICO VS REAL ---
+  const { result: yieldResult, loading: yieldLoading } = useCoilYield(coil);
+
   return (
     <div className="flex flex-col bg-slate-50 w-full max-w-3xl max-h-[90vh] rounded-2xl overflow-hidden shadow-2xl">
       {" "}
@@ -127,6 +131,20 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
             Registrado en sistema el {formatDate(coil.createdAt)} por{" "}
             {coil.registeredBy}
           </p>
+          
+          {yieldResult && (
+            <div className="mt-3 flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border ${yieldResult.yieldAlert ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                {yieldResult.yieldAlert && <AlertCircle size={12} />}
+                ≈ {Math.round(yieldResult.mlTeorico)} ML teóricos · {Math.round(yieldResult.mlProducido)} ML producidos · {(yieldResult.desviacionPct * 100).toFixed(1)}%
+              </span>
+              {yieldResult.yieldAlert && (
+                <span className="text-xs font-black text-amber-600 bg-amber-100 px-2 py-0.5 rounded">
+                  Revisar rendimiento
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <button
           onClick={onClose}

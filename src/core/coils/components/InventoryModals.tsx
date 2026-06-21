@@ -10,6 +10,8 @@ import {
 import { CoilDetailsModal } from "@/core/coils/components/CoilDetailsModal";
 import { PurchaseCoilFromXml } from "@/core/coils/components/PurchaseCoilFromXml";
 import { BulkUploadCoils } from "@/core/coils/components/BulkUploadCoils";
+import { SplitCoilModal } from "@/core/coils/components/SplitCoilModal";
+import { RegisterScrapModal } from "@/core/coils/components/RegisterScrapModal";
 
 interface InventoryModalsProps {
   editingCoil: Coil | null;
@@ -29,6 +31,14 @@ interface InventoryModalsProps {
 
   showExcelModal: boolean;
   onCloseExcel: () => void;
+
+  splittingCoil: Coil | null;
+  onCloseSplit: () => void;
+  onSplitSuccess: () => void;
+
+  scrappingCoil: Coil | null;
+  onCloseScrap: () => void;
+  onScrapSuccess: () => void;
 }
 
 export function InventoryModals({
@@ -45,6 +55,12 @@ export function InventoryModals({
   onCloseXml,
   showExcelModal,
   onCloseExcel,
+  splittingCoil,
+  onCloseSplit,
+  onSplitSuccess,
+  scrappingCoil,
+  onCloseScrap,
+  onScrapSuccess,
 }: InventoryModalsProps) {
   return (
     <>
@@ -100,6 +116,28 @@ export function InventoryModals({
             <BulkUploadCoils />
           </div>
         </div>
+      )}
+
+      {splittingCoil && (
+        <SplitCoilModal
+          coil={splittingCoil}
+          onClose={onCloseSplit}
+          onSuccess={() => {
+            onCloseSplit();
+            onSplitSuccess();
+          }}
+        />
+      )}
+
+      {scrappingCoil && (
+        <RegisterScrapModal
+          coil={scrappingCoil}
+          onClose={onCloseScrap}
+          onSuccess={() => {
+            onCloseScrap();
+            onScrapSuccess();
+          }}
+        />
       )}
     </>
   );
