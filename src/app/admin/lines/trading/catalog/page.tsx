@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
-import { Plus, ShoppingCart, X } from "lucide-react";
+import { Plus, ShoppingCart, X, UploadCloud } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import { useTradingCatalog } from "@/modules/trading/hooks/useTradingCatalog";
@@ -14,6 +15,7 @@ import {
 import type { TradingProduct, TradingCategory } from "@/modules/trading/types";
 import { TableFilters, FilterGroup } from "@/components/ui/TableFilters";
 import { TablePagination } from "@/components/ui/TablePagination";
+import { useTableData } from "@/hooks/useTableData";
 
 const CATEGORY_OPTIONS: TradingCategory[] = [
   "POLICARBONATO",
@@ -27,22 +29,31 @@ export default function TradingCatalogPage() {
   const { role } = useAuth();
   const isAdmin = role === "ADMIN";
 
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<TradingCategory | "">(
-    "",
-  );
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">(
-    "ALL",
-  );
-  const [pageSize, setPageSize] = useState(50);
+  const { products, loading, refresh } = useTradingCatalog();
 
-  const filters = {
-    searchTerm: search || undefined,
-    category: categoryFilter || undefined,
-    active: statusFilter === "ALL" ? undefined : statusFilter === "ACTIVE",
-  };
-
-  const { products, loading, refresh } = useTradingCatalog(filters);
+  const {
+    pageItems,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
+    searchValue,
+    setSearchValue,
+    filterValues,
+    setFilterValue,
+    totalFiltered,
+  } = useTableData({
+    data: products,
+    searchFields: ["sku", "displayName"],
+    filters: {
+      category: (row, val) => row.category === val,
+      status: (row, val) => {
+        if (val === "ACTIVE") return row.active === true;
+        if (val === "INACTIVE") return row.active === false;
+        return true;
+      },
+    },
+  });
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<TradingProduct | null>(
@@ -99,8 +110,8 @@ export default function TradingCatalogPage() {
     {
       id: "category",
       label: "Categoría",
-      value: categoryFilter || "ALL",
-      onChange: (v) => setCategoryFilter(v === "ALL" ? "" : (v as TradingCategory)),
+      value: filterValues.category || "ALL",
+      onChange: (v) => setFilterValue("category", v),
       options: [
         { value: "ALL", label: "Todas las categorías" },
         ...CATEGORY_OPTIONS.map((c) => ({ value: c, label: c })),
@@ -110,8 +121,8 @@ export default function TradingCatalogPage() {
     {
       id: "status",
       label: "Estado",
-      value: statusFilter,
-      onChange: (v) => setStatusFilter(v as "ALL" | "ACTIVE" | "INACTIVE"),
+      value: filterValues.status || "ALL",
+      onChange: (v) => setFilterValue("status", v),
       options: [
         { value: "ALL", label: "Todos" },
         { value: "ACTIVE", label: "Activos" },
@@ -122,9 +133,9 @@ export default function TradingCatalogPage() {
   ];
 
   const handleClearAll = () => {
-    setSearch("");
-    setCategoryFilter("");
-    setStatusFilter("ALL");
+    setSearchValue("");
+    setFilterValue("category", "ALL");
+    setFilterValue("status", "ALL");
   };
 
   return (
@@ -147,22 +158,34 @@ export default function TradingCatalogPage() {
           </div>
         </div>
 
-        {isAdmin && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-amber-700 transition active:scale-95 shadow-sm shadow-amber-200"
-          >
-            <Plus size={18} /> Nuevo Producto
-          </button>
-        )}
+          {/*
+          {isAdmin && (
+            <div className="flex gap-3">
+              <Link
+                href="/admin/catalog/import"
+                className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-200 transition"
+              >
+                <UploadCloud size={18} /> Importar Masivo
+              </Link>
+            </div>
+          )}
+          */}
+          {isAdmin && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-amber-700 transition active:scale-95 shadow-sm shadow-amber-200"
+            >
+              <Plus size={18} /> Nuevo Producto
+            </button>
+          )}
       </div>
 
       <TableFilters
         search={{
-          value: search,
-          onChange: setSearch,
+          value: searchValue,
+          onChange: setSearchValue,
           placeholder: "Buscar por SKU o nombre…",
-          isSearching: loading && !!search,
+          isSearching: loading && !!searchValue,
         }}
         filterGroups={filterGroups}
         onClearAll={handleClearAll}
@@ -170,20 +193,21 @@ export default function TradingCatalogPage() {
 
       <div className="space-y-4">
         <ProductCatalogTable
-          products={products}
+          products={pageItems}
           loading={loading}
           canEdit={isAdmin}
           onView={setViewingProduct}
           onEdit={setEditingProduct}
           onToggleActive={handleToggleActive}
+          currentPage={currentPage}
           pageSize={pageSize}
         />
 
         <TablePagination
-          currentPage={1}
+          currentPage={currentPage}
           pageSize={pageSize}
-          totalItems={products.length}
-          onPageChange={() => {}}
+          totalItems={totalFiltered}
+          onPageChange={setCurrentPage}
           pageSizeOptions={[15, 30, 50, 100]}
           onPageSizeChange={setPageSize}
           totalLabel="Productos"

@@ -4,7 +4,8 @@ interface UseTableDataProps<T> {
   data: T[];
   pageSize?: number;
   searchFields?: (keyof T | ((row: T) => string))[];
-  filters?: { [filterId: string]: (row: T, value: string) => boolean };
+  filters?: { [filterId: string]: (row: T, value: any) => boolean };
+  customFilter?: (row: T) => boolean;
 }
 
 export function useTableData<T>({
@@ -12,11 +13,12 @@ export function useTableData<T>({
   pageSize: initialPageSize = 15,
   searchFields = [],
   filters = {},
+  customFilter,
 }: UseTableDataProps<T>) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialPageSize);
   const [searchValue, setSearchValue] = useState("");
-  const [filterValues, setFilterValues] = useState<{ [filterId: string]: string }>({});
+  const [filterValues, setFilterValues] = useState<{ [filterId: string]: any }>({});
 
   // Reset to page 1 on filter/search change
   useEffect(() => {
@@ -39,15 +41,21 @@ export function useTableData<T>({
         const filterVal = filterValues[filterId];
         const predicate = filters[filterId];
 
-        // Convención: 'ALL', 'TODOS' o vacío ignora el filtro
-        if (
-          filterVal &&
-          filterVal !== "ALL" &&
-          filterVal !== "TODOS" &&
-          predicate
-        ) {
+        // Convención: 'ALL', 'TODOS' o vacío ignora el filtro (para strings)
+        // Para arrays, vacío o longitud 0 ignora el filtro
+        const isIgnored = 
+          (!filterVal) ||
+          (typeof filterVal === 'string' && (filterVal === "ALL" || filterVal === "TODOS")) ||
+          (Array.isArray(filterVal) && filterVal.length === 0);
+
+        if (!isIgnored && predicate) {
           if (!predicate(row, filterVal)) return false;
         }
+      }
+
+      // 3. Custom filter wrapper
+      if (customFilter && !customFilter(row)) {
+        return false;
       }
 
       return true;
@@ -59,7 +67,7 @@ export function useTableData<T>({
     return filteredData.slice(start, start + pageSize);
   }, [filteredData, currentPage, pageSize]);
 
-  const setFilterValue = (id: string, value: string) => {
+  const setFilterValue = (id: string, value: any) => {
     setFilterValues((prev) => ({ ...prev, [id]: value }));
   };
 

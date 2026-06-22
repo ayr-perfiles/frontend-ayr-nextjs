@@ -49,7 +49,7 @@ export function InventoryFilters({
       label: "Estado de Bobina",
       layout: "list",
       value: statusFilter,
-      onChange: setStatusFilter,
+      onChange: (v) => setStatusFilter(v as string),
       options: [
         { value: "ALL", label: "Todas las Activas" },
         { value: "AVAILABLE", label: "Solo Disponibles" },
@@ -63,7 +63,7 @@ export function InventoryFilters({
       label: "Acabado",
       layout: "grid",
       value: finishFilter,
-      onChange: setFinishFilter,
+      onChange: (v) => setFinishFilter(v as string),
       options: [
         { value: "ALL", label: "Todos" },
         ...finishes.map(f => ({ value: f.id, label: f.label })),
@@ -74,7 +74,7 @@ export function InventoryFilters({
       label: "Moneda",
       layout: "grid",
       value: currencyFilter,
-      onChange: setCurrencyFilter,
+      onChange: (v) => setCurrencyFilter(v as string),
       options: [
         { value: "ALL", label: "Todas" },
         { value: "PEN", label: "Soles (PEN)" },

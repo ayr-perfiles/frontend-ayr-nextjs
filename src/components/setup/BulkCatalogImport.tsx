@@ -45,7 +45,7 @@ export function BulkCatalogImport() {
 
   function handleLoadSeed() {
     setImported(false);
-    processParsedData(MARZO_SEED_DATA);
+    processParsedData(MARZO_SEED_DATA as ParsedCatalogRow[]);
     toast.success("Datos de semilla (Marzo) cargados en vista previa.");
   }
 

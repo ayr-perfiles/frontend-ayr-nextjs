@@ -407,6 +407,7 @@ export const annulSale = async ({ saleId, userEmail }: AnnulSaleParams): Promise
             saleId,
             customerName: saleData.customerName,
             sellerId: userEmail,
+            frozenCost: item.baseCost ?? 0,
           },
           snap,
           transaction,

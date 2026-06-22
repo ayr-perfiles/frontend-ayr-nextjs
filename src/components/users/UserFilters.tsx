@@ -25,7 +25,7 @@ export function UserFilters({
       id: "role",
       label: "Nivel de Acceso",
       value: roleFilter,
-      onChange: (v) => setRoleFilter(v),
+      onChange: (v) => setRoleFilter(v as string),
       options: [
         { value: "ALL", label: "Todos los Niveles" },
         { value: "ADMIN", label: "Gerencia (Admin)" },
@@ -38,7 +38,7 @@ export function UserFilters({
       id: "status",
       label: "Estado del Acceso",
       value: statusFilter,
-      onChange: (v) => setStatusFilter(v),
+      onChange: (v) => setStatusFilter(v as string),
       options: [
         { value: "ALL", label: "Todos" },
         { value: "ACTIVE", label: "Activos" },

@@ -1,6 +1,6 @@
 import { ParsedCatalogRow } from './catalogImport';
 
-export const MARZO_SEED_DATA: ParsedCatalogRow[] = [
+export const MARZO_SEED_DATA: Partial<ParsedCatalogRow>[] = [
   { sku: 'P38GALV045', name: 'PARANTE 38', normalizedUnit: 'PIEZA', line: 'drywall' },
   { sku: 'P64GALV045', name: 'PARANTE 64', normalizedUnit: 'PIEZA', line: 'drywall' },
   { sku: 'P89GALV045', name: 'PARANTE 89', normalizedUnit: 'PIEZA', line: 'drywall' },

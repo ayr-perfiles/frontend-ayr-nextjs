@@ -18,6 +18,7 @@ export interface Coil {
   masterWidth?: number;
   thickness?: number;
   finish?: string; // ID del acabado (materia prima)
+  densityFactor?: number;
   pricePerKg: number;
   status: CoilStatus;
   plannedStrips?: PlannedStrip[];
@@ -227,11 +228,15 @@ export interface ProductionLog {
   voidedBy?: string;
   voidedAt?: any;
   // P-M5 — conformado bobina → terminado
-  weightConsumedKg?: number;
   mlProduced?: number;
   coilDensityFactor?: number;
-  costoUnitarioPEN?: number;  // congelado para P-M7
-  avgCostAfter?: number;
+  averageCostAfter?: number;
+  perCoilBreakdown?: {
+    coilId: string;
+    mlFromCoil: number;
+    weightConsumedKg: number;
+    costPEN: number;
+  }[];
 }
 
 export interface AuditLog {

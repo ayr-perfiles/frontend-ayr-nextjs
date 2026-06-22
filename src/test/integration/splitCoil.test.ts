@@ -182,7 +182,7 @@ describe('splitCoilAction — slitting por ancho (Integration — Emulador)', ()
       initialWeight: 1000,
       pricePerKg: 3.5,
       status: 'AVAILABLE',
-      // sin masterWidth
+      masterWidth: null, // explícito para que el helper no use 1200
     });
 
     await expect(splitCoilAction(parentId, 600, OPERATOR)).rejects.toThrow('ancho maestro');

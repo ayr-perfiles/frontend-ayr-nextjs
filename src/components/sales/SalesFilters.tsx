@@ -40,7 +40,7 @@ export function SalesFilters(props: SalesFiltersProps) {
       label: "Estado",
       layout: "list",
       value: statusFilter,
-      onChange: setStatusFilter,
+      onChange: (v) => setStatusFilter(v as string),
       options: [
         { value: "ALL", label: "Todas las Operaciones" },
         { value: "COMPLETED", label: "Ventas Cerradas" },
@@ -68,7 +68,7 @@ export function SalesFilters(props: SalesFiltersProps) {
       label: "Estado SUNAT",
       layout: "grid-2",
       value: sunatFilter,
-      onChange: setSunatFilter,
+      onChange: (v) => setSunatFilter(v as string),
       options: [
         { value: "ALL", label: "Todos" },
         { value: "ACEPTADO", label: "Aceptado", cls: "text-emerald-600" },

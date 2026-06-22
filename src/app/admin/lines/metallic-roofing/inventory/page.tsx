@@ -17,6 +17,7 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { DataTable, ColumnDef } from "@/components/ui/DataTable";
 import { TableFilters, FilterGroup } from "@/components/ui/TableFilters";
 import { TablePagination } from "@/components/ui/TablePagination";
+import { useTableData } from "@/hooks/useTableData";
 import { RowActionsMenu, RowAction } from "@/components/ui/RowActionsMenu";
 import StockAdjustmentModal from "@/modules/metallic-roofing/components/inventory/StockAdjustmentModal";
 import MovementsHistoryModal from "@/modules/metallic-roofing/components/inventory/MovementsHistoryModal";
@@ -51,42 +52,54 @@ export default function MetallicRoofingInventoryPage() {
   const { role, user } = useAuth();
   const canEdit = role === "ADMIN" || role === "SUPERVISOR";
 
-  const [search, setSearch] = useState("");
-  const [familyFilter, setFamilyFilter] = useState("");
-  const [finishFilter, setFinishFilter] = useState("");
-  const [colorFilter, setColorFilter] = useState("");
   const [showOnlyWithStock, setShowOnlyWithStock] = useState(false);
   const [showOnlyNegative, setShowOnlyNegative] = useState(false);
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
 
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null);
   const [viewingMovements, setViewingMovements] = useState<InventoryItem | null>(null);
 
   const { items, kpis, loading, error, refresh } = useMetallicStock({
-    searchTerm: search,
-    family: familyFilter,
-    finish: finishFilter,
-
-    showOnlyWithStock,
-    showOnlyNegative,
+    searchTerm: "",
+    family: "",
+    finish: "",
+    showOnlyWithStock: false,
+    showOnlyNegative: false,
   });
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, familyFilter, finishFilter, colorFilter, showOnlyWithStock, showOnlyNegative]);
-
-  const pagedItems = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return items.slice(start, start + pageSize);
-  }, [items, currentPage, pageSize]);
+  const {
+    pageItems,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
+    searchValue,
+    setSearchValue,
+    filterValues,
+    setFilterValue,
+    totalFiltered,
+  } = useTableData({
+    data: items,
+    searchFields: ["sku", "productName"],
+    filters: {
+      family: (row, val) => row.product?.family === val,
+      finish: (row, val) => row.product?.finish === val,
+      color: (row, val) => {
+        if (!val) return true;
+        return !!row.product?.displayName.toUpperCase().includes(val.toUpperCase()) || !!row.productName.toUpperCase().includes(val.toUpperCase());
+      },
+    },
+    customFilter: (row) => {
+      if (showOnlyWithStock && row.quantity <= 0) return false;
+      if (showOnlyNegative && row.quantity >= 0) return false;
+      return true;
+    },
+  });
 
   function clearFilters() {
-    setSearch("");
-    setFamilyFilter("");
-    setFinishFilter("");
-    setColorFilter("");
+    setSearchValue("");
+    setFilterValue("family", "");
+    setFilterValue("finish", "");
+    setFilterValue("color", "");
     setShowOnlyWithStock(false);
     setShowOnlyNegative(false);
   }
@@ -197,8 +210,8 @@ export default function MetallicRoofingInventoryPage() {
       id: "family",
       label: "Familia",
       layout: "grid",
-      value: familyFilter,
-      onChange: setFamilyFilter,
+      value: filterValues.family || "",
+      onChange: (v) => setFilterValue("family", v),
       options: [
         { value: "", label: "Toda familia" },
         ...FAMILY_OPTIONS.map((f) => ({ value: f, label: f })),
@@ -208,8 +221,8 @@ export default function MetallicRoofingInventoryPage() {
       id: "finish",
       label: "Acabado",
       layout: "grid",
-      value: finishFilter,
-      onChange: setFinishFilter,
+      value: filterValues.finish || "",
+      onChange: (v) => setFilterValue("finish", v),
       options: [
         { value: "", label: "Todo acabado" },
         ...FINISH_OPTIONS.map((f) => ({ value: f, label: f })),
@@ -223,8 +236,8 @@ export default function MetallicRoofingInventoryPage() {
         <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Color</label>
         <input
           type="text"
-          value={colorFilter}
-          onChange={(e) => setColorFilter(e.target.value.toUpperCase())}
+          value={filterValues.color || ""}
+          onChange={(e) => setFilterValue("color", e.target.value.toUpperCase())}
           placeholder="Color…"
           className="w-full px-4 py-3 bg-slate-50 border border-slate-100 text-slate-700 text-sm font-bold rounded-xl outline-none focus:border-zinc-500 focus:ring-4 focus:ring-zinc-50 transition shadow-sm"
         />
@@ -232,7 +245,7 @@ export default function MetallicRoofingInventoryPage() {
 
       <div className="flex flex-col gap-3">
         <button
-          onClick={() => setShowOnlyWithStock((v) => !v)}
+          onClick={() => setShowOnlyWithStock(!showOnlyWithStock)}
           className={`flex items-center justify-between px-4 py-3 rounded-xl border font-bold text-sm transition ${
             showOnlyWithStock
               ? "bg-zinc-50 border-zinc-200 text-zinc-700 shadow-sm"
@@ -246,7 +259,7 @@ export default function MetallicRoofingInventoryPage() {
         </button>
 
         <button
-          onClick={() => setShowOnlyNegative((v) => !v)}
+          onClick={() => setShowOnlyNegative(!showOnlyNegative)}
           className={`flex items-center justify-between px-4 py-3 rounded-xl border font-bold text-sm transition ${
             showOnlyNegative
               ? "bg-red-50 border-red-200 text-red-700 shadow-sm"
@@ -305,11 +318,11 @@ export default function MetallicRoofingInventoryPage() {
 
       <TableFilters
         search={{
-          value: search,
-          onChange: setSearch,
+          value: searchValue,
+          onChange: setSearchValue,
           placeholder: "Buscar por SKU o nombre…",
-          isSearching: loading && search !== "",
-          onClear: () => setSearch(""),
+          isSearching: loading && searchValue !== "",
+          onClear: () => setSearchValue(""),
         }}
         filterGroups={filterGroups}
         extraContent={extraContent}
@@ -324,7 +337,7 @@ export default function MetallicRoofingInventoryPage() {
 
       <DataTable
         columns={columns}
-        data={pagedItems}
+        data={pageItems}
         getRowKey={(i) => i.sku}
         isLoading={loading}
         currentPage={currentPage}
@@ -340,9 +353,11 @@ export default function MetallicRoofingInventoryPage() {
       <TablePagination
         currentPage={currentPage}
         pageSize={pageSize}
-        totalItems={items.length}
+        totalItems={totalFiltered}
         onPageChange={setCurrentPage}
+        pageSizeOptions={[15, 30, 50, 100]}
         onPageSizeChange={setPageSize}
+        totalLabel="ítems"
       />
 
       {adjustingItem && (

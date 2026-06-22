@@ -11,7 +11,7 @@ import {
   seedFinish,
   seedStock,
 } from './firestore-helpers';
-import { produceFromCoils } from '@/modules/metallic-roofing/services/productionService';
+import { produceFromCoils, voidProductionFromCoils } from '@/modules/metallic-roofing/services/productionService';
 import { db } from '@/lib/firebase/clientApp';
 import { doc, getDoc, getDocs, collection } from 'firebase/firestore';
 
@@ -86,7 +86,7 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     // cost_B = 339.12 × 4.2 = 1424.304
     // totalML = 130, costoTotal = 2166.129
     // costoUnitario = 2166.129 / 130 ≈ 16.662
-    // newAvgCost = (10×50 + 2166.129) / (10+130) ≈ 18.329...
+    // newAvgCost = (10×50 + 2166.129) / (10+130) ≈ 19.043...
 
     const result = await produceFromCoils({
       targetSku: 'COB045ALU',
@@ -116,7 +116,7 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     // Verificar stock terminado
     const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'COB045ALU'));
     expect(stockSnap.data()!.quantity).toBe(140);       // 10 + 130
-    expect(stockSnap.data()!.avgCost).toBeCloseTo(18.329, 1);
+    expect(stockSnap.data()!.avgCost).toBeCloseTo(19.043, 1);
 
     // Verificar production_log
     const logsSnap = await getDocs(collection(db, 'production_logs'));
@@ -125,16 +125,23 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     expect(log.sku).toBe('COB045ALU');
     expect(log.line).toBe('metallic-roofing');
     expect(log.piecesProduced).toBe(130);
-    expect(log.costoUnitarioPEN).toBeCloseTo(16.662, 2);  // congelado
+    expect(log.costPerPiece).toBeCloseTo(16.662, 2);  // congelado
+    expect(log.reportedWeight).toBeCloseTo(551.07, 2);
+    expect(log.averageCostAfter).toBeCloseTo(19.043, 2);
     expect(log.status).toBe('ACTIVE');
     expect(log.parentCoilIds).toEqual(expect.arrayContaining([coilIdA, coilIdB]));
+    expect(log.parentCoilId).toBe(coilIdA); // compat legacy
 
-    // Verificar kardex: 2 OUT + 1 IN
+    // Verificar kardex: 2 OUT (bobinas)
     const kardexSnap = await getDocs(collection(db, 'kardex_movements'));
     const movements = kardexSnap.docs.map((d) => d.data());
     const outs = movements.filter((m) => m.type === 'OUT');
-    const ins = movements.filter((m) => m.type === 'IN');
     expect(outs).toHaveLength(2);
+
+    // Verificar stock_movements: 1 IN (producto terminado)
+    const stockMovementsSnap = await getDocs(collection(db, 'metallic_roofing_stock_movements'));
+    const stockMovements = stockMovementsSnap.docs.map((d) => d.data());
+    const ins = stockMovements.filter((m) => m.type === 'ENTRADA');
     expect(ins).toHaveLength(1);
 
     const outA = outs.find((m) => m.sku === coilIdA);
@@ -314,3 +321,94 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     expect(stockSnap.data()!.quantity).toBe(0);
   });
 });
+
+describe('voidProductionFromCoils — Anulación de Aluzinc (Integration)', () => {
+  beforeAll(async () => {
+    await setupIntegrationTest();
+  });
+
+  afterAll(async () => {
+    await cleanupIntegrationTest(null, db);
+  });
+
+  beforeEach(async () => {
+    await clearFirestore(db);
+    await seedAluzincFinish();
+  });
+
+  it('anula correctamente un caso multi-bobina (COBERTURA_ML)', async () => {
+    // Setup initial data
+    const coilIdA = await seedAluzincCoil({ id: 'BOB-VOID-A', initialWeight: 1000, currentWeight: 1000, pricePerKg: 3.5 });
+    const coilIdB = await seedAluzincCoil({ id: 'BOB-VOID-B', initialWeight: 800, currentWeight: 800, pricePerKg: 4.2 });
+
+    await seedStock(db, 'metallic_roofing_stock', 'COB045ALU', {
+      sku: 'COB045ALU',
+      productName: 'COBERTURA ALUZINC',
+      quantity: 10,
+      avgCost: 50,
+      totalValue: 500,
+    });
+
+    // Producir
+    const prodResult = await produceFromCoils({
+      targetSku: 'COB045ALU',
+      productKind: 'COBERTURA_ML',
+      lengthM: null,
+      coilInputs: [
+        { coilId: coilIdA, declared: 50 },
+        { coilId: coilIdB, declared: 80 },
+      ],
+      operatorId: OPERATOR,
+      userEmail: OPERATOR,
+    });
+
+    expect(prodResult.success).toBe(true);
+
+    // Obtener log
+    const logsSnap = await getDocs(collection(db, 'production_logs'));
+    expect(logsSnap.docs).toHaveLength(1);
+    const logId = logsSnap.docs[0].id;
+
+    // Anular
+    const voidResult = await voidProductionFromCoils(logId, OPERATOR);
+    expect(voidResult.success).toBe(true);
+
+    // VERIFICACIONES
+    // 1. Bobinas recuperaron su peso exacto
+    const snapA = await getDoc(doc(db, 'coils', coilIdA));
+    const snapB = await getDoc(doc(db, 'coils', coilIdB));
+    expect(snapA.data()!.currentWeight).toBe(1000);
+    expect(snapA.data()!.status).toBe('AVAILABLE');
+    expect(snapB.data()!.currentWeight).toBe(800);
+    expect(snapB.data()!.status).toBe('AVAILABLE');
+
+    // 2. Stock recuperó cantidad y recalcula WAC
+    const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'COB045ALU'));
+    expect(stockSnap.data()!.quantity).toBe(10);
+    expect(stockSnap.data()!.totalValue).toBeCloseTo(500, 2);
+    expect(stockSnap.data()!.avgCost).toBeCloseTo(50, 2);
+
+    // 3. Log está VOIDED
+    const logSnap = await getDoc(doc(db, 'production_logs', logId));
+    expect(logSnap.data()!.status).toBe('VOIDED');
+    expect(logSnap.data()!.voidedBy).toBe(OPERATOR);
+
+    // 4. Kardex tiene IN
+    const kardexSnap = await getDocs(collection(db, 'kardex_movements'));
+    const movements = kardexSnap.docs.map((d) => d.data());
+    const ins = movements.filter((m) => m.type === 'IN');
+    expect(ins).toHaveLength(2); // 2 bobinas
+    expect(ins[0].reference).toBe(logId);
+
+    // 5. Stock movements tiene SALIDA
+    const stockMovementsSnap = await getDocs(collection(db, 'metallic_roofing_stock_movements'));
+    const stockMovements = stockMovementsSnap.docs.map((d) => d.data());
+    const salidas = stockMovements.filter((m) => m.type === 'SALIDA');
+    expect(salidas).toHaveLength(1);
+    expect(salidas[0].referenceId).toBe(logId);
+
+    // 6. Idempotencia
+    await expect(voidProductionFromCoils(logId, OPERATOR)).rejects.toThrow(/ya fue anulado/i);
+  });
+});
+

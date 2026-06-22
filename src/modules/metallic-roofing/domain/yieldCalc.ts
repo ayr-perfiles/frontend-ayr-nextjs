@@ -47,7 +47,17 @@ export function calcCoilYieldDeviation(
   const mlProducido = productionLogs.reduce((acc, log) => {
     // ignorar anulados
     if (log.status === 'VOIDED') return acc;
-    return acc + (log.mlProduced || 0);
+    
+    if (!log.perCoilBreakdown) {
+      throw new Error(`Production log ${log.id || 'unknown'} (metallic-roofing) sin perCoilBreakdown — log mal formado`);
+    }
+
+    const breakdown = log.perCoilBreakdown.find(b => b.coilId === coil.id);
+    if (!breakdown) {
+      throw new Error(`Production log ${log.id || 'unknown'} declara parentCoilIds con ${coil.id} pero no lo detalla en perCoilBreakdown`);
+    }
+    
+    return acc + breakdown.mlFromCoil;
   }, 0);
 
   const kgTeoricoConsumido = mlProducido * (coil.thickness || 0) * (coil.masterWidth || 1200) * densityFactor;

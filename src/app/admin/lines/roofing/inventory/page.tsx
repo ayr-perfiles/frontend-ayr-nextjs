@@ -18,6 +18,7 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { DataTable, ColumnDef } from "@/components/ui/DataTable";
 import { TableFilters, FilterGroup } from "@/components/ui/TableFilters";
 import { TablePagination } from "@/components/ui/TablePagination";
+import { useTableData } from "@/hooks/useTableData";
 import { RowActionsMenu, RowAction } from "@/components/ui/RowActionsMenu";
 import StockAdjustmentModal from "@/modules/roofing/components/inventory/StockAdjustmentModal";
 import MovementsHistoryModal from "@/modules/roofing/components/inventory/MovementsHistoryModal";
@@ -51,39 +52,52 @@ export default function RoofingInventoryPage() {
   const { role, user } = useAuth();
   const canEdit = role === "ADMIN" || role === "SUPERVISOR";
 
-  const [search, setSearch] = useState("");
-  const [materialFilter, setMaterialFilter] = useState<RoofingMaterial | "">("");
-  const [colorFilter, setColorFilter] = useState("");
   const [showOnlyWithStock, setShowOnlyWithStock] = useState(false);
   const [showOnlyNegative, setShowOnlyNegative] = useState(false);
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
 
   const [adjustingItem, setAdjustingItem] = useState<InventoryItem | null>(null);
   const [viewingMovements, setViewingMovements] = useState<InventoryItem | null>(null);
 
   const { items, kpis, loading, error, refresh } = useRoofingStock({
-    searchTerm: search,
-    material: materialFilter,
-    color: colorFilter,
-    showOnlyWithStock,
-    showOnlyNegative,
+    searchTerm: "",
+    material: "",
+    color: "",
+    showOnlyWithStock: false,
+    showOnlyNegative: false,
   });
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, materialFilter, colorFilter, showOnlyWithStock, showOnlyNegative]);
-
-  const pagedItems = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return items.slice(start, start + pageSize);
-  }, [items, currentPage, pageSize]);
+  const {
+    pageItems,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
+    searchValue,
+    setSearchValue,
+    filterValues,
+    setFilterValue,
+    totalFiltered,
+  } = useTableData({
+    data: items,
+    searchFields: ["sku", "productName"],
+    filters: {
+      material: (row, val) => row.product?.material === val,
+      color: (row, val) => {
+        if (!val) return true;
+        return !!row.product?.color?.toUpperCase().includes(val.toUpperCase());
+      },
+    },
+    customFilter: (row) => {
+      if (showOnlyWithStock && row.quantity <= 0) return false;
+      if (showOnlyNegative && row.quantity >= 0) return false;
+      return true;
+    },
+  });
 
   function clearFilters() {
-    setSearch("");
-    setMaterialFilter("");
-    setColorFilter("");
+    setSearchValue("");
+    setFilterValue("material", "");
+    setFilterValue("color", "");
     setShowOnlyWithStock(false);
     setShowOnlyNegative(false);
   }
@@ -193,8 +207,8 @@ export default function RoofingInventoryPage() {
       id: "material",
       label: "Material",
       layout: "grid",
-      value: materialFilter,
-      onChange: (val) => setMaterialFilter(val as RoofingMaterial | ""),
+      value: filterValues.material || "",
+      onChange: (val) => setFilterValue("material", val),
       options: [
         { value: "", label: "Todo material" },
         ...MATERIAL_OPTIONS.map((m) => ({ value: m, label: m })),
@@ -208,8 +222,8 @@ export default function RoofingInventoryPage() {
         <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Color</label>
         <input
           type="text"
-          value={colorFilter}
-          onChange={(e) => setColorFilter(e.target.value.toUpperCase())}
+          value={filterValues.color || ""}
+          onChange={(e) => setFilterValue("color", e.target.value.toUpperCase())}
           placeholder="Color…"
           className="w-full px-4 py-3 bg-slate-50 border border-slate-100 text-slate-700 text-sm font-bold rounded-xl outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-50 transition shadow-sm"
         />
@@ -217,7 +231,7 @@ export default function RoofingInventoryPage() {
 
       <div className="flex flex-col gap-3">
         <button
-          onClick={() => setShowOnlyWithStock((v) => !v)}
+          onClick={() => setShowOnlyWithStock(!showOnlyWithStock)}
           className={`flex items-center justify-between px-4 py-3 rounded-xl border font-bold text-sm transition ${
             showOnlyWithStock
               ? "bg-emerald-50 border-emerald-200 text-emerald-700 shadow-sm"
@@ -231,7 +245,7 @@ export default function RoofingInventoryPage() {
         </button>
 
         <button
-          onClick={() => setShowOnlyNegative((v) => !v)}
+          onClick={() => setShowOnlyNegative(!showOnlyNegative)}
           className={`flex items-center justify-between px-4 py-3 rounded-xl border font-bold text-sm transition ${
             showOnlyNegative
               ? "bg-red-50 border-red-200 text-red-700 shadow-sm"
@@ -290,11 +304,11 @@ export default function RoofingInventoryPage() {
 
       <TableFilters
         search={{
-          value: search,
-          onChange: setSearch,
+          value: searchValue,
+          onChange: setSearchValue,
           placeholder: "Buscar por SKU o nombre…",
-          isSearching: loading && search !== "",
-          onClear: () => setSearch(""),
+          isSearching: loading && searchValue !== "",
+          onClear: () => setSearchValue(""),
         }}
         filterGroups={filterGroups}
         extraContent={extraContent}
@@ -309,7 +323,7 @@ export default function RoofingInventoryPage() {
 
       <DataTable
         columns={columns}
-        data={pagedItems}
+        data={pageItems}
         getRowKey={(i) => i.sku}
         isLoading={loading}
         currentPage={currentPage}
@@ -325,9 +339,11 @@ export default function RoofingInventoryPage() {
       <TablePagination
         currentPage={currentPage}
         pageSize={pageSize}
-        totalItems={items.length}
+        totalItems={totalFiltered}
         onPageChange={setCurrentPage}
+        pageSizeOptions={[15, 30, 50, 100]}
         onPageSizeChange={setPageSize}
+        totalLabel="ítems"
       />
 
       {adjustingItem && (

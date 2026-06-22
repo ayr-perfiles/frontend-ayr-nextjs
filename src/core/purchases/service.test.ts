@@ -64,7 +64,7 @@ describe('Purchase Service (Unit Tests)', () => {
       (getDocs as any).mockResolvedValue({ empty: true });
       const input = { ...validBaseInput, businessLine: 'invalid' };
 
-      await expect(registerPurchase(input as any)).rejects.toThrow(/línea de negocio no soportada/i);
+      await expect(registerPurchase(input as any)).rejects.toThrow(/Invalid option/i);
     });
 
     it('debe calcular correctamente el nuevo costo promedio (WAC)', async () => {

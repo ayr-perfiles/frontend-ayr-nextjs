@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Layers, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
@@ -14,28 +14,52 @@ import {
 import type { MetallicProduct } from "@/modules/metallic-roofing/types";
 import { TableFilters, FilterGroup } from "@/components/ui/TableFilters";
 import { TablePagination } from "@/components/ui/TablePagination";
+import { useTableData } from "@/hooks/useTableData";
+import { listFinishes, CoilFinish } from "@/core/coils/services/finishService";
 
 const FAMILY_OPTIONS = ["COBERTURA", "PLANCHA"];
-const FINISH_OPTIONS = ["GALV", "ALUZINC", "NATURAL", "PREPINTADO"];
 type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
 
 export default function MetallicRoofingCatalogPage() {
   const { role } = useAuth();
   const isAdmin = role === "ADMIN";
 
-  const [search, setSearch] = useState("");
-  const [familyFilter, setFamilyFilter] = useState("");
-  const [finishFilter, setFinishFilter] = useState("");
-  const [colorFilter, setColorFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [pageSize, setPageSize] = useState(50);
+  const { products, loading, error, refresh } = useMetallicCatalog();
 
-  const { products, loading, error, refresh } = useMetallicCatalog({
-    searchTerm: search || undefined,
-    family: familyFilter || undefined,
-    finish: finishFilter || undefined,
+  const [finishes, setFinishes] = useState<CoilFinish[]>([]);
+  useEffect(() => {
+    listFinishes(true).then(list => {
+      setFinishes(list.filter(f => f.lines.includes('metallic-roofing')));
+    }).catch(console.error);
+  }, []);
 
-    status: statusFilter,
+  const {
+    pageItems,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
+    searchValue,
+    setSearchValue,
+    filterValues,
+    setFilterValue,
+    totalFiltered,
+  } = useTableData({
+    data: products,
+    searchFields: ["sku", "displayName"],
+    filters: {
+      family: (row, val) => row.family === val,
+      finish: (row, val) => {
+        if (!val || val.length === 0) return true;
+        return val.includes(row.finish);
+      },
+      thickness: (row, val) => String(row.thickness) === val,
+      status: (row, val) => {
+        if (val === "ACTIVE") return row.active === true;
+        if (val === "INACTIVE") return row.active === false;
+        return true;
+      },
+    },
   });
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -90,12 +114,14 @@ export default function MetallicRoofingCatalogPage() {
     }
   }
 
+  const uniqueThicknesses = Array.from(new Set(products.map(p => p.thickness))).filter(t => t != null).sort();
+
   const filterGroups: FilterGroup[] = [
     {
       id: "family",
       label: "Familia",
-      value: familyFilter || "ALL",
-      onChange: (v) => setFamilyFilter(v === "ALL" ? "" : v),
+      value: filterValues.family || "ALL",
+      onChange: (v) => setFilterValue("family", v),
       options: [
         { value: "ALL", label: "Toda familia" },
         ...FAMILY_OPTIONS.map((f) => ({ value: f, label: f })),
@@ -105,19 +131,28 @@ export default function MetallicRoofingCatalogPage() {
     {
       id: "finish",
       label: "Acabado",
-      value: finishFilter || "ALL",
-      onChange: (v) => setFinishFilter(v === "ALL" ? "" : v),
+      value: filterValues.finish || [],
+      onChange: (v) => setFilterValue("finish", v),
+      multiple: true,
+      options: finishes.map((f) => ({ value: f.id, label: f.label })),
+      layout: "grid-2",
+    },
+    {
+      id: "thickness",
+      label: "Espesor",
+      value: filterValues.thickness || "ALL",
+      onChange: (v) => setFilterValue("thickness", v),
       options: [
-        { value: "ALL", label: "Todo acabado" },
-        ...FINISH_OPTIONS.map((f) => ({ value: f, label: f })),
+        { value: "ALL", label: "Todos" },
+        ...uniqueThicknesses.map((t) => ({ value: String(t), label: `${t} mm` })),
       ],
       layout: "grid-2",
     },
     {
       id: "status",
       label: "Estado",
-      value: statusFilter,
-      onChange: (v) => setStatusFilter(v as StatusFilter),
+      value: filterValues.status || "ALL",
+      onChange: (v) => setFilterValue("status", v),
       options: [
         { value: "ALL", label: "Todos" },
         { value: "ACTIVE", label: "Activos" },
@@ -128,11 +163,11 @@ export default function MetallicRoofingCatalogPage() {
   ];
 
   const handleClearAll = () => {
-    setSearch("");
-    setFamilyFilter("");
-    setFinishFilter("");
-    setColorFilter("");
-    setStatusFilter("ALL");
+    setSearchValue("");
+    setFilterValue("family", "ALL");
+    setFilterValue("finish", []);
+    setFilterValue("thickness", "ALL");
+    setFilterValue("status", "ALL");
   };
 
   return (
@@ -167,26 +202,12 @@ export default function MetallicRoofingCatalogPage() {
 
       <TableFilters
         search={{
-          value: search,
-          onChange: setSearch,
+          value: searchValue,
+          onChange: setSearchValue,
           placeholder: "Buscar por SKU o nombre…",
-          isSearching: loading && !!search,
+          isSearching: loading && !!searchValue,
         }}
         filterGroups={filterGroups}
-        extraContent={
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">
-              Color (Filtro manual)
-            </label>
-            <input
-              type="text"
-              value={colorFilter}
-              onChange={(e) => setColorFilter(e.target.value.toUpperCase())}
-              placeholder="Ej: ROJO, AZUL..."
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm outline-none focus:border-zinc-400"
-            />
-          </div>
-        }
         onClearAll={handleClearAll}
       />
 
@@ -200,20 +221,21 @@ export default function MetallicRoofingCatalogPage() {
       {/* Table & Pagination */}
       <div className="space-y-4">
         <ProductCatalogTable
-          products={products}
+          products={pageItems}
           loading={loading}
           canEdit={isAdmin}
           onView={(p) => setViewingProduct(p)}
           onEdit={(p) => setEditingProduct(p)}
           onToggleActive={handleToggleActive}
+          currentPage={currentPage}
           pageSize={pageSize}
         />
 
         <TablePagination
-          currentPage={1}
+          currentPage={currentPage}
           pageSize={pageSize}
-          totalItems={products.length}
-          onPageChange={() => {}} // Client side filtering for now
+          totalItems={totalFiltered}
+          onPageChange={setCurrentPage}
           pageSizeOptions={[15, 30, 50, 100]}
           onPageSizeChange={setPageSize}
           totalLabel="Productos"

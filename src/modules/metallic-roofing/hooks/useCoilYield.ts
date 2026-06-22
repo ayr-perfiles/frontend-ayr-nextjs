@@ -36,7 +36,7 @@ export function useCoilYield(coil?: Coil | null) {
         // Fetch production logs
         const prodQuery = query(
           collection(db, 'production_logs'),
-          where('parentCoilId', '==', coil!.id)
+          where('parentCoilIds', 'array-contains', coil!.id)
         );
         const prodSnap = await getDocs(prodQuery);
         const logs = prodSnap.docs.map((d) => d.data() as ProductionLog);

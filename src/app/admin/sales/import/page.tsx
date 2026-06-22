@@ -754,7 +754,8 @@ export default function SalesImportPage() {
                     sellerId: sale.sellerId || 'SISTEMA', 
                     avgCost: item.baseCost,
                     motivo: isNCWithStock ? `NC ${sale.documentNumber}` : undefined,
-                    ref: sale.adjustedDocument || undefined
+                    ref: sale.adjustedDocument || undefined,
+                    frozenCost: item.baseCost ?? 0,
                   };
                   if (isNCWithStock) strategy.writeSaleReversal(writeParams, stockSnap, tx);
                   else strategy.writeSaleDecrement(writeParams, stockSnap, tx);
