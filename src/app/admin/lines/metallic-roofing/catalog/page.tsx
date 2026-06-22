@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Layers, X } from "lucide-react";
+import { Plus, Layers, X, UploadCloud } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
+import { HeaderOptionsMenu } from "@/components/ui/HeaderOptionsMenu";
 import { useMetallicCatalog } from "@/modules/metallic-roofing/hooks/useMetallicCatalog";
 import ProductCatalogTable from "@/modules/metallic-roofing/components/catalog/ProductCatalogTable";
 import ProductModal from "@/modules/metallic-roofing/components/catalog/ProductModal";
@@ -191,12 +192,24 @@ export default function MetallicRoofingCatalogPage() {
         </div>
 
         {isAdmin && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 bg-zinc-700 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-zinc-800 transition active:scale-95 shadow-sm shadow-zinc-200 whitespace-nowrap"
-          >
-            <Plus size={18} /> Nuevo Producto
-          </button>
+          <div className="flex gap-3 items-center">
+            <HeaderOptionsMenu
+              items={[
+                {
+                  id: "import",
+                  label: "Importar Masivo",
+                  icon: <UploadCloud size={18} className="text-emerald-500" />,
+                  href: "/admin/catalog/import",
+                },
+              ]}
+            />
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 bg-zinc-700 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-zinc-800 transition active:scale-95 shadow-sm shadow-zinc-200 whitespace-nowrap"
+            >
+              <Plus size={18} /> Nuevo Producto
+            </button>
+          </div>
         )}
       </div>
 
