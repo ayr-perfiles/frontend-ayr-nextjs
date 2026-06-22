@@ -34,8 +34,7 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts",
-    "scripts/migrate-roles-to-claims.js"
+    "**/*.mts"
   ],
-  "exclude": ["node_modules", "sunat", "functions"]
+  "exclude": ["node_modules", "sunat", "functions", "scripts"]
 }
