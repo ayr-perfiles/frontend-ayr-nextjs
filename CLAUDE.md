@@ -1,4 +1,4 @@
-# CLAUDE.md — AYR Steel ERP (v6.9)
+# CLAUDE.md — AYR Steel ERP (v6.10)
 
 > **Sprint actual:** Sprint 8 (SUNAT + Estandarización UI) + Frente de Seguridad (Capa 1 rules) — En progreso 🏗️
 > **Estado:** Build 🟢 | tsc limpio | 463/463 tests (config serializada) | Functions v2 operativa.
@@ -203,3 +203,4 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Tests:** `fileParallelism: false` (los de integración comparten emulador; en paralelo colisionan). Correr serializado para verde real (463/463).
 - **Build de Vercel = build SIN credenciales** (serviceAccountKey gitignored). Scripts de migración EXCLUIDOS del build Next (tsconfig exclude) — importan serviceAccountKey que no existe en Vercel. Verificar build renombrando la credencial localmente.
 - **Git:** push directo a `develop`. Push dispara Vercel. Credenciales (serviceAccountKey*, .env*) y \*.log en .gitignore.
+- ⚠️ **firestore.indexes.json = fuente de verdad declarativa, edición MANUAL ADITIVA únicamente.** NUNCA sobrescribir con volcado de `firebase firestore:indexes` — el volcado pisa direcciones (ASC→DESC) y omite índices, causando deploys que BORRAN índices vivos. Lección dura: un 'formateo' automático tumbó los reportes de prod (perdió sales[status ASC,timestamp ASC]) y casi borra coils[status ASC,createdAt ASC]. SIEMPRE re-diff (--dry-run) antes de deploy de índices; revisar sección DELETE; cazar consumidor de cualquier índice antes de dejarlo morir.
