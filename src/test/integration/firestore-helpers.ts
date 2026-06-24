@@ -66,7 +66,7 @@ export async function cleanupIntegrationTest(_app: any, _db: Firestore) {
 export async function seedCoil(db: any, data: any) {
   const id = data.id || `BOB-${Date.now()}`;
   const coilRef = doc(db, "coils", id);
-  await setDoc(coilRef, {
+  const coilData = {
     initialWeight: 5000,
     currentWeight: 5000,
     masterWidth: 1200,
@@ -77,18 +77,29 @@ export async function seedCoil(db: any, data: any) {
     updatedAt: new Date(),
     ...data,
     id
-  });
+  };
+  
+  if (data.masterWidth === null) {
+    delete coilData.masterWidth;
+  }
+
+  await setDoc(coilRef, coilData);
   return id;
 }
 
 export async function seedFinish(db: any, data: any) {
   const finishRef = doc(db, "coil_finishes", data.id);
-  await setDoc(finishRef, {
+  const finishData = {
     active: true,
     label: data.id,
     lines: ["drywall"],
+    densityFactor: 0.00785,
     ...data
-  });
+  };
+  if (finishData.densityFactor === null) {
+    delete finishData.densityFactor;
+  }
+  await setDoc(finishRef, finishData);
 }
 
 export async function seedStock(db: any, collectionName: string, sku: string, data: any) {

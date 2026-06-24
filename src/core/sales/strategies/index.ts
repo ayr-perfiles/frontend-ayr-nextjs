@@ -24,6 +24,8 @@ export interface StockWriteParams {
   motivo?: string;
   /** Referencia al documento original (ej. factura ajustada) */
   ref?: string;
+  /** Costo base congelado al momento de la venta. Se usa en las reversas para recalcular WAC */
+  frozenCost?: number;
 }
 
 export interface ProductionIncrementParams {
@@ -202,15 +204,22 @@ export const roofingStockStrategy: StockStrategy = {
     });
   },
 
-  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId, motivo, ref }, snap, tx) {
+  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId, motivo, ref, frozenCost }, snap, tx) {
     const stockRef = doc(db, 'roofing_stock', sku);
-    const avgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
+    const currentQty = snap?.exists() ? ((snap.data().quantity as number) ?? 0) : 0;
+    const currentAvgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
+    const currentTotalValue = snap?.exists() ? ((snap.data().totalValue as number) ?? (currentQty * currentAvgCost)) : 0;
     const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
+
+    const returnedValue = quantity * (frozenCost ?? 0);
+    const newTotalValue = currentTotalValue + returnedValue;
+    const newAvgCost = newBalance > 0 ? newTotalValue / newBalance : 0;
 
     if (snap?.exists()) {
       tx.update(stockRef, {
         quantity: newBalance,
-        totalValue: Number((newBalance * avgCost).toFixed(2)),
+        avgCost: Number(newAvgCost.toFixed(6)),
+        totalValue: Number(newTotalValue.toFixed(2)),
         lastUpdate: serverTimestamp(),
       });
     } else {
@@ -228,7 +237,7 @@ export const roofingStockStrategy: StockStrategy = {
       sku,
       type: 'ENTRADA',
       quantity,
-      costPerUnit: avgCost,
+      costPerUnit: frozenCost ?? 0,
       reason: motivo || `Anulación Venta ${saleId} — ${customerName}`,
       adjustedDocument: ref || null,
       businessLine: 'roofing',
@@ -324,15 +333,22 @@ export const metallicRoofingStockStrategy: StockStrategy = {
     });
   },
 
-  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId, motivo, ref }, snap, tx) {
+  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId, motivo, ref, frozenCost }, snap, tx) {
     const stockRef = doc(db, 'metallic_roofing_stock', sku);
-    const avgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
+    const currentQty = snap?.exists() ? ((snap.data().quantity as number) ?? 0) : 0;
+    const currentAvgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
+    const currentTotalValue = snap?.exists() ? ((snap.data().totalValue as number) ?? (currentQty * currentAvgCost)) : 0;
     const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
+
+    const returnedValue = quantity * (frozenCost ?? 0);
+    const newTotalValue = currentTotalValue + returnedValue;
+    const newAvgCost = newBalance > 0 ? newTotalValue / newBalance : 0;
 
     if (snap?.exists()) {
       tx.update(stockRef, {
         quantity: newBalance,
-        totalValue: Number((newBalance * avgCost).toFixed(2)),
+        avgCost: Number(newAvgCost.toFixed(6)),
+        totalValue: Number(newTotalValue.toFixed(2)),
         lastUpdate: serverTimestamp(),
       });
     } else {
@@ -350,7 +366,7 @@ export const metallicRoofingStockStrategy: StockStrategy = {
       sku,
       type: 'ENTRADA',
       quantity,
-      costPerUnit: avgCost,
+      costPerUnit: frozenCost ?? 0,
       reason: motivo || `Anulación Venta ${saleId} — ${customerName}`,
       adjustedDocument: ref || null,
       businessLine: 'metallic-roofing',
@@ -445,15 +461,22 @@ export const tradingStockStrategy: StockStrategy = {
     });
   },
 
-  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId, motivo, ref }, snap, tx) {
+  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId, motivo, ref, frozenCost }, snap, tx) {
     const stockRef = doc(db, 'trading_stock', sku);
-    const avgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
+    const currentQty = snap?.exists() ? ((snap.data().quantity as number) ?? 0) : 0;
+    const currentAvgCost = snap?.exists() ? ((snap.data().avgCost as number) ?? 0) : 0;
+    const currentTotalValue = snap?.exists() ? ((snap.data().totalValue as number) ?? (currentQty * currentAvgCost)) : 0;
     const productName = snap?.exists() ? ((snap.data().productName as string) ?? sku) : sku;
+
+    const returnedValue = quantity * (frozenCost ?? 0);
+    const newTotalValue = currentTotalValue + returnedValue;
+    const newAvgCost = newBalance > 0 ? newTotalValue / newBalance : 0;
 
     if (snap?.exists()) {
       tx.update(stockRef, {
         quantity: newBalance,
-        totalValue: Number((newBalance * avgCost).toFixed(2)),
+        avgCost: Number(newAvgCost.toFixed(6)),
+        totalValue: Number(newTotalValue.toFixed(2)),
         lastUpdate: serverTimestamp(),
       });
     } else {
@@ -471,7 +494,7 @@ export const tradingStockStrategy: StockStrategy = {
       sku,
       type: 'ENTRADA',
       quantity,
-      costPerUnit: avgCost,
+      costPerUnit: frozenCost ?? 0,
       reason: motivo || `Anulación Venta ${saleId} — ${customerName}`,
       adjustedDocument: ref || null,
       businessLine: 'trading',

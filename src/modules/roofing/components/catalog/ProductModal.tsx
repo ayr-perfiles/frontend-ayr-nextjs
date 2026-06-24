@@ -162,7 +162,7 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
   }
 
   const hasErrors = Object.keys(errors).length > 0;
-  const title = isCreate ? "Nuevo Producto PVC" : "Editar Producto PVC";
+  const title = isCreate ? "Nuevo Producto UPVC" : "Editar Producto UPVC";
   const submitLabel = isCreate ? "Crear Producto" : "Guardar Cambios";
 
   return (

@@ -10,7 +10,7 @@ export interface MetallicCatalogFilters {
   searchTerm?: string;
   family?: string;
   finish?: string;
-  color?: string;
+
   status?: "ALL" | "ACTIVE" | "INACTIVE";
 }
 
@@ -22,7 +22,7 @@ export interface UseMetallicCatalogResult {
 }
 
 export function useMetallicCatalog(filters?: MetallicCatalogFilters): UseMetallicCatalogResult {
-  const { searchTerm, status, family, finish, color } = filters ?? {};
+  const { searchTerm, status, family, finish } = filters ?? {};
 
   const [products, setProducts] = useState<MetallicProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +45,7 @@ export function useMetallicCatalog(filters?: MetallicCatalogFilters): UseMetalli
         active: activeFilter,
         family: family ?? undefined,
         finish: finish ?? undefined,
-        color: color ?? undefined,
+
         searchTerm: debouncedSearch || undefined,
       });
 
@@ -57,7 +57,7 @@ export function useMetallicCatalog(filters?: MetallicCatalogFilters): UseMetalli
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, status, family, finish, color]);
+  }, [debouncedSearch, status, family, finish]);
 
   useEffect(() => {
     load();

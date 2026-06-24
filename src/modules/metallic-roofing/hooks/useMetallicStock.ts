@@ -11,7 +11,7 @@ export interface MetallicStockFilters {
   searchTerm: string;
   family: string;
   finish: string;
-  color: string;
+
   showOnlyWithStock: boolean;
   showOnlyNegative: boolean;
 }
@@ -43,7 +43,7 @@ export function useMetallicStock(filters: MetallicStockFilters) {
           searchTerm: debouncedSearch || undefined,
           family: filters.family || undefined,
           finish: filters.finish || undefined,
-          color: filters.color || undefined,
+
           showOnlyWithStock: filters.showOnlyWithStock,
           showOnlyNegative: filters.showOnlyNegative,
         }),
@@ -60,7 +60,7 @@ export function useMetallicStock(filters: MetallicStockFilters) {
     debouncedSearch,
     filters.family,
     filters.finish,
-    filters.color,
+
     filters.showOnlyWithStock,
     filters.showOnlyNegative,
   ]);

@@ -18,6 +18,7 @@ import type {
 } from "@/modules/roofing/types";
 import { TableFilters, FilterGroup } from "@/components/ui/TableFilters";
 import { TablePagination } from "@/components/ui/TablePagination";
+import { useTableData } from "@/hooks/useTableData";
 
 const MATERIAL_OPTIONS: RoofingMaterial[] = [
   "UPVC",
@@ -30,22 +31,35 @@ export default function RoofingCatalogPage() {
   const { role } = useAuth();
   const isAdmin = role === "ADMIN";
 
-  const [search, setSearch] = useState("");
-  const [materialFilter, setMaterialFilter] = useState<RoofingMaterial | "">(
-    "",
-  );
-  const [colorFilter, setColorFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [pageSize, setPageSize] = useState(50);
+  const { products, loading, error, refresh } = useRoofingCatalog();
 
-  const filters: RoofingFilters = {
-    searchTerm: search || undefined,
-    material: materialFilter || undefined,
-    color: colorFilter || undefined,
-    status: statusFilter,
-  };
-
-  const { products, loading, error, refresh } = useRoofingCatalog(filters);
+  const {
+    pageItems,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
+    searchValue,
+    setSearchValue,
+    filterValues,
+    setFilterValue,
+    totalFiltered,
+  } = useTableData({
+    data: products,
+    searchFields: ["sku", "displayName"],
+    filters: {
+      material: (row, val) => row.material === val,
+      color: (row, val) => {
+        if (!val) return true;
+        return !!row.color?.toUpperCase().includes(val.toUpperCase());
+      },
+      status: (row, val) => {
+        if (val === "ACTIVE") return row.active === true;
+        if (val === "INACTIVE") return row.active === false;
+        return true;
+      },
+    },
+  });
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<RoofingProduct | null>(
@@ -102,8 +116,8 @@ export default function RoofingCatalogPage() {
     {
       id: "material",
       label: "Material",
-      value: materialFilter || "ALL",
-      onChange: (v) => setMaterialFilter(v === "ALL" ? "" : (v as RoofingMaterial)),
+      value: filterValues.material || "ALL",
+      onChange: (v) => setFilterValue("material", v),
       options: [
         { value: "ALL", label: "Todo material" },
         ...MATERIAL_OPTIONS.map((m) => ({ value: m, label: m })),
@@ -113,8 +127,8 @@ export default function RoofingCatalogPage() {
     {
       id: "status",
       label: "Estado",
-      value: statusFilter,
-      onChange: (v) => setStatusFilter(v as StatusFilter),
+      value: filterValues.status || "ALL",
+      onChange: (v) => setFilterValue("status", v),
       options: [
         { value: "ALL", label: "Todos" },
         { value: "ACTIVE", label: "Activos" },
@@ -125,10 +139,10 @@ export default function RoofingCatalogPage() {
   ];
 
   const handleClearAll = () => {
-    setSearch("");
-    setMaterialFilter("");
-    setColorFilter("");
-    setStatusFilter("ALL");
+    setSearchValue("");
+    setFilterValue("material", "ALL");
+    setFilterValue("status", "ALL");
+    setFilterValue("color", "");
   };
 
   return (
@@ -141,7 +155,7 @@ export default function RoofingCatalogPage() {
           </div>
           <div>
             <h1 className="text-2xl font-black text-gray-900 tracking-tight">
-              Catálogo PVC
+              Catálogo UPVC
             </h1>
             <p className="text-sm text-gray-500 font-medium">
               {loading
@@ -163,10 +177,10 @@ export default function RoofingCatalogPage() {
 
       <TableFilters
         search={{
-          value: search,
-          onChange: setSearch,
+          value: searchValue,
+          onChange: setSearchValue,
           placeholder: "Buscar por SKU o nombre…",
-          isSearching: loading && !!search,
+          isSearching: loading && !!searchValue,
         }}
         filterGroups={filterGroups}
         extraContent={
@@ -176,8 +190,8 @@ export default function RoofingCatalogPage() {
             </label>
             <input
               type="text"
-              value={colorFilter}
-              onChange={(e) => setColorFilter(e.target.value.toUpperCase())}
+              value={filterValues.color || ""}
+              onChange={(e) => setFilterValue("color", e.target.value.toUpperCase())}
               placeholder="Ej: ROJO, AZUL..."
               className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-bold text-sm outline-none focus:border-emerald-400"
             />
@@ -196,20 +210,21 @@ export default function RoofingCatalogPage() {
       {/* Table & Pagination */}
       <div className="space-y-4">
         <ProductCatalogTable
-          products={products}
+          products={pageItems}
           loading={loading}
           canEdit={isAdmin}
           onView={(p) => setViewingProduct(p)}
           onEdit={(p) => setEditingProduct(p)}
           onToggleActive={handleToggleActive}
+          currentPage={currentPage}
           pageSize={pageSize}
         />
 
         <TablePagination
-          currentPage={1}
+          currentPage={currentPage}
           pageSize={pageSize}
-          totalItems={products.length}
-          onPageChange={() => {}}
+          totalItems={totalFiltered}
+          onPageChange={setCurrentPage}
           pageSizeOptions={[15, 30, 50, 100]}
           onPageSizeChange={setPageSize}
           totalLabel="Productos"
@@ -336,7 +351,7 @@ function ProductDetailModal({
           <div>
             <h2 className="text-xl font-black">Ficha del Producto</h2>
             <p className="text-emerald-200 text-xs font-bold uppercase tracking-widest">
-              Coberturas PVC
+              Coberturas UPVC
             </p>
           </div>
           <button

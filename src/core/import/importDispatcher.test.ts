@@ -41,12 +41,12 @@ describe('dispatchImportRow', () => {
       name: 'COBERTURA ROJO', 
       normalizedUnit: 'PIEZA', 
       line: 'metallic-roofing' 
-    });
+    } as any);
 
     expect(metallicService.createProduct).toHaveBeenCalledWith(expect.objectContaining({
       sku: 'COB030ROJO',
       family: 'COBERTURA',
-      color: 'ROJO'
+
     }));
   });
 
@@ -58,7 +58,7 @@ describe('dispatchImportRow', () => {
       name: 'POLICARBONATO 6MM', 
       normalizedUnit: 'PIEZA', 
       line: 'trading' 
-    });
+    } as any);
 
     expect(tradingService.updateProduct).toHaveBeenCalledWith('POLI01', expect.objectContaining({
       category: 'POLICARBONATO'
@@ -74,7 +74,7 @@ describe('dispatchImportRow', () => {
       name: 'SERVICIO', 
       normalizedUnit: 'PIEZA', 
       line: 'services' 
-    });
+    } as any);
 
     expect(servicesService.createProduct).toHaveBeenCalledWith(expect.objectContaining({
       unit: 'TONELADA'

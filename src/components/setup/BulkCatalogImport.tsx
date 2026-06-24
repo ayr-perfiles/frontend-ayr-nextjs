@@ -45,7 +45,7 @@ export function BulkCatalogImport() {
 
   function handleLoadSeed() {
     setImported(false);
-    processParsedData(MARZO_SEED_DATA);
+    processParsedData(MARZO_SEED_DATA as ParsedCatalogRow[]);
     toast.success("Datos de semilla (Marzo) cargados en vista previa.");
   }
 
@@ -218,7 +218,7 @@ export function BulkCatalogImport() {
 
           {renderGroup("metallic-roofing", "Coberturas Aluzinc (Metallic Roofing)", "bg-zinc-100 text-zinc-800")}
           {renderGroup("drywall", "Perfiles Drywall", "bg-blue-100 text-blue-800")}
-          {renderGroup("roofing", "Coberturas PVC (Roofing)", "bg-emerald-100 text-emerald-800")}
+          {renderGroup("roofing", "Coberturas UPVC (Roofing)", "bg-emerald-100 text-emerald-800")}
           {renderGroup("trading", "Reventa de Terceros (Trading)", "bg-amber-100 text-amber-800")}
           {renderGroup("services", "Servicios de Mano de Obra", "bg-violet-100 text-violet-800")}
           {renderGroup("coil", "Bobinas de Acero (Inventario)", "bg-slate-100 text-slate-800")}

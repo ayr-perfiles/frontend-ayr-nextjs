@@ -20,41 +20,50 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { DataTable, ColumnDef } from "@/components/ui/DataTable";
 import { TableFilters, FilterGroup } from "@/components/ui/TableFilters";
 import { TablePagination } from "@/components/ui/TablePagination";
+import { useTableData } from "@/hooks/useTableData";
 import { RowActionsMenu, RowAction } from "@/components/ui/RowActionsMenu";
 
 const CATEGORY_OPTIONS: TradingCategory[] = ['POLICARBONATO', 'TUBO', 'AUTOPERFORANTE', 'ACCESORIO', 'OTRO'];
 
 export default function TradingInventoryPage() {
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<TradingCategory | "">("");
   const [showOnlyWithStock, setShowOnlyWithStock] = useState(false);
   const [showOnlyNegative, setShowOnlyNegative] = useState(false);
-
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-
-  const filters: InventoryFilters = {
-    searchTerm: search || undefined,
-    category: categoryFilter || undefined,
-    showOnlyWithStock,
-    showOnlyNegative,
-  };
-
-  const { items, loading, refresh } = useTradingStock(filters);
-  const { kpis, loading: kpisLoading, refresh: refreshKpis } = useTradingKpis();
 
   const [adjustingSku, setAdjustingSku] = useState<string | null>(null);
   const [kardexSku, setKardexSku] = useState<string | null>(null);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, categoryFilter, showOnlyWithStock, showOnlyNegative]);
+  const { items, loading, refresh } = useTradingStock({
+    searchTerm: "",
+    category: undefined,
+    showOnlyWithStock: false,
+    showOnlyNegative: false,
+  });
 
-  const pagedItems = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return items.slice(start, start + pageSize);
-  }, [items, currentPage, pageSize]);
+  const {
+    pageItems,
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
+    searchValue,
+    setSearchValue,
+    filterValues,
+    setFilterValue,
+    totalFiltered,
+  } = useTableData({
+    data: items,
+    searchFields: ["sku", "productName"],
+    filters: {
+      category: (row, val) => row.product?.category === val,
+    },
+    customFilter: (row) => {
+      if (showOnlyWithStock && row.quantity <= 0) return false;
+      if (showOnlyNegative && row.quantity >= 0) return false;
+      return true;
+    },
+  });
+
+  const { kpis, loading: kpisLoading, refresh: refreshKpis } = useTradingKpis();
 
   const selectedAdjustItem = items.find((i) => i.sku === adjustingSku);
   const selectedKardexItem = items.find((i) => i.sku === kardexSku);
@@ -65,8 +74,8 @@ export default function TradingInventoryPage() {
   };
 
   const clearFilters = () => {
-    setSearch("");
-    setCategoryFilter("");
+    setSearchValue("");
+    setFilterValue("category", "");
     setShowOnlyWithStock(false);
     setShowOnlyNegative(false);
   };
@@ -162,8 +171,8 @@ export default function TradingInventoryPage() {
       id: "category",
       label: "Categoría",
       layout: "grid",
-      value: categoryFilter,
-      onChange: (val) => setCategoryFilter(val as TradingCategory | ""),
+      value: filterValues.category || "",
+      onChange: (val) => setFilterValue("category", val),
       options: [
         { value: "", label: "Todas las categorías" },
         ...CATEGORY_OPTIONS.map((c) => ({ value: c, label: c })),
@@ -174,7 +183,7 @@ export default function TradingInventoryPage() {
   const extraContent = (
     <div className="flex flex-col gap-3">
       <button
-        onClick={() => setShowOnlyWithStock((v) => !v)}
+        onClick={() => setShowOnlyWithStock(!showOnlyWithStock)}
         className={`flex items-center justify-between px-4 py-3 rounded-xl border font-bold text-sm transition ${
           showOnlyWithStock
             ? "bg-amber-50 border-amber-200 text-amber-700 shadow-sm"
@@ -188,7 +197,7 @@ export default function TradingInventoryPage() {
       </button>
 
       <button
-        onClick={() => setShowOnlyNegative((v) => !v)}
+        onClick={() => setShowOnlyNegative(!showOnlyNegative)}
         className={`flex items-center justify-between px-4 py-3 rounded-xl border font-bold text-sm transition ${
           showOnlyNegative
             ? "bg-red-50 border-red-200 text-red-700 shadow-sm"
@@ -249,11 +258,11 @@ export default function TradingInventoryPage() {
 
       <TableFilters
         search={{
-          value: search,
-          onChange: setSearch,
+          value: searchValue,
+          onChange: setSearchValue,
           placeholder: "Buscar por SKU o nombre…",
-          isSearching: loading && search !== "",
-          onClear: () => setSearch(""),
+          isSearching: loading && searchValue !== "",
+          onClear: () => setSearchValue(""),
         }}
         filterGroups={filterGroups}
         extraContent={extraContent}
@@ -262,7 +271,7 @@ export default function TradingInventoryPage() {
 
       <DataTable
         columns={columns}
-        data={pagedItems}
+        data={pageItems}
         getRowKey={(i) => i.sku}
         isLoading={loading}
         currentPage={currentPage}
@@ -278,9 +287,11 @@ export default function TradingInventoryPage() {
       <TablePagination
         currentPage={currentPage}
         pageSize={pageSize}
-        totalItems={items.length}
+        totalItems={totalFiltered}
         onPageChange={setCurrentPage}
+        pageSizeOptions={[15, 30, 50, 100]}
         onPageSizeChange={setPageSize}
+        totalLabel="ítems"
       />
 
       {/* Modals */}

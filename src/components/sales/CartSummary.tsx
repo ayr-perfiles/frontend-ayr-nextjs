@@ -13,7 +13,7 @@ import { type CartItem } from "@/services/salesService";
 
 const LINE_BADGES: Record<string, { label: string; cls: string }> = {
   drywall: { label: "DRY", cls: "bg-blue-100 text-blue-700" },
-  roofing: { label: "PVC", cls: "bg-emerald-100 text-emerald-700" },
+  roofing: { label: "UPVC", cls: "bg-emerald-100 text-emerald-700" },
 };
 
 interface CartSummaryProps {

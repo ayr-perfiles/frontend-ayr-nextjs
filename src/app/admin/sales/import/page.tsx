@@ -754,7 +754,8 @@ export default function SalesImportPage() {
                     sellerId: sale.sellerId || 'SISTEMA', 
                     avgCost: item.baseCost,
                     motivo: isNCWithStock ? `NC ${sale.documentNumber}` : undefined,
-                    ref: sale.adjustedDocument || undefined
+                    ref: sale.adjustedDocument || undefined,
+                    frozenCost: item.baseCost ?? 0,
                   };
                   if (isNCWithStock) strategy.writeSaleReversal(writeParams, stockSnap, tx);
                   else strategy.writeSaleDecrement(writeParams, stockSnap, tx);
@@ -887,7 +888,7 @@ export default function SalesImportPage() {
                     <span className="text-[10px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded uppercase">{sku.sku}</span>
                     <h4 className="text-xs font-bold text-slate-800 mt-1 line-clamp-1">{sku.productName}</h4>
                     <div className="grid grid-cols-2 gap-3 mt-3">
-                      <div><label className="text-[9px] font-black text-slate-400 uppercase">Línea Sugerida</label><select className="w-full text-xs p-1.5 border border-slate-200 rounded bg-slate-50 font-bold" value={sku.suggestedLine} onChange={(e) => setMissingSkus(prev => prev.map(m => m.sku === sku.sku ? { ...m, suggestedLine: e.target.value as any } : m))}><option value="drywall">Drywall</option><option value="roofing">Roofing (PVC)</option><option value="metallic-roofing">Aluzinc</option><option value="trading">Trading</option><option value="services">Servicios</option></select></div>
+                      <div><label className="text-[9px] font-black text-slate-400 uppercase">Línea Sugerida</label><select className="w-full text-xs p-1.5 border border-slate-200 rounded bg-slate-50 font-bold" value={sku.suggestedLine} onChange={(e) => setMissingSkus(prev => prev.map(m => m.sku === sku.sku ? { ...m, suggestedLine: e.target.value as any } : m))}><option value="drywall">Drywall</option><option value="roofing">Roofing (UPVC)</option><option value="metallic-roofing">Aluzinc</option><option value="trading">Trading</option><option value="services">Servicios</option></select></div>
                       <div><label className="text-[9px] font-black text-slate-400 uppercase">Peso Estándar (KG)*</label><input type="number" step="0.001" className="w-full text-xs p-1.5 border border-amber-300 rounded outline-none font-black" value={sku.standardWeight || ""} onChange={(e) => setMissingSkus(prev => prev.map(m => m.sku === sku.sku ? { ...m, standardWeight: parseFloat(e.target.value) || 0 } : m))} /></div>
                     </div>
                     <div className="flex gap-2 mt-4">

@@ -43,7 +43,7 @@ export function useRoofingCatalog(filters?: RoofingFilters): UseRoofingCatalogRe
 
       setProducts(results);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error al cargar catálogo PVC";
+      const msg = err instanceof Error ? err.message : "Error al cargar catálogo UPVC";
       setError(msg);
       console.error("[useRoofingCatalog]", err);
     } finally {

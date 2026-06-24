@@ -20,8 +20,9 @@ export interface FilterGroup {
   label?: string;
   layout?: "list" | "grid" | "grid-2";
   options: FilterOption[];
-  value: string;
-  onChange: (value: string) => void;
+  multiple?: boolean;
+  value: string | string[];
+  onChange: (value: string | string[]) => void;
 }
 
 interface TableFiltersProps {
@@ -80,11 +81,16 @@ export function TableFilters({
     (dateRange?.startDate ? 1 : 0) +
     (dateRange?.endDate ? 1 : 0) +
     (filterGroups?.reduce((acc, group) => {
-      const firstOptionValue = group.options[0]?.value;
-      const isActive =
-        group.value !== firstOptionValue &&
-        group.value !== "ALL" &&
-        group.value !== "TODOS";
+      let isActive = false;
+      if (group.multiple && Array.isArray(group.value)) {
+        isActive = group.value.length > 0;
+      } else {
+        const firstOptionValue = group.options[0]?.value;
+        isActive =
+          group.value !== firstOptionValue &&
+          group.value !== "ALL" &&
+          group.value !== "TODOS";
+      }
       return acc + (isActive ? 1 : 0);
     }, 0) || 0) +
     additionalActiveCount;
@@ -94,7 +100,13 @@ export function TableFilters({
       onClearAll();
     } else {
       search?.onChange("");
-      filterGroups?.forEach((group) => group.onChange(group.options[0]?.value));
+      filterGroups?.forEach((group) => {
+        if (group.multiple) {
+          group.onChange([]);
+        } else {
+          group.onChange(group.options[0]?.value);
+        }
+      });
       dateRange?.setStartDate("");
       dateRange?.setEndDate("");
     }
@@ -206,52 +218,89 @@ export function TableFilters({
                   
                   {group.layout === "grid" || group.layout === "grid-2" ? (
                     <div className={`grid ${group.layout === "grid-2" ? "grid-cols-2" : "grid-cols-2 md:grid-cols-3"} gap-2`}>
-                      {group.options.map((opt) => (
-                        <button
-                          key={opt.value}
-                          onClick={() => group.onChange(opt.value)}
-                          className={`px-3 py-2.5 rounded-xl text-[10px] font-bold transition border text-left flex flex-col justify-between h-full ${
-                            group.value === opt.value
-                              ? "bg-blue-50 border-blue-200 text-blue-700 shadow-sm"
-                              : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100 hover:border-slate-200"
-                          }`}
-                        >
-                          <span className={`${group.value === opt.value ? (opt.cls ?? "") : ""} leading-tight`}>
-                            {opt.label}
-                          </span>
-                          {opt.count !== undefined && (
-                            <span className={`mt-1 text-[9px] opacity-60 ${group.value === opt.value ? "text-blue-500" : "text-slate-400"}`}>
-                              {opt.count} resultados
+                      {group.options.map((opt) => {
+                        const isSelected = group.multiple && Array.isArray(group.value) 
+                          ? group.value.includes(opt.value)
+                          : group.value === opt.value;
+                        
+                        const handleOptionClick = () => {
+                          if (group.multiple && Array.isArray(group.value)) {
+                            if (isSelected) {
+                              group.onChange(group.value.filter(v => v !== opt.value));
+                            } else {
+                              group.onChange([...group.value, opt.value]);
+                            }
+                          } else {
+                            group.onChange(opt.value);
+                          }
+                        };
+
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={handleOptionClick}
+                            className={`px-3 py-2.5 rounded-xl text-[10px] font-bold transition border text-left flex flex-col justify-between h-full ${
+                              isSelected
+                                ? "bg-blue-50 border-blue-200 text-blue-700 shadow-sm"
+                                : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100 hover:border-slate-200"
+                            }`}
+                          >
+                            <span className={`${isSelected ? (opt.cls ?? "") : ""} leading-tight flex items-center justify-between w-full`}>
+                              {opt.label}
+                              {group.multiple && isSelected && <CheckCircle2 size={12} className="ml-1" />}
                             </span>
-                          )}
-                        </button>
-                      ))}
+                            {opt.count !== undefined && (
+                              <span className={`mt-1 text-[9px] opacity-60 ${isSelected ? "text-blue-500" : "text-slate-400"}`}>
+                                {opt.count} resultados
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="bg-slate-50 border border-slate-100 rounded-2xl p-1.5 flex flex-col gap-1">
-                      {group.options.map((opt) => (
-                        <button
-                          key={opt.value}
-                          onClick={() => group.onChange(opt.value)}
-                          className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition ${
-                            group.value === opt.value
-                              ? "bg-white text-blue-700 shadow-sm border border-slate-200"
-                              : "text-slate-600 hover:bg-slate-200/50"
-                          }`}
-                        >
-                          <span className="flex items-center gap-2">
-                            {opt.label}
-                            {opt.count !== undefined && (
-                              <span className="text-[10px] opacity-40 font-bold bg-slate-200/50 px-1.5 py-0.5 rounded-md">
-                                {opt.count}
-                              </span>
+                      {group.options.map((opt) => {
+                        const isSelected = group.multiple && Array.isArray(group.value) 
+                          ? group.value.includes(opt.value)
+                          : group.value === opt.value;
+
+                        const handleOptionClick = () => {
+                          if (group.multiple && Array.isArray(group.value)) {
+                            if (isSelected) {
+                              group.onChange(group.value.filter(v => v !== opt.value));
+                            } else {
+                              group.onChange([...group.value, opt.value]);
+                            }
+                          } else {
+                            group.onChange(opt.value);
+                          }
+                        };
+
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={handleOptionClick}
+                            className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition ${
+                              isSelected
+                                ? "bg-white text-blue-700 shadow-sm border border-slate-200"
+                                : "text-slate-600 hover:bg-slate-200/50"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              {opt.label}
+                              {opt.count !== undefined && (
+                                <span className="text-[10px] opacity-40 font-bold bg-slate-200/50 px-1.5 py-0.5 rounded-md">
+                                  {opt.count}
+                                </span>
+                              )}
+                            </span>
+                            {isSelected && (
+                              <CheckCircle2 size={18} className="text-blue-500" />
                             )}
-                          </span>
-                          {group.value === opt.value && (
-                            <CheckCircle2 size={18} className="text-blue-500" />
-                          )}
-                        </button>
-                      ))}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

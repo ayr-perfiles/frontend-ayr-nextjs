@@ -73,7 +73,7 @@ export const emitirComprobante = onCall({ secrets: ALL_SECRETS }, async (request
     const documentType = saleData.customerDocument?.length === 11 ? "01" : "03";
     
     let serie: string;
-    let correlativo: number;
+    let correlativo: number | string;
 
     // REUSAR CORRELATIVO SI FUE RECHAZADO
     if (currentStatus === "RECHAZADO" && saleData.sunat?.serie && saleData.sunat?.correlativo) {

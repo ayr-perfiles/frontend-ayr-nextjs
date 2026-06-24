@@ -169,7 +169,7 @@ export function SalesTable({
               {sale.businessLines.map((line) => {
                 const config: Record<string, { label: string; cls: string }> = {
                   drywall: { label: "DRY", cls: "bg-blue-50 text-blue-600 border-blue-100" },
-                  roofing: { label: "PVC", cls: "bg-emerald-50 text-emerald-600 border-emerald-100" },
+                  roofing: { label: "UPVC", cls: "bg-emerald-50 text-emerald-600 border-emerald-100" },
                   "metallic-roofing": { label: "ALU", cls: "bg-zinc-50 text-zinc-600 border-zinc-100" },
                   trading: { label: "TRD", cls: "bg-amber-50 text-amber-600 border-amber-100" },
                   services: { label: "SRV", cls: "bg-violet-50 text-violet-600 border-violet-100" },

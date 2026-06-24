@@ -1,7 +1,7 @@
 /**
  * Estados posibles de una bobina de acero
  */
-export type CoilStatus = "AVAILABLE" | "IN_PROGRESS" | "PROCESSED" | "VOIDED" | "EN_TERCERO";
+export type CoilStatus = "AVAILABLE" | "IN_PROGRESS" | "PROCESSED" | "VOIDED" | "EN_TERCERO" | "SOLD" | "SPLIT_PARENT";
 
 export interface PlannedStrip {
   sku: string;
@@ -18,28 +18,32 @@ export interface Coil {
   masterWidth?: number;
   thickness?: number;
   finish?: string; // ID del acabado (materia prima)
+  densityFactor?: number;
   pricePerKg: number;
   status: CoilStatus;
   plannedStrips?: PlannedStrip[];
+  parentCoilId?: string;   // presente en hijas de split
+  soldAt?: any;
+  soldBy?: string;
+  saleReference?: string;
   registeredBy: string;
   createdAt: any;
   updatedAt: any;
   metadata?: {
     provider?: string;
-    // --- NUEVOS CAMPOS AGREGADOS ---
     providerDocType?: "LOCAL" | "TAX_ID";
     providerDoc?: string;
-    providerRuc?: string; // Lo dejamos por retrocompatibilidad
+    providerRuc?: string; // retrocompatibilidad
     invoiceNumber?: string;
     invoiceDate?: any;
     currency?: "PEN" | "USD";
     exchangeRate?: number;
     originalCurrencyValue?: number;
-    // -------------------------------
     originalDescription?: string;
     isHistoricalMigration?: boolean;
     isManualEntry?: boolean;
     observations?: string;
+    splitFrom?: string;  // ID de la bobina padre (solo en hijas de split)
   };
 }
 
@@ -131,6 +135,20 @@ export interface StockSummary {
 
 export type BusinessLine = 'drywall' | 'roofing' | 'metallic-roofing' | 'trading' | 'services';
 
+/**
+ * Snapshot de peso congelado al momento de la venta de cobertura aluzinc.
+ * Desacoplado del catálogo: si mañana cambia la metadata del SKU, las ventas
+ * históricas mantienen los datos con que se calculó el reporte.
+ */
+export interface CoverageWeightSnapshot {
+  pesoKg: number;
+  metrosTotales: number;
+  thicknessMm: number;
+  widthMm: number;
+  colorFinish: string;
+  densityFactor: number;
+}
+
 export interface SaleItem {
   sku: string;
   /** Línea de negocio del producto; omitido en ventas antiguas (default: drywall) */
@@ -143,6 +161,8 @@ export interface SaleItem {
   baseCost: number;  // Costo de producción (Sin IGV)
   unitWeight: number;
   isCoil?: boolean;
+  /** Solo línea metallic-roofing: snapshot de peso congelado al vender. */
+  weightSnapshot?: CoverageWeightSnapshot;
 
   // --- Retrocompatibilidad (Para ventas antiguas) ---
   unitCost?: number;
@@ -191,20 +211,32 @@ export interface Sale {
 
 export interface ProductionLog {
   id?: string;
-  parentCoilId?: string; // Optional for outsourced
-  stripWidth?: number;   // New for outsourced
+  parentCoilId?: string;
+  parentCoilIds?: string[];  // multi-coil conformado
+  stripWidth?: number;
   sku: string;
+  line?: BusinessLine;        // tipado; antes entraba por spread sin tipar
   piecesProduced: number;
   totalUsedWidth: number;
   scrapWidth: number;
   stripCost: number;
   costPerPiece: number;
-  reportedWeight?: number; // Para precisión al anular
+  reportedWeight?: number;
   operatorId: string;
   timestamp: any;
   status?: "ACTIVE" | "VOIDED";
   voidedBy?: string;
   voidedAt?: any;
+  // P-M5 — conformado bobina → terminado
+  mlProduced?: number;
+  coilDensityFactor?: number;
+  averageCostAfter?: number;
+  perCoilBreakdown?: {
+    coilId: string;
+    mlFromCoil: number;
+    weightConsumedKg: number;
+    costPEN: number;
+  }[];
 }
 
 export interface AuditLog {
@@ -219,9 +251,22 @@ export interface AuditLog {
     | "RECEIVE_STRIPS"
     | "VOID_CUT_ORDER"
     | "EDIT_CUT_ORDER"
-    | "CANCEL_CUTTING_PLAN";
+    | "CANCEL_CUTTING_PLAN"
+    | "SPLIT_COIL"
+    | "PRODUCE_FROM_COILS"
+    | "REGISTER_SCRAP";
   entityId: string;
   userEmail: string;
   details: string;
+  timestamp: any;
+}
+
+export interface ScrapLog {
+  id?: string;
+  coilId: string;
+  scrapWeightKg: number;
+  scrapCostPEN: number;
+  reason: string;
+  adminId: string;
   timestamp: any;
 }

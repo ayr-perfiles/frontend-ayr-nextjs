@@ -24,7 +24,7 @@ export interface InventoryFilters {
   searchTerm?: string;
   family?: string;
   finish?: string;
-  color?: string;
+
   showOnlyWithStock?: boolean;
   showOnlyNegative?: boolean;
 }
@@ -43,7 +43,7 @@ export async function fetchInventory(filters: InventoryFilters): Promise<Invento
   const catalogConstraints: QueryConstraint[] = [orderBy('displayName')];
   if (filters.family) catalogConstraints.push(where('family', '==', filters.family));
   if (filters.finish) catalogConstraints.push(where('finish', '==', filters.finish));
-  if (filters.color) catalogConstraints.push(where('color', '==', filters.color));
+
 
   const catalogSnap = await getDocs(query(collection(db, CATALOG_COL), ...catalogConstraints));
   let products = catalogSnap.docs.map((d) => ({ sku: d.id, ...d.data() } as MetallicProduct));

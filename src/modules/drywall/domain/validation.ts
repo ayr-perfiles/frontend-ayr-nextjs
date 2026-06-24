@@ -73,14 +73,20 @@ export function validateProductionInput(params: {
   stripWidth: number;
   thickness: number;
   pieceLength: number;
+  densityFactor: number;
 }): ProductionValidationResult {
-  const { requestedPieces, stripWeight, stripWidth, thickness, pieceLength } = params;
+  const { requestedPieces, stripWeight, stripWidth, thickness, pieceLength, densityFactor } = params;
+
+  if (!densityFactor) {
+    throw new Error("El factor de densidad es requerido para validar la producción.");
+  }
 
   const expectedPieces = calculateExpectedPiecesByDensity(
     stripWeight,
     stripWidth,
     thickness,
     pieceLength,
+    densityFactor
   );
   const maxAllowedPieces = Math.ceil(expectedPieces * PRODUCTION_TOLERANCE_FACTOR);
 

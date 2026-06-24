@@ -31,7 +31,7 @@ function FamilyBadge({ family }: { family: string }) {
     COBERTURA: "bg-zinc-100 text-zinc-700",
     PLANCHA: "bg-slate-100 text-slate-700",
     BOBINA: "bg-amber-100 text-amber-700",
-    ACCESORIO: "bg-purple-100 text-purple-700",
+
   };
   return (
     <span
@@ -123,8 +123,8 @@ export default function ProductCatalogTable({
       key: "color",
       header: "Color",
       render: (product) =>
-        product.color ? (
-          <ColorChip color={product.color} />
+        product.finish ? (
+          <ColorChip color={product.finish} />
         ) : (
           <span className="text-gray-400 text-xs">—</span>
         ),

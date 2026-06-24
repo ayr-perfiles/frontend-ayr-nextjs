@@ -27,11 +27,14 @@ export async function dispatchImportRow(row: ParsedCatalogRow): Promise<void> {
       // Derive category
       let family: MetallicProductInput['family'] = 'COBERTURA';
       if (sku.startsWith('PL')) family = 'PLANCHA';
-      if (sku.startsWith('ACCES')) family = 'ACCESORIO';
+      if (sku.startsWith('ACCES')) {
+        throw new Error("ACCES... pertenece a Trading, no al catálogo de coberturas");
+      }
 
       // Parse finish/color from name (simple heuristic)
-      const finish = name.includes('NATURAL') ? 'NATURAL' : name.includes('ALUZINC') ? 'ALUZINC' : 'GALV';
-      const color = name.includes('ROJO') ? 'ROJO' : name.includes('AZUL') ? 'AZUL' : undefined;
+      let finish = name.includes('NATURAL') ? 'NATURAL' : name.includes('ALUZINC') ? 'ALUZINC' : 'GALV';
+      if (name.includes('ROJO')) finish = 'ROJO';
+      if (name.includes('AZUL')) finish = 'AZUL';
 
       const unit = safeUnit(['PIEZA', 'METRO', 'KILOGRAMO', 'TONELADA'], 'PIEZA') as MetallicProductInput['unit'];
 
@@ -40,7 +43,7 @@ export async function dispatchImportRow(row: ParsedCatalogRow): Promise<void> {
         displayName: name,
         family,
         finish,
-        color,
+
         unit,
         thickness: 0.35, // default
         active: true,

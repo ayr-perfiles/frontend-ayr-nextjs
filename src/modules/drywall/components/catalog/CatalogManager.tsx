@@ -45,7 +45,6 @@ export function CatalogManager() {
   } = useTableData<ProductConfig>({
     data: products,
     searchFields: ["sku", "name"],
-    pageSize: 50,
   });
 
   const loadProducts = async () => {

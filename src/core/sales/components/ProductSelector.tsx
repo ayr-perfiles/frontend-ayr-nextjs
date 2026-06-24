@@ -14,15 +14,18 @@ import { listProducts as listMetallic } from "@/modules/metallic-roofing/service
 import { listProducts as listTrading } from "@/modules/trading/services/catalogService";
 import { listProducts as listServices } from "@/modules/services/services/catalogService";
 
-import type { StockSummary, SaleItem, BusinessLine } from "@/types";
+import type { StockSummary, SaleItem, BusinessLine, CoverageWeightSnapshot } from "@/types";
 import type { RoofingProduct, RoofingStock } from "@/modules/roofing/types";
 import type { MetallicProduct, MetallicStock } from "@/modules/metallic-roofing/types";
 import type { TradingProduct, TradingStock } from "@/modules/trading/types";
 import type { ServiceProduct } from "@/modules/services/types";
+import { calcCoverageWeightKg } from "@/modules/metallic-roofing/domain/coverageWeightCalc";
+import { useFinishes } from "@/core/coils/hooks/useFinishes";
 
 import type { SystemSettings } from "@/services/settingsService";
 import { AlertTriangle, Factory, Home, Package, Plus, ShoppingBag, Wrench } from "lucide-react";
 import { useConfirm } from "@/context/ConfirmContext";
+import toast from "react-hot-toast";
 
 export type CartItem = SaleItem;
 
@@ -115,7 +118,7 @@ export default function ProductSelector({ cartItems, settings, onAdd }: Props) {
         {(
           [
             { id: "drywall", label: "Drywall", icon: <Package size={14} />, color: "text-blue-600" },
-            { id: "roofing", label: "PVC", icon: <Home size={14} />, color: "text-emerald-600" },
+            { id: "roofing", label: "UPVC", icon: <Home size={14} />, color: "text-emerald-600" },
             { id: "metallic-roofing", label: "Aluzinc", icon: <Factory size={14} />, color: "text-zinc-600" },
             { id: "trading", label: "Reventa", icon: <ShoppingBag size={14} />, color: "text-amber-600" },
             { id: "services", label: "Servicios", icon: <Wrench size={14} />, color: "text-violet-600" },
@@ -378,13 +381,13 @@ function RoofingTab({
   }
 
   if (catalog.length === 0) {
-    return <p className="text-sm text-gray-400 font-medium py-4 text-center">Sin productos PVC activos en catálogo.</p>;
+    return <p className="text-sm text-gray-400 font-medium py-4 text-center">Sin productos UPVC activos en catálogo.</p>;
   }
 
   return (
     <div className="flex flex-col md:flex-row items-end gap-4">
       <div className="flex-1 w-full">
-        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Cobertura PVC</label>
+        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Cobertura UPVC</label>
         <select
           value={selectedSku}
           onChange={(e) => setSelectedSku(e.target.value)}
@@ -428,6 +431,8 @@ function MetallicTab({
   const [qty, setQty] = useState<number | "">("");
   const [price, setPrice] = useState<number | "">("");
 
+  const { finishes } = useFinishes(true);
+
   useEffect(() => {
     if (catalog.length > 0 && !selectedSku) setSelectedSku(catalog[0].sku);
   }, [catalog, selectedSku]);
@@ -468,6 +473,34 @@ function MetallicTab({
         return;
     }
 
+    // Calcular y congelar snapshot de peso — densityFactor viene del acabado, no del SKU
+    let weightSnapshot: CoverageWeightSnapshot | undefined;
+    if (product && (product.family === "COBERTURA" || product.family === "PLANCHA")) {
+      const finishFactor = finishes.find((f) => f.id === product.finish)?.densityFactor ?? null;
+      const calc = calcCoverageWeightKg({
+        family: product.family,
+        unit: product.unit,
+        quantity: numQty,
+        thicknessMm: product.thickness,
+        widthMm: product.widthMm ?? 1200,
+        densityFactor: finishFactor,
+        lengthM: product.length ?? null,
+        colorFinish: product.finish ?? "",
+      });
+      if (calc.pesoKg !== null && calc.metrosTotales !== null) {
+        weightSnapshot = {
+          pesoKg: calc.pesoKg,
+          metrosTotales: calc.metrosTotales,
+          thicknessMm: product.thickness,
+          widthMm: product.widthMm ?? 1200,
+          colorFinish: product.finish ?? "",
+          densityFactor: finishFactor ?? 0,
+        };
+      } else {
+        toast.error(`${product.sku}: acabado "${product.finish}" sin densidad configurada — no aparecerá en reportes de costo/peso.`, { duration: 5000 });
+      }
+    }
+
     onAdd({
       sku: selectedSku,
       businessLine: "metallic-roofing",
@@ -476,8 +509,9 @@ function MetallicTab({
       unitPrice: numPrice,
       unitValue,
       baseCost,
-      unitWeight: 0,
+      unitWeight: weightSnapshot?.pesoKg ? weightSnapshot.pesoKg / numQty : 0,
       isCoil: false,
+      ...(weightSnapshot ? { weightSnapshot } : {}),
     });
 
     setQty("");

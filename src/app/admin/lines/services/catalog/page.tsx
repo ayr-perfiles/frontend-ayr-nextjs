@@ -42,7 +42,6 @@ export default function ServicesCatalogPage() {
   } = useTableData<ServiceProduct>({
     data: products,
     searchFields: ["sku", "displayName"],
-    pageSize: 50,
   });
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -130,12 +129,22 @@ export default function ServicesCatalogPage() {
         </div>
 
         {isAdmin && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 bg-violet-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-violet-700 transition active:scale-95 shadow-sm shadow-violet-200"
-          >
-            <Plus size={18} /> Nuevo Servicio
-          </button>
+          <div className="flex gap-3">
+            {/*
+            <Link
+              href="/admin/catalog/import"
+              className="bg-slate-100 text-slate-700 px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-200 transition"
+            >
+              <UploadCloud size={18} /> Importar Masivo
+            </Link>
+            */}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 bg-violet-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-violet-700 transition active:scale-95 shadow-sm shadow-violet-200"
+            >
+              <Plus size={18} /> Nuevo Servicio
+            </button>
+          </div>
         )}
       </div>
 

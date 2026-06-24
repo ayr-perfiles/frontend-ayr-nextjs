@@ -1,0 +1,365 @@
+{
+  "timestamp": "2026-06-01T10:55:15.226Z",
+  "projectId": "unknown",
+  "summary": {
+    "verdict": "Flejes atrapados en modelo viejo: 32 unidades en 4 bobinas.",
+    "inconsistencies": {
+      "orphanCoils": 0,
+      "cutOrderMismatches": 0,
+      "stockDescuadres": 0,
+      "suspiciousRates": 0,
+      "orphanProductionLogs": 0
+    },
+    "counts": {
+      "totalCoils": 41,
+      "totalOrders": 0,
+      "totalLogs": 143
+    }
+  },
+  "coils": {
+    "byStatus": {
+      "PROCESSED": 17,
+      "IN_PROGRESS": 4,
+      "AVAILABLE": 18,
+      "VOIDED": 2
+    },
+    "trappedOldModel": [
+      {
+        "id": "F001-12425-3",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 3
+      },
+      {
+        "id": "F001-12425-4",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 4
+      },
+      {
+        "id": "F001-12425-5",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 3
+      },
+      {
+        "id": "F001-12506-15",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 1
+      },
+      {
+        "id": "F001-12506-16",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 1
+      },
+      {
+        "id": "F001-12506-17",
+        "status": "IN_PROGRESS",
+        "isPending": true,
+        "totalStrips": 3
+      },
+      {
+        "id": "F001-12507-18",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 5
+      },
+      {
+        "id": "F001-12507-19",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 5
+      },
+      {
+        "id": "F001-12507-20",
+        "status": "IN_PROGRESS",
+        "isPending": true,
+        "totalStrips": 3
+      },
+      {
+        "id": "F001-13038-5",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 3
+      },
+      {
+        "id": "F001-13038-6",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 3
+      },
+      {
+        "id": "F001-13039-7",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 3
+      },
+      {
+        "id": "F001-13039-8",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 3
+      },
+      {
+        "id": "F001-35231-1",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 1
+      },
+      {
+        "id": "F001-35231-2",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 1
+      },
+      {
+        "id": "F001-35231-3",
+        "status": "IN_PROGRESS",
+        "isPending": true,
+        "totalStrips": 1
+      },
+      {
+        "id": "F001-35231-4",
+        "status": "IN_PROGRESS",
+        "isPending": true,
+        "totalStrips": 1
+      },
+      {
+        "id": "F001-35232-5",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 3
+      },
+      {
+        "id": "F001-35232-6",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 3
+      },
+      {
+        "id": "F001-35232-7",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 3
+      },
+      {
+        "id": "F001-35232-8",
+        "status": "PROCESSED",
+        "isPending": false,
+        "totalStrips": 3
+      }
+    ],
+    "statusMismatches": [],
+    "orphanEnTercero": []
+  },
+  "cutOrders": {
+    "byStatus": {},
+    "invalidCoilRefs": [],
+    "statusMismatches": []
+  },
+  "strips": {
+    "stock": {},
+    "reconciliationMismatches": [],
+    "trappedPending": [
+      {
+        "sku": "P89GALV045",
+        "width": 175,
+        "total": 4,
+        "coils": [
+          "F001-12506-17",
+          "F001-12507-20"
+        ]
+      },
+      {
+        "sku": "P38GALV045",
+        "width": 124,
+        "total": 4,
+        "coils": [
+          "F001-12506-17",
+          "F001-12507-20"
+        ]
+      },
+      {
+        "sku": "P64GALV045",
+        "width": 149,
+        "total": 24,
+        "coils": [
+          "F001-12506-17",
+          "F001-12507-20",
+          "F001-35231-3",
+          "F001-35231-4"
+        ]
+      }
+    ]
+  },
+  "production": {
+    "bySku": {
+      "P64GALV045": 55590,
+      "R65GALV045": 13956,
+      "P38GALV045": 18466,
+      "R90GALV045": 7806,
+      "P89GALV045": 10580,
+      "OMEGA045": 3444
+    },
+    "oldFlowLogs": [
+      "0ugCkKnCl8axH4cxC4vM",
+      "1Psci0Q9QsjDKqPLnChA",
+      "1aNg9oBeNKCmcyf5LnvN",
+      "1johoh8XGIYYaolUlw6v",
+      "27vRWXauPSdo4ezVcFZn",
+      "2IfgDBeL5h7ZHuW4FPur",
+      "3AkH28WkpjJANJAivsBc",
+      "3Iubj5q8rnVLGlFTnqIe",
+      "3NnyFQjS1N3LBgEnUN9R",
+      "3XW65a8699CQadyA89by",
+      "43VAYnJONsZzCjdw6b0z",
+      "4LYy8PRDaWcKTl8DGtPo",
+      "539Ekk4iTsmBCeAUxA97",
+      "59gURiUPExU1kNo4938g",
+      "5CMBh1cv324IB7hP7V07",
+      "5U11EjJZ84y1vsCmcc3B",
+      "68muEhEwBirs888OULRe",
+      "6WxuWC91Injg9lj9eVsH",
+      "6mSLGdrKTeIlXKaAUqFj",
+      "71n7WA56k3b1jxlIRT51",
+      "7apz5VjGCLA7vk1rYWz9",
+      "7nfyT5Kf45JqhMWhgaGr",
+      "81cp77L3ik6AuYX153N9",
+      "86SIZUFoZnUY4CN1lmaZ",
+      "86gg9nIH2ATQsXW72YT0",
+      "9qspJivd89b1IJSmw7M1",
+      "AKre0oMLiEcNBthcAWWa",
+      "APrsgNLGvh6rF2Gw6K0J",
+      "AQB4pnYgWdoH02FRUylS",
+      "AT4XrEhNyVhLTsO5ungx",
+      "BQpdalMc7ZXLuWkSm3gk",
+      "BtVGhjG0k6w657GQBsie",
+      "CSH4cTnQ98i48HaYNdo4",
+      "CgbRFtswOFfsgOaUvMSv",
+      "D5SB8dPLzoAad57TMJwo",
+      "DCsfBlk9iOhfb86nDqwN",
+      "DMQza3H4SfuNmtgNtVyG",
+      "Dt4qVtd0m5ZSeiyU3yDb",
+      "Dz3vcbXXvenX3X8kiro0",
+      "EgIkGeI6G3aeBFVHt2qB",
+      "ErWDK2oQKbPowcwUHy2T",
+      "FySAQianXkB959qcTAo9",
+      "GDdbA2zkhv8mvHqBveOk",
+      "GJajwFf2HlrLl9BYjJvL",
+      "GSLwPlghirlhRv58a2H4",
+      "IM8Qgfg4RX5nfumwaZ1Z",
+      "JJkeRJaxXe3BSa952qRW",
+      "JX9HMjFNzL7CvmTsze6s",
+      "JzAeQ8zSaVlxr2JfQvai",
+      "KG2CHYIIFqsfN5Mh460a",
+      "KhHb31FHugNTr282QvPS",
+      "LfSLBcXeRu9AgOpWbLu0",
+      "NBHMRYS4cb6354gMRHax",
+      "NLJVbjKTAHJdNtApPBSS",
+      "NOdrbZ0CEQYT4ZN1GmA7",
+      "OZ0NpOR5rHAXDThqdGZO",
+      "OvroxgNhudClSS3XTNo4",
+      "PBvgX755qG5ygX5nObc9",
+      "PfBldNMtfjgoiZ8482i0",
+      "QoYCsZETlxZuMN9YaukX",
+      "R0Tux4bqTDV7BE9BAYYo",
+      "RFRKprnsNkLpomxtwNPJ",
+      "St2dSBMuFKQxy8r7hqyj",
+      "TyfDakdSSAM6ELhlMqS2",
+      "UFdwZzZffdUJkgXcRToH",
+      "UWQuig185aWLyYPokXs1",
+      "Udysojgwe308QeH1qnau",
+      "VFmW7Q1DoCUkpZVlthKQ",
+      "VcJ2kd18k2HKXTkM1BFB",
+      "W64BmEFi6KvuMcwBUqoo",
+      "W8pZlJ83y1Yt5Kuw4BtW",
+      "WATZFzG6ZfB4TuyunJaf",
+      "WkiqqkYCriQ4ZyDReiWx",
+      "XG6jHf3Fi9uuAlauhWOe",
+      "XOnB70DDgBK4gQCsfSlh",
+      "YUO9D5bs10iOTQgqjzSp",
+      "YVfuy7iJDskX6NftiSrA",
+      "ZaTBPk9FkdQ5i9wWr4Ud",
+      "aCCwZ2y7OnA3gfu3odMY",
+      "aX1HYqf8t56dXjK1sx74",
+      "aZaMP4HvVvSAsO0YxJI5",
+      "aeMkC1cjtcSfMVugqB1D",
+      "au1O0wlXL40ZANwMoV43",
+      "cAJrSiJbmdbw8cFTodHL",
+      "cDMtMeJnUFxyFQoHUN3Z",
+      "cE0XdMfIxJmfWpwcoxmG",
+      "cR3CHPjZ8TxXmHMasuZM",
+      "dQ5H1vqrstKRdOmglBj3",
+      "eTQY2JPFfqxkZAhLjPVI",
+      "emf8EOF3XmFn7QjzlCwE",
+      "etBJzJZFhV69N5zVhfex",
+      "fHXfNO652n0lTpehdPHf",
+      "fxTq9S4NVqpgECMzKNVe",
+      "gB5EZ6N9r1BZojqwsWoX",
+      "gz8ViUrqAVJ1RvU2Y2uV",
+      "h3Cgx4VdixHMnfeAsf0E",
+      "hImzU6T9YbuxuzlDQNxM",
+      "hOy7sWDeaKfrJiFnds6y",
+      "hyLaG2VHVeaI5iNER2Q0",
+      "iCy1Oognk95fxrPpn8Cm",
+      "iE4KbDtqmOJjJWqcwBuT",
+      "iM0XkGuh9LMpncydM3kq",
+      "iUxI98vcz1iWfS6iap7s",
+      "j3IJhRtWByWSTyPnL6ND",
+      "jd4l46c9Q8lEAejJy62y",
+      "kEaW2VxivhxhNHD5THdk",
+      "kTG7nB1mFxg4YU16LuNx",
+      "klzJRRc9HZNIdcLbnjyD",
+      "ljW4WUK8ei3KNhQl0A0s",
+      "lx88l1541NkZXJ2iwK61",
+      "mFNhPZTn01MlfyBWgPDo",
+      "mMHtJFcd7sZP7dDVyzdz",
+      "mlXHI0Ngata1PM8AoPiN",
+      "mucFU7M1NCT9TSJ3uGAK",
+      "n1NySnqyAzYngSa03K0I",
+      "nlDXFDDSNdPKhMbEJJxU",
+      "nzhXKdFjsdgfbD0RlF6L",
+      "oz23jQCPQjXz2i6Cbfzv",
+      "ozJp2o3RBO94F6BRLRTk",
+      "pCjuWqwoFkTV2j4KFdia",
+      "q8lkmocGKsbOBwdSlxRl",
+      "rYi9SPFBpJh5wsLCI1lU",
+      "ragwwYupQRCDQ1Jvlzb8",
+      "rmOpCqAjugfP6FEbpOJl",
+      "s47jG5Z6DBXLIcULU16x",
+      "sTEnrIe6XWRxabDJuA9e",
+      "sWD1aS0cHc7prlc9Q4aN",
+      "sWHcLP4KzHTLRqZsCpV0",
+      "silAFS3g3DQkXXxPatQg",
+      "spSOEizG52VphocZNCL6",
+      "tH1uTwWlNXWf0GR1vU8T",
+      "tsUxuIQDjiDyTUjKVAZg",
+      "u2KejgO6U01qcOucgzEB",
+      "uDiqaVyKolpoYTtSDf2b",
+      "v5zQVFFJlCf6g5zWGbde",
+      "vI8s60uvl3yFQ2Hft3Jf",
+      "vhqZOzEqWB0tJtdL5Hs1",
+      "wmJs4j9kgReTWpCcH3Cb",
+      "yIbRENcUgrhReJPtfhXh",
+      "yXzplkeQIOZXlEE1N1tR",
+      "yb7z0V0rrCJEuj8B52BX",
+      "zN6RA4Ibft7Q6s6GdGUF",
+      "zdanvRToUoDVSDIHDy1Z"
+    ],
+    "orphanLogs": []
+  },
+  "financials": {
+    "usdSuspiciousRate": [],
+    "missingRate": [
+      "sales/FFA1-912",
+      "sales/FFA1-913",
+      "sales/FFA1-933"
+    ]
+  },
+  "obsoleteFields": {
+    "totalFound": 0,
+    "samples": []
+  }
+}

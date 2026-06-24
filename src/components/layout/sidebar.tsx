@@ -288,31 +288,16 @@ function LineGroup({
 // ── Main Sidebar Component ────────────────────────────────────────────────
 
 export default function Sidebar({
-  collapsed: initialCollapsed = false,
-  onToggleCollapse,
+  collapsed = false,
 }: {
   collapsed?: boolean;
-  onToggleCollapse?: (collapsed: boolean) => void;
 }) {
   const pathname = usePathname();
   const { user, role } = useAuth();
-  const router = useRouter();
 
-  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [openLines, setOpenLines] = useState<Record<string, boolean>>({
     drywall: true,
   });
-
-  useEffect(() => {
-    setCollapsed(initialCollapsed);
-  }, [initialCollapsed]);
-
-  const toggleCollapse = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    onToggleCollapse?.(next);
-    localStorage.setItem("ayr-sidebar-collapsed", String(next));
-  };
 
   const toggleLine = (id: string) => {
     setOpenLines((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -349,15 +334,6 @@ export default function Sidebar({
             </div>
           )}
         </div>
-        {!collapsed && (
-          <button
-            onClick={toggleCollapse}
-            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"
-            title="Colapsar"
-          >
-            <PanelLeft size={18} />
-          </button>
-        )}
       </div>
 
       {/* NAVIGATION */}
@@ -419,7 +395,6 @@ export default function Sidebar({
                 label={`Producción ${l.displayName.split(" ")[0]}`}
                 href={`/admin/lines/${l.id}/production`}
                 active={pathname === `/admin/lines/${l.id}/production`}
-                soon={l.id === "metallic-roofing"}
                 collapsed={collapsed}
               />
             ))}

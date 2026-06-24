@@ -43,12 +43,11 @@ function toProduct(id: string, data: Record<string, unknown>): MetallicProduct {
 // ─── pure helper (exported for components) ────────────────────────────────────
 
 export function generateDisplayName(
-  product: Pick<MetallicProductInput, 'family' | 'finish' | 'color' | 'thickness' | 'width' | 'length'>,
+  product: Pick<MetallicProductInput, 'family' | 'finish' | 'thickness' | 'width' | 'length'>,
 ): string {
-  const colorPart = product.color ? ` ${product.color}` : '';
   const widthPart = product.width ? ` X ${product.width.toFixed(3)}` : '';
   const lengthPart = product.length ? ` X ${product.length.toFixed(2)}MT` : '';
-  return `${product.family} ${product.finish}${colorPart} ${product.thickness}MM${widthPart}${lengthPart}`.trim();
+  return `${product.family} ${product.finish} ${product.thickness}MM${widthPart}${lengthPart}`.trim();
 }
 
 // ─── reads ────────────────────────────────────────────────────────────────────
@@ -57,7 +56,7 @@ export async function listProducts(filters?: {
   active?: boolean;
   family?: string;
   finish?: string;
-  color?: string;
+
   searchTerm?: string;
 }): Promise<MetallicProduct[]> {
   const constraints: QueryConstraint[] = [orderBy('displayName')];
@@ -65,7 +64,7 @@ export async function listProducts(filters?: {
   if (filters?.active !== undefined) constraints.push(where('active', '==', filters.active));
   if (filters?.family) constraints.push(where('family', '==', filters.family));
   if (filters?.finish) constraints.push(where('finish', '==', filters.finish));
-  if (filters?.color) constraints.push(where('color', '==', filters.color));
+
 
   const snapshot = await getDocs(query(collection(db, COLLECTION), ...constraints));
   let products = snapshot.docs.map((d) => toProduct(d.id, d.data() as Record<string, unknown>));
@@ -102,7 +101,6 @@ export async function createProduct(input: MetallicProductInput): Promise<Metall
       family: data.family,
       finish: data.finish,
       thickness: data.thickness,
-      color: data.color,
       length: data.length,
     });
 
@@ -111,7 +109,6 @@ export async function createProduct(input: MetallicProductInput): Promise<Metall
     generateDisplayName({
       family: data.family,
       finish: data.finish,
-      color: data.color,
       thickness: data.thickness,
       width: data.width,
       length: data.length,
@@ -120,7 +117,6 @@ export async function createProduct(input: MetallicProductInput): Promise<Metall
   const comboKey = combinationKey({
     family: data.family,
     finish: data.finish,
-    color: data.color ?? '',
     thickness: data.thickness,
     width: data.width,
     length: data.length,
@@ -131,7 +127,7 @@ export async function createProduct(input: MetallicProductInput): Promise<Metall
     query(collection(db, COLLECTION), where('_combinationKey', '==', comboKey), limit(1)),
   );
   if (!comboSnap.empty) {
-    throw new Error('Combinación duplicada: ya existe un producto con esa familia, acabado, color y medidas.');
+    throw new Error('Combinación duplicada: ya existe un producto con esa familia, acabado y medidas.');
   }
 
   const productRef = doc(db, COLLECTION, sku);
@@ -149,13 +145,16 @@ export async function createProduct(input: MetallicProductInput): Promise<Metall
       displayName,
       family: data.family,
       finish: data.finish,
-      color: data.color ?? '',
+
       thickness: data.thickness,
       ...(data.width !== undefined && { width: data.width }),
       ...(data.length !== undefined && { length: data.length }),
       unit: data.unit,
       active: data.active,
       avgCost: 0,
+      ...(data.widthMm !== undefined && { widthMm: data.widthMm }),
+      ...(data.densityFactor !== undefined && { densityFactor: data.densityFactor }),
+      ...(data.metaSource !== undefined && { metaSource: data.metaSource }),
       _combinationKey: comboKey,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),

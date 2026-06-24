@@ -1,14 +1,16 @@
-import { 
-  BarChart3, 
-  TrendingUp, 
-  Package, 
-  Layers, 
-  Receipt, 
-  Factory, 
+import {
+  BarChart3,
+  TrendingUp,
+  Package,
+  Layers,
+  Receipt,
+  Factory,
   DollarSign,
   History,
   Users,
-  AlertCircle
+  AlertCircle,
+  Scale,
+  PieChart,
 } from 'lucide-react';
 import { ReportDefinition } from './types';
 import * as functions from './services/reportFunctions';
@@ -229,6 +231,80 @@ export const REPORT_REGISTRY: ReportDefinition[] = [
     ],
     exports: ['xlsx', 'csv'],
   },
+  // --- P-M3: ALUZINC ---
+  {
+    id: 'aluzinc-ventas',
+    title: 'Aluzinc — Ventas por Espesor/Color',
+    category: 'VENTAS',
+    description: 'Toneladas, metros y monto (S/) de cobertura aluzinc agrupados por espesor y color. Usa snapshot congelado al momento de venta.',
+    icon: Scale,
+    filters: [
+      { id: 'period', label: 'Período', type: 'PERIOD', defaultValue: 'MES' },
+      { id: 'colorFilter', label: 'Color', type: 'MULTISELECT', defaultValue: [] },
+      { id: 'espesorFilter', label: 'Espesor (mm)', type: 'MULTISELECT', defaultValue: [] },
+    ],
+    run: functions.runAluzincVentas,
+    columns: [
+      { label: 'Espesor (mm)', key: 'thicknessMm', format: 'number' },
+      { label: 'Color', key: 'colorFinish', format: 'string' },
+      { label: 'Metros (ML)', key: 'metrosTotales', format: 'number' },
+      { label: 'Peso (Kg)', key: 'pesoKg', format: 'number' },
+      { label: 'Toneladas', key: 'toneladas', format: 'number' },
+      { label: 'Monto (S/)', key: 'montoSoles', format: 'currency' },
+      { label: 'S//Kg', key: 'precioPorKg', format: 'currency' },
+    ],
+    chart: { type: 'bar', xKey: 'label', yKeys: ['pesoKg'] },
+    exports: ['xlsx', 'csv'],
+  },
+
+  // --- P-M7: ALUZINC COSTO ---
+  {
+    id: 'aluzinc-costo',
+    title: 'Aluzinc — Costo por Espesor/Color',
+    category: 'MATERIA_PRIMA',
+    description: 'Costo del material vendido (WAC congelado al carrito) agrupado por espesor y color. Excluye ventas USD sin tipo de cambio.',
+    icon: Scale,
+    filters: [
+      { id: 'period', label: 'Período', type: 'PERIOD', defaultValue: 'MES' },
+      { id: 'colorFilter', label: 'Color', type: 'MULTISELECT', defaultValue: [] },
+      { id: 'espesorFilter', label: 'Espesor (mm)', type: 'MULTISELECT', defaultValue: [] },
+    ],
+    run: functions.runAluzincCosto,
+    columns: [
+      { label: 'Espesor (mm)', key: 'thicknessMm', format: 'number' },
+      { label: 'Color', key: 'colorFinish', format: 'string' },
+      { label: 'Metros (ML)', key: 'metrosTotales', format: 'number' },
+      { label: 'Peso (Kg)', key: 'pesoKg', format: 'number' },
+      { label: 'Toneladas', key: 'toneladas', format: 'number' },
+      { label: 'Costo Total (S/)', key: 'costoTotal', format: 'currency' },
+      { label: 'S//Kg (Costo)', key: 'costoPorKg', format: 'currency' },
+    ],
+    chart: { type: 'bar', xKey: 'label', yKeys: ['costoTotal'] },
+    exports: ['xlsx', 'csv'],
+  },
+
+  // --- P-M7: ALUZINC RESUMEN ---
+  {
+    id: 'aluzinc-resumen',
+    title: 'Aluzinc — Costo + Ganancia',
+    category: 'EJECUTIVO',
+    description: 'Resumen por color: Venta vs Costo de material (WAC). La merma del período aparece en los totales. Ganancia = Venta − Costo − Merma.',
+    icon: PieChart,
+    filters: [
+      { id: 'period', label: 'Período', type: 'PERIOD', defaultValue: 'MES' },
+    ],
+    run: functions.runAluzincResumen,
+    columns: [
+      { label: 'Color', key: 'colorFinish', format: 'string' },
+      { label: 'Venta (S/)', key: 'ventaSoles', format: 'currency' },
+      { label: 'Costo (S/)', key: 'costoSoles', format: 'currency' },
+      { label: 'Ganancia Bruta (S/)', key: 'gananciaSoles', format: 'currency' },
+      { label: 'Margen %', key: 'margenPct', format: 'percent' },
+    ],
+    chart: { type: 'bar', xKey: 'colorFinish', yKeys: ['ventaSoles', 'costoSoles'] },
+    exports: ['xlsx', 'csv'],
+  },
+
   // --- P2 PLACEHOLDERS ---
   {
     id: 'ventas-por-producto',

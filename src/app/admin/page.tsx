@@ -38,7 +38,7 @@ const LINE_COLORS: Record<string, string> = {
 
 const LINE_LABELS: Record<string, string> = {
   drywall: "Drywall",
-  roofing: "Coberturas PVC",
+  roofing: "Coberturas UPVC",
   "metallic-roofing": "Aluzinc",
   trading: "Compra-Venta",
   services: "Servicios",

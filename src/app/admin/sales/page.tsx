@@ -69,7 +69,7 @@ export default function SalesPage() {
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const { sales, loading, filteredTotal, currentPage, nextPage, prevPage, refresh } = useSales({
+  const { sales, loading, filteredTotal, aggregates, isAlgolia, currentPage, nextPage, prevPage, refresh } = useSales({
     pageSize, statusFilter, businessLine, searchTerm, startDate, endDate, sunatFilter,
   });
 
@@ -116,9 +116,9 @@ export default function SalesPage() {
     }
   };
 
-  const totalRevenue = sales.reduce((s, i) => s + (i.totalAmount || 0), 0);
-  const totalProfit = sales.reduce((s, i) => s + (i.totalProfit || 0), 0);
-  const totalWeight = sales.reduce((s, i) => s + ((i as Sale & { totalWeight?: number }).totalWeight || 0), 0);
+  const totalRevenue = aggregates?.totalAmount || 0;
+  const totalProfit = aggregates?.totalProfit || 0;
+  const totalWeight = aggregates?.totalWeight || 0;
 
   return (
     <div className="space-y-6 relative pb-10">
@@ -144,7 +144,8 @@ export default function SalesPage() {
         totalRevenue={totalRevenue}
         totalProfit={totalProfit}
         totalWeight={totalWeight}
-        count={sales.length}
+        count={filteredTotal}
+        isAlgolia={isAlgolia}
       />
 
       <SalesFilters
@@ -201,6 +202,8 @@ export default function SalesPage() {
           else if (page < currentPage) prevPage();
         }}
         onPageSizeChange={setPageSize}
+        pageSizeOptions={[10, 15, 25, 50]}
+        mode="cursor"
       />
 
       {viewingSale && (

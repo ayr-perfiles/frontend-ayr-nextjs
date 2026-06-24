@@ -40,7 +40,7 @@ export function AuditFilters({
       id: "action",
       label: "Tipo de Acción",
       value: actionFilter,
-      onChange: (v) => setActionFilter(v),
+      onChange: (v) => setActionFilter(v as string),
       options: [
         { value: "ALL", label: "Todas las Acciones" },
         { value: "VOID_PRODUCTION", label: "Cortes Anulados" },

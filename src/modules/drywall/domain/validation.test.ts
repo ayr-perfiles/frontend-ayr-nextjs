@@ -91,6 +91,7 @@ describe('validateProductionInput', () => {
     stripWidth: 121,
     thickness: 0.45,
     pieceLength: 3.0,
+    densityFactor: 0.00785,
   };
 
   it('no lanza error cuando las piezas solicitadas son válidas', () => {

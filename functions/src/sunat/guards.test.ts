@@ -121,7 +121,7 @@ describe("SUNAT Callables Guards", () => {
       expect(result.documentId).toBe("F001-000042");
       
       // Verificar que NO se llamó a getNextSequence (reúso)
-      const { getNextSequence } = await import("../services/correlative");
+      const { getNextSequence } = await import("../services/correlative.js");
       expect(getNextSequence).not.toHaveBeenCalled();
     });
   });

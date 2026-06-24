@@ -7,7 +7,7 @@
 
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import { getNextSequence } from "./services/correlative";
 
@@ -315,7 +315,69 @@ export const onProductionLogCreated = onDocumentCreated(
 );
 
 // ════════════════════════════════════════════════════════════
-// FUNCIÓN 5: Health check (para verificar que Functions funciona)
+// FUNCIÓN 5: Trigger - Sincronizar Custom Claims de Usuarios
+// ════════════════════════════════════════════════════════════
+
+export const onUserWritten = onDocumentWritten(
+  "users/{uid}",
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const uid = event.params.uid;
+    const beforeData = snapshot.before.exists ? snapshot.before.data() : null;
+    const afterData = snapshot.after.exists ? snapshot.after.data() : null;
+
+    try {
+      if (!afterData) {
+        // Documento fue borrado -> Limpiar claims
+        await admin.auth().setCustomUserClaims(uid, null);
+        console.log(`[UsersTrigger] Usuario ${uid} borrado. Custom claims limpiados.`);
+        return;
+      }
+
+      const currentRole = afterData.role;
+      const currentIsActive = afterData.isActive !== false; // Si es undefined, asumimos true
+
+      const previousRole = beforeData?.role;
+      const previousIsActive = beforeData?.isActive !== false;
+
+      // Solo sincronizamos si hay cambios reales (Idempotencia)
+      const roleChanged = currentRole !== previousRole;
+      const activeChanged = currentIsActive !== previousIsActive;
+
+      if (!roleChanged && !activeChanged) {
+        return; // No hay cambios que afecten los claims o el acceso
+      }
+
+      // Validar rol
+      const validRoles = ["ADMIN", "SUPERVISOR", "OPERATOR"];
+      if (currentRole && !validRoles.includes(currentRole)) {
+        console.warn(`[UsersTrigger] Rol inválido para ${uid}: ${currentRole}`);
+      }
+
+      // Asignamos el claim al token
+      await admin.auth().setCustomUserClaims(uid, { role: currentRole });
+      console.log(`[UsersTrigger] Custom claims actualizados para ${uid}: { role: "${currentRole}" }`);
+
+      // Propagación / Revocación crítica
+      // Si se desactiva la cuenta, o se le hace "downgrade" (ej: de ADMIN a OPERATOR), forzamos cierre de sesión.
+      const isDowngrade =
+        (previousRole === "ADMIN" && currentRole !== "ADMIN") ||
+        (previousRole === "SUPERVISOR" && currentRole === "OPERATOR");
+
+      if (!currentIsActive || isDowngrade) {
+        await admin.auth().revokeRefreshTokens(uid);
+        console.log(`[UsersTrigger] Tokens revocados para ${uid} (isActive: ${currentIsActive}, downgrade: ${isDowngrade})`);
+      }
+    } catch (error) {
+      console.error(`[UsersTrigger] Error actualizando claims para ${uid}:`, error);
+    }
+  },
+);
+
+// ════════════════════════════════════════════════════════════
+// FUNCIÓN 6: Health check (para verificar que Functions funciona)
 // ════════════════════════════════════════════════════════════
 
 export const healthCheck = onCall(async () => {

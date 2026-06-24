@@ -8,8 +8,7 @@ import type { MetallicFamily } from '../types';
 const FAMILY_PREFIX: Record<MetallicFamily, string> = {
   COBERTURA: 'COB',
   PLANCHA: 'PL',
-  BOBINA: 'BOB',
-  ACCESORIO: 'ACCES',
+
 };
 
 /** 0.30 -> "030", 0.45 -> "045". Legacy a veces usa "28" para 0.28; preferir override manual. */
@@ -21,19 +20,14 @@ export function generateSKU(input: {
   family: MetallicFamily;
   finish: string;
   thickness: number;
-  color?: string;
+
   length?: number;
 }): string {
   const prefix = FAMILY_PREFIX[input.family];
   const th = thicknessToken(input.thickness);
   const lengthPart = input.length ? `${Math.round(input.length)}MT` : '';
   // ROJO es color base implícito (no se sufija), igual que en roofing.
-  const tail =
-    input.color && input.color.toUpperCase() !== 'ROJO'
-      ? input.color.toUpperCase()
-      : input.color
-        ? ''
-        : input.finish.toUpperCase();
+  const tail = input.finish.toUpperCase() !== 'ROJO' ? input.finish.toUpperCase() : '';
   return `${prefix}${th}${lengthPart}${tail}`.replace(/\s+/g, '');
 }
 
@@ -41,12 +35,12 @@ export function generateSKU(input: {
 export function combinationKey(input: {
   family: string;
   finish: string;
-  color: string;
+
   thickness: number;
   width?: number;
   length?: number;
 }): string {
-  return [input.family, input.finish, input.color, input.thickness, input.width ?? '', input.length ?? '']
+  return [input.family, input.finish, input.thickness, input.width ?? '', input.length ?? '']
     .map((v) => String(v).toUpperCase().trim())
     .join('|');
 }

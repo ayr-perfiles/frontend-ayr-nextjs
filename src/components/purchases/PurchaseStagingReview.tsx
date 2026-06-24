@@ -194,7 +194,7 @@ export function PurchaseStagingReview({ initialPurchases, onFinished }: Props) {
                       className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none"
                     >
                       <option value="trading">Trading (Reventa)</option>
-                      <option value="roofing">Roofing (PVC)</option>
+                      <option value="roofing">Roofing (UPVC)</option>
                     </select>
                   </div>
                   <div>

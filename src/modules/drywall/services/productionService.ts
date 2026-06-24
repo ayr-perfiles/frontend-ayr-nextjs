@@ -114,6 +114,19 @@ export const processSingleStrip = async (
     const coil = coilSnap.data() as Coil;
     const product = prodSnap.data();
 
+    let densityFactor: number | undefined;
+    if (coil.finish) {
+      const finishRef = doc(db, "coil_finishes", coil.finish);
+      const finishSnap = await getDoc(finishRef);
+      if (finishSnap.exists()) {
+        densityFactor = finishSnap.data().densityFactor;
+      }
+    }
+
+    if (!densityFactor) {
+      throw new Error(`La bobina no tiene factor de densidad configurado (Acabado: ${coil.finish || 'Ninguno'}). Imposible validar límite de producción.`);
+    }
+
     const stripIndex = coil.plannedStrips?.findIndex(s => s.sku === sku && s.pendingCount > 0);
     if (stripIndex === undefined || stripIndex === -1) throw new Error("No hay flejes disponibles");
 
@@ -130,6 +143,7 @@ export const processSingleStrip = async (
       stripWidth: activeStrip.width,
       thickness: coil.thickness || 0,
       pieceLength,
+      densityFactor,
     });
 
     const standardWeight = product.standardWeight || 0;

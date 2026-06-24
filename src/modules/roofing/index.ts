@@ -7,7 +7,7 @@ import { roofingPermissions } from './config/permissions';
 
 export const roofingModule: BusinessLineModule = {
   id: 'roofing',
-  displayName: 'Coberturas PVC',
+  displayName: 'Coberturas UPVC',
   icon: 'Home',
 
   productionEngine: undefined, // No production for PVC anymore

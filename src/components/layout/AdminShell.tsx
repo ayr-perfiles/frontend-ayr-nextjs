@@ -5,7 +5,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase/clientApp';
 import { useAuth } from '@/context/AuthContext';
-import { ROUTE_TITLES } from './navItems';
 import type { UserRole } from '@/context/AuthContext';
 import {
   User, LogOut, PanelLeft, Menu,
@@ -45,7 +44,6 @@ function HeaderComponent({
   onToggle: () => void;
 }) {
   const { user } = useAuth();
-  const meta = ROUTE_TITLES[pathname] ?? { title: pathname, crumb: null };
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState('');
@@ -100,6 +98,45 @@ function HeaderComponent({
   const roleLabel =
     role === 'ADMIN' ? 'Administrador' : role === 'SUPERVISOR' ? 'Supervisor' : 'Operador';
 
+  const segmentLabels: Record<string, string> = {
+    admin: "Inicio",
+    lines: "Líneas",
+    "metallic-roofing": "Metallic Roofing",
+    drywall: "Drywall",
+    roofing: "Roofing",
+    trading: "Trading",
+    services: "Services",
+    production: "Producción",
+    sales: "Ventas",
+    coils: "Bobinas",
+    "cut-orders": "Órdenes de Corte",
+    strips: "Flejes",
+    finishes: "Acabados",
+    inventory: "Inventario",
+    catalog: "Catálogo",
+    purchases: "Compras",
+    crm: "CRM",
+    kardex: "Kardex",
+    users: "Usuarios",
+    audit: "Auditoría",
+    settings: "Configuración",
+    setup: "Setup",
+    "catalog-import": "Importar Catálogo",
+    reports: "Reportes",
+    customers: "Clientes",
+    import: "Importar",
+    new: "Nuevo",
+    operator: "Operador",
+  };
+
+  const pathSegments = pathname.split("/").filter(Boolean);
+  const breadcrumbItems = pathSegments.map((segment) => {
+    const label = segmentLabels[segment];
+    if (label) return label;
+    if (segment.length > 15 || !isNaN(Number(segment))) return "Detalle";
+    return segment.charAt(0).toUpperCase() + segment.slice(1);
+  });
+
   return (
     <header
       className="sticky top-0 z-20 shrink-0 grid items-center"
@@ -134,28 +171,16 @@ function HeaderComponent({
         {isLg ? <PanelLeft size={20} /> : <Menu size={20} />}
       </button>
 
-      {/* Breadcrumb + title */}
-      <div className="min-w-0">
-        {isLg && meta.crumb && (
-          <div
-            className="flex items-center gap-1 text-[11px] mb-px"
-            style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-fg-muted)' }}
-          >
-            <span>admin</span>
-            {meta.crumb.map((c, i) => (
-              <span key={i} className="flex items-center gap-1">
-                <span style={{ color: 'var(--color-fg-subtle)' }}>/</span>
-                <span>{c}</span>
-              </span>
-            ))}
-          </div>
-        )}
-        <div
-          className={`${isLg ? 'text-xl' : 'text-base'} font-semibold truncate`}
-          style={{ color: 'var(--color-fg)', letterSpacing: '-0.01em' }}
-        >
-          {meta.title}
-        </div>
+      {/* Breadcrumb */}
+      <div className="min-w-0 flex items-center gap-1.5 text-sm md:text-base font-semibold truncate text-[var(--color-fg)]">
+         {breadcrumbItems.map((item, i) => (
+            <span key={i} className="flex items-center gap-1.5">
+               {i > 0 && <span className="text-slate-400 font-normal">›</span>}
+               <span className={i === breadcrumbItems.length - 1 ? 'text-slate-800' : 'text-slate-500 font-medium'}>
+                 {item}
+               </span>
+            </span>
+         ))}
       </div>
 
       {!isLg && <div className="flex-1" />}
@@ -385,7 +410,6 @@ export default function AdminShell({ env = 'prod', children }: AdminShellProps) 
         >
           <Sidebar
             collapsed={effectiveCollapsed}
-            onToggleCollapse={setCollapsed}
           />
         </div>
 

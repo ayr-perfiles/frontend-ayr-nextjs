@@ -1,85 +1,86 @@
-# Handoff — AYR Steel ERP (siguiente conversación)
+# Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> Subir SIEMPRE al inicio: este `HANDOFF.md` + `CLAUDE.md` (v6.4).
-> Preferencias (en memoria): generar **prompts para Claude Code** por defecto, NO archivos salvo estrictamente necesario. Antes de generar, si hay dudas → **preguntar primero**.
-
----
-
-## Estado actual — v6.4
-
-### Lo nuevo de esta sesión (Sprint 8)
-
-**1. Módulo Facturación Electrónica SUNAT (Cloud Functions v2)**
-- Emisión DIRECTA (cert `.p12` + SOL propios), reutilizando proyecto de referencia funcional (`sunat/`).
-- Secretos en Secret Manager (`defineSecret`), binding mínimo por callable. `ALL_SECRETS` eliminado.
-- Colección `integrations` (config no-secreta): `sunat-emision`, `sunat-consulta`, `apisnet`, `algolia`.
-- Callables: `emitirComprobante`, `comunicarBaja`, `consultarEstadoBaja` (Factura/Boleta/Baja); `validarCpeSunat` (validez oficial SUNAT); `consultarRuc`/`consultarDni` (decolecta.com).
-- **Funcionando:** consultas RUC/DNI (tras migrar apis.net→decolecta y arreglar serverTimestamp + binding mínimo).
-- **Pendiente:** prueba real de emisión contra SUNAT BETA (requiere `.p12` válido cargado).
-
-**2. Refactor Importador Masivo de Ventas** — en curso, cola de prompts (abajo).
-
-### Archivos clave tocados / creados
-- `functions/src/config/secrets.ts` (defineSecret, sin ALL_SECRETS).
-- `functions/src/config/integrations.ts` (getIntegrationConfig, tipado por integración, sin `any`).
-- `functions/src/index.ts` (initializeIntegrations seed + callables + triggers audit).
-- `functions/src/services/apisnet.ts` (decolecta v1, RUC/DNI).
-- `functions/src/callables/integrations.ts` (consultarRuc/Dni — fix serverTimestamp + binding `[APISNET_TOKEN]`).
-- `functions/scripts/seedIntegrations.ts` (seed standalone para emulador).
-- `src/components/sales/BulkUploadSales.tsx` → migrando a página `/admin/sales/import`.
-- `public/templates/Plantilla_Importacion_Ventas_AYR.xlsx` (plantilla cliente, 15 columnas).
+> **Subir SIEMPRE al inicio:** este `HANDOFF.md` + `CLAUDE.md` (v6.9).
+> **Foco próxima sesión:** Validar rules en TEST con roles reales → desplegar seguridad + índices a PROD → continuar Sprint 7 (Functions + candado final).
+> **Preferencias:** prompts para Claude Code por defecto. Caveman mode. Cada prompt con PASO 0 read-only. Preguntar si hay duda. NUNCA "build verde" sin verificar RUNTIME (lección dura de esta sesión: tsc verde no atrapa TDZ, redirects, índices faltantes, ni bugs de lógica que los tests sí atrapan).
 
 ---
 
-## Cola de prompts — Importador de Ventas (ORDEN DE APLICACIÓN)
+## 1. Estado al cerrar esta sesión (enorme)
 
-> 14 ya aplicado. Aplicar en este orden. 19 y 20 DESCARTADOS (el 21 los reemplaza).
+Build 🟢, tsc limpio, 463/463 tests (serializados). Commits hechos hasta el fix de zombie. Lo de seguridad (rules Fase 1) desplegado a TEST, no commiteado/pusheado aún del todo — verificar git status.
 
-1. **PROMPT 15** — Página propia `/admin/sales/import` + descarga plantilla + drawer de columnas + validación de archivo vacío + alta de SKU faltante (form completo por línea).
-2. **PROMPT 14** ✅ APLICADO — Peso por UM (`calcPesoKg`) + manejo NC/ND + TC sin fallback silencioso.
-3. **PROMPT 22** — Rename de atributos a inglés (`documentType`, `unitOfMeasure`, `adjustedDocument`) SOLO nombres, valores en español; ELIMINAR `affectaStock`.
-4. **PROMPT 21** — `ncStockAction` (enum inglés `RETURNS_STOCK`/`MONEY_ONLY`/`UNDECIDED`) + arreglar propagación (quedaba "NADA") + peso NETO de inventario ramificado por acción + test Fase 2 que distingue ramas.
-5. **PROMPT 16** — Idempotencia anti doble-import: leer `sales/{documentNumber}` dentro del `runTransaction`; omitir si existe. Test doble-corrida = stock baja una vez.
-6. **PROMPT 17** — Preview: badge moneda+TC por ítem + decisión inline de NC sin definir.
-7. **PROMPT 18** — Barra de indicadores totales (recalculo en vivo, alertas gobiernan Guardar).
+**Frentes cerrados esta sesión:**
 
-(Nota: el orden lógico es 15 → 22 → 21 → 16 → 17 → 18; el 14 ya está. Ajustar si en desarrollo conviene.)
+1. Import masivo catálogo aluzinc (COB*/PL*+material, editor por ítem, densityFactor del acabado, length PL sugerido, autodetección decimal + raw:true SheetJS, quitar ítem). Ver CLAUDE.md §4.
+2. Multiselect retrocompatible en el kit + filtros tabla catálogo aluzinc. §6.
+3. Layout: toggle único + breadcrumb dinámico. Patrón form→página (/production/new). §5.
+4. Migración coils: densityFactor desnormalizado + finish=GALV. APLICADO EN TEST (41 bobinas). §9.
+5. Unificación tablas Grupo 1 (3 inventarios → useTableData). Piloto Grupo 2: Ventas (cursor + agregación + degradación Algolia + selector). §7.
+6. **Seguridad Capa 1:** fix zombie, trigger custom claims (`onUserWritten`), endpoint migrate-roles asegurado, firestore.rules Fase 1 por rol + hardening claim-undefined. Desplegado a TEST. §8.
 
----
+**Aprendizajes clave de la sesión:**
 
-## Frentes abiertos (prioridad)
-
-| Frente | Estado | Detalle |
-|---|---|---|
-| 🏗️ **Sprint 8 — Import Ventas** | En curso | Cola de prompts arriba. Revisar cada uno en desarrollo. |
-| 🟡 **Emisión SUNAT prueba real** | Pendiente | Cargar `.p12` válido + probar sendBill contra BETA. |
-| 🔴 **Sprint 6B — Producción Metallic** | BLOQUEADO | 3 preguntas al cliente (kg vs ML×peso; plan previo vs directo; merma despunte). |
-| 🔴 **Sprint 7 — Seguridad** | Deuda crítica | `firestore.rules` por colección+rol (hoy 100% abierta) + writes críticos a Functions. |
-| 🟡 Validación CPE compras (UI) | Pendiente | Botón "Validar en SUNAT" sobre `purchases` usando `validarCpeSunat`. |
+- El bug "/dashboard 404, solo incógnito" era **caché de redirect 308** del navegador, NO código. Fix: DevTools Disable cache / limpieza profunda.
+- Un refactor de `classifyLine` (firma sku,material para catálogo) rompió SILENCIOSAMENTE el import de ventas (compartían la función). Los tests lo atraparon; casi se "alinean" para esconderlo. → función compartida, separar consumidores, no asumir uso único.
+- Build de Vercel falla si scripts de migración (con serviceAccountKey) entran al build → excluir en tsconfig.
+- Tests: `fileParallelism: false` o colisionan en el emulador.
 
 ---
 
-## Notas técnicas / trampas conocidas
+## 2. Decisiones Lockeadas (NO revertir)
 
-- **Recompilar Functions** (`npm run build`) tras editar TS — el emulador corre `lib/*.js`.
-- **Emulador + secretos:** valores en `functions/.secret.local`; cada secreto bindeado necesita su línea (dummy si no se prueba). firebase-tools ≥ 13.15.1.
-- **Emulador arranca Firestore vacío:** correr `npm run seed:emulator` o no existe `integrations` → callables fallan con "Integración no encontrada".
-- **Validez CPE:** confirmar grant OAuth (`client_credentials` vs `password`) contra el manual oficial antes de cablear `validarCpeSunat`.
-- **NC:** SUNAT NO da el motivo → `ncStockAction` lo decide el usuario, no se adivina.
-- **TC:** sin fallback 3.75; si falla la API, bloquear y avisar.
-
----
-
-## Convenciones (recordatorio)
-
-- 0 `any` nuevos · **nombres en inglés, valores/datos y errores de usuario en español** · patrón Strategy (no if/else por línea) · `runTransaction` lee antes de escribir · stock negativo permitido (warning).
-- Build 100% verde, `tsc --noEmit` limpio.
-- NUNCA borrado físico: status ANULADA/VOIDED + audit_logs.
-- Secretos: solo Secret Manager, nunca Firestore/UI. Binding mínimo por callable.
-- Tests: Fase 1 (sin emulador, lógica/strategies) + Fase 2 (emulador Firestore, transacciones/E2E).
+- **Densidad por acabado** (coil_finishes, fuente única): GALVANIZADO 0.00785, Aluzinc NATURAL **0.00785** (corregido v6.9, antes decía 0.008), Aluzinc colores 0.008. Heredada vía lookup, nunca hardcodear.
+- `perCoilBreakdown` = fuente de verdad por bobina; `parentCoilId` escalar = `parentCoilIds[0]` nunca null.
+- Reversa SIEMPRE al costo congelado (venta: baseCost; producción: sum costPEN), nunca WAC actual. Drywall ajeno al WAC en devoluciones.
+- Unidad stock aluzinc MIXTA (COBERTURA_ML / PLANCHA_UND); `piecesProduced` ya trae la unidad correcta.
+- Import masivo: solo COB*/PL* + material ALUZINC; densityFactor del acabado (no del CSV); raw:true en SheetJS.
+- Stock negativo permitido (warning). Sin borrado físico (VOIDED + audit).
+- Seguridad: rules = capa real; proxy.ts/guard = UX. Campos snapshot protegidos contra update incluso para ADMIN; audit append-only.
 
 ---
 
-## Próximo paso sugerido
+## 3. PENDIENTES OPERATIVOS (tu cancha, orden sugerido)
 
-Aplicar la cola del importador (15 → 22 → 21 → 16 → 17 → 18), probando cada uno en desarrollo. En paralelo, cuando haya `.p12` válido, probar emisión contra BETA. Luego retomar Sprint 7 (seguridad) para bajar la deuda crítica.
+1. **Validar rules en TEST con roles reales** (lo que quedó a medias):
+   - Tu claim ADMIN ya está en test. Navega: crear venta, ANULAR venta (toca status+stock+movements en cadena — el caso de mayor riesgo), producir, anular producción, ajustar stock, crear compra → CERO permission-denied en flujos legítimos.
+   - Crear usuario OPERATOR (refrescar su token) → opera su línea, y se BLOQUEA en: ver otros users, cambiar roles, editar totalAmount de venta.
+   - Si algo legítimo da permission-denied → reportar operación + colección + campo → afinar esa rule.
+
+2. **Desplegar a PROD (solo tras validar test):**
+   - Poner claim ADMIN semilla en prod (a mano / trigger).
+   - Backfill claims prod (endpoint migrate-roles con JWT ADMIN, o script).
+   - `firebase deploy --only firestore:rules --project <prod>`.
+   - 🔴 `firebase deploy --only firestore:indexes --project <prod>` — **10 índices (9+SUNAT) NUNCA desplegados a prod. Ventas REVIENTA en prod sin ellos** (el piloto Ventas usa getAggregateFromServer que exige el índice). Construcción en background (minutos) → esperar "Enabled".
+
+3. **Migración coils densityFactor a PROD** (test hecho): verificar coil_finishes/GALV prod tiene densityFactor 0.00785 → backup (gcloud firestore export) → dry-run → --apply.
+
+4. **Verificaciones del import masivo** (si no se hicieron): crear GRIS en coil_finishes (0.008) + probar import con CSV real en test (55 ítems, densityFactor derivado, length PL).
+
+---
+
+## 4. DEUDA / FRENTES GRANDES PENDIENTES
+
+- **Sprint 7 (Seguridad Capa 2 / Fase 2 rules):** migrar writes críticos a Cloud Functions (splitCoilAction, produceFromCoils, voidProductionFromCoils, registerCoilScrap, ventas/anulación). LUEGO cerrar las rules relajadas (sales.status, coils, \*\_stock) a `if false`. Esto convierte las rules en muro real.
+- **Capa 2 server-side:** session cookies + proxy.ts. Actualizar Next 16.1.7 → **16.2.6** (13 CVEs, 3 de bypass auth). proxy.ts = UX, no seguridad.
+- **Resto Grupo 2 tablas:** Kardex, Usuarios, Compras, Producción Drywall (replican mode cursor + agregación del piloto Ventas; ojo Grupo 2 es server-side, solo unificar visual).
+- **Backlog cosmético:** piecesProduced naming; redirects permanent:true→false; HeaderOptionsMenu reuso en sales; ACCESORIO→Trading.
+- **Otros:** migraciones densidad; ventas USD sin TC (FFA1-912/913/933); SUNAT BETA .p12; PDF reportes.
+
+---
+
+## 5. Convenciones (recordatorio)
+
+- 0 `any`. Código inglés, UI/errores español. Patrón Strategy. runTransaction lee antes de escribir. Sin borrado físico.
+- PEN + kg. USD→PEN TC real. Densidad por acabado. Reversa al costo congelado. Fallo ruidoso (no silencioso).
+- Tests serializados (fileParallelism:false) → 463/463. Build Vercel SIN credenciales (scripts excluidos del build). Push a develop dispara Vercel. Credenciales y \*.log en .gitignore.
+- **NUNCA cerrar "verde" sin verificación RUNTIME** — el patrón de esta sesión fue que "build verde" ocultó TDZ, redirects, índices faltantes y un bug crítico de classifyLine.
+
+---
+
+## 6. Skills
+
+- `grill-me` (stress-test planes, ej. Sprint 7 Functions).
+- `diagnose` (bugs — clave esta sesión).
+- `tdd` (Cloud Functions Sprint 7 con tests de integración + emulador rules).
+- `handoff` (cerrar sesión).
