@@ -22,11 +22,21 @@ export function useSales(filters: SalesFilters) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filteredTotal, setFilteredTotal] = useState(0);
+  const [aggregates, setAggregates] = useState<{ totalAmount: number; totalProfit: number; totalWeight: number } | null>(null);
+  const [isAlgolia, setIsAlgolia] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [debouncedSearch, setDebouncedSearch] = useState(filters.searchTerm);
 
   const firstDocRef = useRef<Cursor>(null);
   const lastDocRef = useRef<Cursor>(null);
+  const prevFiltersRef = useRef({
+    statusFilter: filters.statusFilter,
+    businessLine: filters.businessLine,
+    searchTerm: filters.searchTerm,
+    startDate: filters.startDate,
+    endDate: filters.endDate,
+    sunatFilter: filters.sunatFilter,
+  });
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(filters.searchTerm), 400);
@@ -34,8 +44,31 @@ export function useSales(filters: SalesFilters) {
   }, [filters.searchTerm]);
 
   const loadData = useCallback(
-    async (dir: "first" | "next" | "prev" = "first") => {
+    async (dir: "first" | "next" | "prev" = "first", forceRefetchAggregates = false) => {
       if ((filters.startDate && !filters.endDate) || (!filters.startDate && filters.endDate)) return;
+      
+      const filtersChanged = 
+        prevFiltersRef.current.statusFilter !== filters.statusFilter ||
+        prevFiltersRef.current.businessLine !== filters.businessLine ||
+        prevFiltersRef.current.searchTerm !== debouncedSearch ||
+        prevFiltersRef.current.startDate !== filters.startDate ||
+        prevFiltersRef.current.endDate !== filters.endDate ||
+        prevFiltersRef.current.sunatFilter !== filters.sunatFilter;
+
+      // Skip aggregates if filters haven't changed AND we already have them (from a previous first-page load)
+      // This applies to both pagination (dir="next"/"prev") and pageSize changes
+      const skipAggregates = forceRefetchAggregates ? false : 
+        (!filtersChanged && dir !== "first" ? true : (!filtersChanged && dir === "first" && aggregates !== null));
+
+      prevFiltersRef.current = {
+        statusFilter: filters.statusFilter,
+        businessLine: filters.businessLine,
+        searchTerm: debouncedSearch,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        sunatFilter: filters.sunatFilter,
+      };
+
       setLoading(true);
       setError(null);
       try {
@@ -49,11 +82,17 @@ export function useSales(filters: SalesFilters) {
           sunatFilter: filters.sunatFilter,
           direction: dir,
           cursorDoc: dir === "next" ? lastDocRef.current : dir === "prev" ? firstDocRef.current : null,
+          skipAggregates,
         });
         setSales(res.sales as unknown as Sale[]);
         firstDocRef.current = (res.firstDoc ?? null) as Cursor;
         lastDocRef.current = (res.lastDoc ?? null) as Cursor;
-        setFilteredTotal(res.totalCount || 0);
+        
+        if (!skipAggregates) {
+          setFilteredTotal(res.totalCount || 0);
+          setAggregates(res.aggregates);
+          setIsAlgolia(res.isAlgolia);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Error al cargar ventas");
       } finally {
@@ -89,8 +128,8 @@ export function useSales(filters: SalesFilters) {
     setCurrentPage(1);
     firstDocRef.current = null;
     lastDocRef.current = null;
-    void loadData("first");
+    void loadData("first", true);
   }, [loadData]);
 
-  return { sales, loading, error, filteredTotal, currentPage, hasNextPage, nextPage, prevPage, refresh };
+  return { sales, loading, error, filteredTotal, aggregates, isAlgolia, currentPage, hasNextPage, nextPage, prevPage, refresh };
 }

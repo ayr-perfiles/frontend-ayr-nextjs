@@ -6,6 +6,9 @@ import {
   documentId,
   endBefore,
   getCountFromServer,
+  getAggregateFromServer,
+  sum,
+  count,
   getDocs,
   limit,
   limitToLast,
@@ -455,6 +458,7 @@ export interface FetchSalesParams {
   direction?: 'first' | 'next' | 'prev';
   cursorDoc?: QueryDocumentSnapshot<DocumentData> | null;
   page?: number;
+  skipAggregates?: boolean;
 }
 
 export const fetchSales = async (params: FetchSalesParams) => {
@@ -470,6 +474,7 @@ export const fetchSales = async (params: FetchSalesParams) => {
     direction = 'first',
     cursorDoc,
     page = 0,
+    skipAggregates = false,
   } = params;
 
   // ── MOTOR ALGOLIA ─────────────────────────────────────────────────────────
@@ -495,7 +500,7 @@ export const fetchSales = async (params: FetchSalesParams) => {
         .filter(Boolean) as Record<string, unknown>[];
     }
 
-    return { sales, isAlgolia: true, algoliaData: { totalPages: nbPages, currentPage, nbHits }, firstDoc: null, lastDoc: null, totalCount: nbHits };
+    return { sales, isAlgolia: true, algoliaData: { totalPages: nbPages, currentPage, nbHits }, firstDoc: null, lastDoc: null, totalCount: nbHits, aggregates: null };
   }
 
   // ── MOTOR FIRESTORE ───────────────────────────────────────────────────────
@@ -504,7 +509,7 @@ export const fetchSales = async (params: FetchSalesParams) => {
   const hasDateFilter = !!startDate && !!endDate;
 
   if (statusFilter === 'ALL') {
-    if (!hasDateFilter && !customerDoc) {
+    if (!customerDoc) {
       baseConstraints.push(where('status', 'in', ['COMPLETED', 'QUOTATION', 'CONVERTED']));
     }
   } else {
@@ -530,8 +535,25 @@ export const fetchSales = async (params: FetchSalesParams) => {
 
   baseConstraints.push(orderBy('timestamp', 'desc'));
 
-  const countSnapshot = await getCountFromServer(query(collRef, ...baseConstraints));
-  const totalCount = countSnapshot.data().count;
+  let totalCount = 0;
+  let aggregates = { totalAmount: 0, totalProfit: 0, totalWeight: 0 };
+
+  if (!skipAggregates) {
+    const aggregateSnapshot = await getAggregateFromServer(query(collRef, ...baseConstraints), {
+      count: count(),
+      totalAmount: sum('totalAmount'),
+      totalProfit: sum('totalProfit'),
+      totalWeight: sum('totalWeight'),
+    });
+
+    const aggregateData = aggregateSnapshot.data();
+    totalCount = aggregateData.count;
+    aggregates = {
+      totalAmount: aggregateData.totalAmount || 0,
+      totalProfit: aggregateData.totalProfit || 0,
+      totalWeight: aggregateData.totalWeight || 0,
+    };
+  }
 
   const paginationConstraints = [...baseConstraints];
   if (direction === 'next' && cursorDoc) {
@@ -547,7 +569,7 @@ export const fetchSales = async (params: FetchSalesParams) => {
   const snapshot = await getDocs(query(collRef, ...paginationConstraints));
   let sales = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Record<string, unknown>[];
 
-  if (statusFilter === 'ALL' && (hasDateFilter || customerDoc)) {
+  if (statusFilter === 'ALL' && customerDoc) {
     sales = sales.filter((s) => ['COMPLETED', 'QUOTATION', 'CONVERTED'].includes(s.status as string));
   }
 
@@ -557,6 +579,7 @@ export const fetchSales = async (params: FetchSalesParams) => {
     firstDoc: snapshot.docs.length > 0 ? snapshot.docs[0] : null,
     lastDoc: snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null,
     totalCount,
+    aggregates,
   };
 };
 
