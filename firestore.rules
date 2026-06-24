@@ -1,15 +1,203 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Regla para la colección de usuarios
-    match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+
+    // ──── HELPERS ────
+    function isSignedIn() {
+      return request.auth != null;
     }
+    function hasRole(r) {
+      return isSignedIn() && 'role' in request.auth.token && request.auth.token.role == r;
+    }
+    function isAdmin() {
+      return isSignedIn() && 'role' in request.auth.token && request.auth.token.role == 'ADMIN';
+    }
+    function isStaff() {
+      return isSignedIn() && 'role' in request.auth.token && request.auth.token.role in ['ADMIN', 'SUPERVISOR', 'OPERATOR'];
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function fieldsUnchanged(fields) {
+      // Evita errores si se evalúa cuando resource es nulo (aunque no debería pasar en update)
+      return resource == null || !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ──── USERS ────
+    match /users/{uid} {
+      allow read: if isAdmin() || isOwner(uid);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (isOwner(uid) && fieldsUnchanged(['role', 'isActive']));
+    }
+
+    // ──── SETTINGS & INTEGRATIONS ────
+    match /settings/{document=**} {
+      allow read, write: if isAdmin();
+    }
+    match /integrations/{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // ──── CATALOGS (Products) ────
+    match /products/{document=**} { allow read: if isStaff(); allow write: if isAdmin() || hasRole('SUPERVISOR'); }
+    match /roofing_catalog/{document=**} { allow read: if isStaff(); allow write: if isAdmin() || hasRole('SUPERVISOR'); }
+    match /metallic_roofing_catalog/{document=**} { allow read: if isStaff(); allow write: if isAdmin() || hasRole('SUPERVISOR'); }
+    match /trading_catalog/{document=**} { allow read: if isStaff(); allow write: if isAdmin() || hasRole('SUPERVISOR'); }
+    match /services_catalog/{document=**} { allow read: if isStaff(); allow write: if isAdmin() || hasRole('SUPERVISOR'); }
+
+    // ──── PURCHASES ────
+    match /purchases/{document=**} {
+      allow read: if isAdmin() || hasRole('SUPERVISOR');
+      allow write: if isAdmin() || hasRole('SUPERVISOR');
+    }
+
+    // ──── AUDIT LOGS ────
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isStaff();
+      allow update, delete: if false; // Append-only
+    }
+
+    // ──── CORE BUSINESS: Ventas, Bobinas, Inventarios, Producción ────
+    // (FASE 1: Escritura abierta a isStaff() para no romper cliente, pero bloqueando mutación de campos críticos)
     
-    // Regla para el resto de las colecciones (coils, sales, etc.)
+    match /sales/{saleId} {
+      allow read: if isStaff();
+      // FASE 2: cerrar a if false cuando exista la Cloud Function createSale
+      allow create: if isStaff();
+      // Protegemos el SNAPSHOT financiero de la venta. Se permite cambiar 'status' o 'comments' en anulaciones legítimas
+      allow update: if isStaff() && fieldsUnchanged(['totalAmount', 'subtotal', 'igv', 'exchangeRate', 'currency', 'items', 'paymentType']);
+      allow delete: if isAdmin();
+      
+      match /history/{historyId} {
+        allow read: if isStaff();
+        allow write: if isStaff();
+      }
+    }
+
+    match /customers/{customerId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    match /contacts/{contactId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    match /coils/{coilId} {
+      allow read: if isStaff();
+      // FASE 2: cerrar a if false cuando exista la Cloud Function (split/corte)
+      allow create: if isStaff();
+      allow update: if isStaff(); // Relajado para admitir edición de inicial/costo o consumo
+      allow delete: if isAdmin();
+    }
+
+    match /cut_orders/{orderId} {
+      allow read: if isStaff();
+      // FASE 2: cerrar a if false
+      allow create: if isStaff();
+      allow update: if isStaff(); // Muta 'status', 'coils', 'sentWeightTotal' en el cliente
+      allow delete: if isAdmin();
+    }
+
+    match /strips_stock/{stripId} {
+      allow read: if isStaff();
+      // FASE 2: cerrar a if false
+      allow create: if isStaff();
+      allow update: if isStaff(); // Muta 'avgCostPerKg', 'totalStrips', 'totalWeight' en el cliente
+      allow delete: if isAdmin();
+    }
+
+    match /strips_movements/{movId} {
+      allow read: if isStaff();
+      // FASE 2: cerrar a if false
+      allow create: if isStaff();
+      allow update, delete: if false; // Trazabilidad append-only o functions
+    }
+
+    match /production_logs/{logId} {
+      allow read: if isStaff();
+      // FASE 2: cerrar a if false
+      allow create: if isStaff();
+      // Protegemos el SNAPSHOT de producción. Se permite cambiar 'status' en anulaciones
+      allow update: if isStaff() && fieldsUnchanged(['piecesProduced', 'sku', 'line', 'costPerPiece', 'baseCost', 'weightUsed', 'stripId', 'coilId']);
+      allow delete: if isAdmin();
+    }
+
+    match /inventory_stock/{itemId} {
+      allow read: if isStaff();
+      // FASE 2: cerrar a if false
+      allow create: if isStaff();
+      allow update: if isStaff(); // Muta 'stock', 'wac' desde el cliente en ventas/producción
+      allow delete: if isAdmin();
+    }
+
+    match /kardex_movements/{movId} {
+      allow read: if isStaff();
+      // FASE 2: cerrar a if false
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    match /scrap_logs/{logId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    match /roofing_stock/{document=**} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update: if isStaff(); // Muta stock/wac en cliente
+      allow delete: if isAdmin();
+    }
+    match /roofing_stock_movements/{document=**} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+    match /metallic_roofing_stock/{document=**} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update: if isStaff(); // Muta stock/wac en cliente
+      allow delete: if isAdmin();
+    }
+    match /metallic_roofing_stock_movements/{document=**} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+    match /trading_stock/{document=**} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update: if isStaff(); // Muta stock/wac en cliente
+      allow delete: if isAdmin();
+    }
+    match /trading_stock_movements/{document=**} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+    match /services_stock_movements/{document=**} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    match /coil_finishes/{document=**} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    match /supplier_sku_map/{document=**} {
+      allow read: if isStaff();
+      allow write: if isAdmin() || hasRole('SUPERVISOR');
+    }
+
+    // Default deny
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }

@@ -1,15 +1,27 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { initAdmin } from "@/lib/firebase/adminApp";
 
 /**
  * GET /api/scripts/migrate-roles
  * Migra roles de Firestore a Custom Claims de Auth.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const adminApp = initAdmin();
-    const db = adminApp.firestore();
     const auth = adminApp.auth();
+    const db = adminApp.firestore();
+
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "No autorizado. Token requerido." }, { status: 401 });
+    }
+    
+    const idToken = authHeader.split("Bearer ")[1];
+    const decodedToken = await auth.verifyIdToken(idToken);
+    
+    if (decodedToken.role !== "ADMIN") {
+      return NextResponse.json({ error: "Acceso denegado. Se requiere rol ADMIN." }, { status: 403 });
+    }
 
     const usersSnapshot = await db.collection("users").get();
     const totalUsers = usersSnapshot.size;
