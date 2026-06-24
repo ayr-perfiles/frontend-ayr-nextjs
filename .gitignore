@@ -47,3 +47,13 @@ next-env.d.ts
 serviceAccountKey.json
 serviceAccountKeyTest.json
 serviceAccount.json
+
+# Scripts y archivos temporales de migración/pruebas (no versionar)
+/prod-indexes.json
+/prod-indexes-final.json
+/run_backfill_api.*
+/run_check_coils.js
+/test-matrix.cjs
+/test-rules.js
+/test-trigger.cjs
+/scripts/backfill-claims-test.cjs
