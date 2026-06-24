@@ -9,8 +9,13 @@
     "skipLibCheck": true,
     "allowJs": true,
     "paths": {
-      "@/*": ["../src/*"]
+      "@/*": [
+        "../src/*"
+      ]
     }
   },
-  "include": ["**/*.ts", "**/*.js"]
+  "include": [
+    "**/*.ts",
+    "**/*.js"
+  ]
 }

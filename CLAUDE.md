@@ -1,124 +1,205 @@
-# GEMINI.md — AYR Steel ERP (v6.8)
+# CLAUDE.md — AYR Steel ERP (v6.9)
 
-> **Sprint actual:** Sprint 8 (SUNAT + Estandarización UI + Flejes v2) — En progreso 🏗️
-> **Estado:** Build 🟢 | Functions v2 operativa. UI estandarizada con Kit Reutilizable.
-> **v6.8:** Import masivo de catálogo aluzinc, unificación tablas Grupo 1, multiselect en kit de tablas, densidad heredada de acabados, layout unificado, correcciones TDZ.
+> **Sprint actual:** Sprint 8 (SUNAT + Estandarización UI) + Frente de Seguridad (Capa 1 rules) — En progreso 🏗️
+> **Estado:** Build 🟢 | tsc limpio | 463/463 tests (config serializada) | Functions v2 operativa.
+> **v6.9:** Import masivo de catálogo Aluzinc, multiselect retrocompatible en el kit, layout unificado (toggle/breadcrumb), Grupo 1 de unificación de tablas, piloto Grupo 2 (Ventas server-side), y **frente de seguridad Capa 1**: fix de sesión zombie, trigger de custom claims, endpoint de roles asegurado y firestore.rules Fase 1 por rol (desplegado a TEST, pendiente prod). Corrección de la regla de densidad NATURAL.
 
 ---
 
 ## 1. Contexto del Producto
 
-ERP modular para transformación y comercialización de acero/PVC. 5 líneas de negocio integradas bajo navegación por capacidad operativa. Internamente el sistema **trabaja en kg**.
+ERP modular para transformación y comercialización de acero/PVC. 5 líneas de negocio. Internamente el sistema **trabaja en kg**.
 
-| # | Línea | Módulo | Estado | Materia Prima | Modelo |
-|---|---|---|---|---|---|
-| 1 | **Drywall** | `drywall` | ✅ | Bobina (vía Flejes) | Transformación |
-| 2 | **Metallic Roofing**| `metallic-roofing` | 🏗️ Sprint 6B (BLOQUEADO) | Bobina (Conformado) | Transformación |
-| 3 | **Roofing (UPVC)** | `roofing` | ✅ | Producto Terminado | Compra-Venta |
-| 4 | **Trading** | `trading` | ✅ | Terceros | Compra-Venta |
-| 5 | **Services** | `services` | ✅ | N/A | No-OP Stock |
-
----
-
-## 2. Decisiones de Diseño Lockeadas (v6.8) ⚠️
-
-- **Densidad de bobinas (CORRECCIÓN):** 
-  - NATURAL aluzinc = `0.00785` (NO 0.008). 
-  - GALVANIZADO = `0.00785`.
-  - Prepintados color (AZUL/BLANCO/ROJO/VERDE/GRIS) = `0.008`.
-  - **REGLA DE ORO:** Anular afirmación previa "aluzinc natural/colores = 0.008". `densityFactor` se **hereda del acabado** (`coil_finishes`) como fuente única. NO se toma del CSV en los imports. Desnormalizado por bobina.
-- **Layout y UI:** Toggle único de sidebar en header (`AdminShell` única fuente). Breadcrumb dinámico (`segmentLabels` + fallback Detalle/Capitalizado) reemplaza el pathname crudo.
-- **Patrón de Forms:** Complejo → página dedicada (`/new`); Simple → modal. (Ej: Producción conformado movida a `/production/new`; la página principal aloja historial + botón).
+| #   | Línea                | Módulo             | Estado                     | Materia Prima          | Modelo         |
+| --- | -------------------- | ------------------ | -------------------------- | ---------------------- | -------------- |
+| 1   | **Drywall**          | `drywall`          | ✅                         | Bobina (vía Flejes)    | Transformación |
+| 2   | **Metallic Roofing** | `metallic-roofing` | ✅ Pipeline completo (dev) | Bobina (Conformado A2) | Transformación |
+| 3   | **Roofing (UPVC)**   | `roofing`          | ✅                         | Producto Terminado     | Compra-Venta   |
+| 4   | **Trading**          | `trading`          | ✅                         | Terceros               | Compra-Venta   |
+| 5   | **Services**         | `services`         | ✅                         | N/A                    | No-OP Stock    |
 
 ---
 
-## 3. Kit Estándar de Tablas (UI v6.8) 🆕
+## 2. Kit Estándar de Tablas (UI)
 
-Se ha unificado la visualización de datos masivos mediante componentes reutilizables en `@/components/ui/`:
+Componentes reutilizables en `@/components/ui/`:
 
-- **`DataTable<T>`:** Genérico tipado con `ColumnDef`. Soporta estados de carga, EmptyState y filas numeradas.
-- **`TableFilters`:** Barra de búsqueda inline + Drawer lateral derecho.
-  - **`FilterGroup`** ahora soporta `multiple?: boolean` (multiselect dinámico). Es **retrocompatible** (default single, sin cambios para tablas existentes).
-- **`TablePagination`:** Footer con conteo de registros, navegación, y selector de tamaño (requiere props `pageSizeOptions` + `onPageSizeChange` para mostrar selector). Default `15` global en `useTableData`.
-- **`RowActionsMenu`:** Menú de acciones por fila vía Portal (evita cortes por `overflow-hidden`).
-- **`useTableData`:** Hook para gestión de búsqueda, filtrado y paginación en el cliente.
-  - Expone `customFilter?: (row) => boolean` para lógicas booleanas avanzadas (ej. toggles de stock), evitando dependencias circulares (TDZ) al leer los filtros de states locales.
+- **`DataTable<T>`:** Genérico tipado con `ColumnDef`. Carga, EmptyState, filas numeradas.
+- **`TableFilters`:** Búsqueda inline + Drawer. `filterGroups` ahora soporta **`multiple?: boolean`** (multiselect) RETROCOMPATIBLE — default single, sin cambio para filtros existentes (§6).
+- **`TablePagination`:** Footer con conteo, navegación, selector de tamaño. ⚠️ El selector SOLO se muestra si recibe `pageSizeOptions` + `onPageSizeChange`. Soporta **`mode: 'pages' | 'cursor'`** (default 'pages'); 'cursor' oculta números, muestra flechas + "mostrando X–Y de Z" (para server-side, §7).
+- **`RowActionsMenu`:** Acciones por fila vía Portal.
+- **`useTableData`:** Hook de búsqueda/filtrado/paginación en CLIENTE. Default `pageSize=15`. Soporta `customFilter?: (row)=>boolean`. ⚠️ TDZ: `customFilter` debe leer estado de un `useState` PROPIO de la página, NO del retorno de `useTableData` (dependencia circular → "Cannot access X before initialization").
+- **`HeaderOptionsMenu`:** 🆕 Menú de opciones en cabecera (dropdown vía portal). Recibe items `{id,label,icon,href/onClick}`. Reutilizable. Hoy usado para "Importar masivo" en catálogo aluzinc.
+- **`useConfirm` / `ConfirmDialog`:** Variantes `default`/`danger`/`warning`; `requireInput`.
 
-**Unificación de tablas (en progreso):** 
-- **Grupo 1 (HECHO):** 3 inventarios (metallic/roofing/trading) migrados de paginación manual a `useTableData`.
-- **Grupo 2 (PENDIENTE):** Server-side con filtros custom (Ventas, Producción Drywall, CRM, Kardex, Usuarios). Migrar solo apariencia manteniendo lógica server-side, caso por caso.
-- **Grupo 3:** Ya conforme.
+**Paginación cliente vs server:** tablas con < ~500 registros usan `useTableData` (cliente, slicing en memoria). Tablas de gran volumen (Ventas, Kardex) usan cursores Firestore (`startAfter`/`endBefore`) server-side + `TablePagination mode="cursor"`. NO forzar useTableData (cliente) en server-side — filtraría solo la página visible.
 
 ---
 
-## 4. Módulo Import Masivo de Catálogo (/admin/catalog/import) 🆕
+## 3. Módulo Aluzinc / Metallic Roofing
 
-- **Acceso:** Botón "Importar masivo" **SOLO** en catálogo aluzinc. (Oculto en otras líneas temporalmente, código comentado para reactivar luego).
-- **Filtro del CSV:** Solo si CODIGO empieza `COB*` o `PL*` **Y** `material === ALUZINC`.
-- **Funcionamiento:**
-  - Editor por ítem (preview editable).
-  - Acabado por DROPDOWN dinámico de `coil_finishes` de línea aluzinc (sin match automático).
-  - `densityFactor` DERIVADO del acabado seleccionado (se ignora el `FACTOR` del CSV).
-  - Duplicados → **SKIP**, nunca merge. Se permite quitar ítems por fila.
-  - El guardado delega al `catalogService` de cada línea (no a un shape inventado en el import).
-- **Tratamiento de Líneas:**
-  - `COB*` → `COBERTURA_ML` (Unidad `METRO`, sin `length`).
-  - `PL*` → `PLANCHA_UND` (Unidad `PIEZA`, con `length`). El `length` es derivado del código como SUGERENCIA editable (Ej: `6MT`→6, `515`→5.15, `36`→3.6).
-- **Parseo Numérico Robusto:** SheetJS lee con `raw:true` (sin raw, "0,25" se convertía malamente a 25). Todas las columnas numéricas pasan por `parseNumValue` para detectar el separador decimal dinámicamente.
+Modelo **A2 desacoplado**: producción y ventas independientes. Anular venta NO toca producción/bobina; anular producción NO toca ventas.
 
----
+### 3.1 Schema de `production_logs` (unificado con Drywall)
 
-## 5. Módulo de Flejes y Producción (v6.5+)
+| Campo canónico                                                             | Notas                                                                                                               |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `parentCoilIds: string[]`                                                  | **Fuente de verdad.** Siempre array (1 o N).                                                                        |
+| `parentCoilId: string`                                                     | Compat legacy. **SIEMPRE = `parentCoilIds[0]`, nunca `null`**.                                                      |
+| `perCoilBreakdown: Array<{coilId, mlFromCoil, weightConsumedKg, costPEN}>` | **Fuente de verdad por bobina.** Habilita modal de rendimiento y anulación exacta.                                  |
+| `reportedWeight`                                                           | (eliminado alias `weightConsumedKg`).                                                                               |
+| `costPerPiece`                                                             | (eliminado alias `costoUnitarioPEN`).                                                                               |
+| `averageCostAfter`                                                         | (eliminado alias `avgCostAfter`).                                                                                   |
+| `piecesProduced`                                                           | ML si `COBERTURA_ML`, UND si `PLANCHA_UND`. El `quantity` exacto inyectado a stock. ⚠️ Nombre engañoso (Deuda §10). |
+| `mlProduced`                                                               | Propio de Aluzinc. Ausencia válida en planchas.                                                                     |
+| `line: "metallic-roofing"`                                                 | Filtro del historial.                                                                                               |
+| `status: "ACTIVE" \| "VOIDED"`                                             | Sin borrado físico.                                                                                                 |
 
-### 5.1 Flujo Oficial Flejes → Piezas
-El flujo antiguo `ConsumeStripForm` (basado en `coil.plannedStrips`) ha sido ELIMINADO. El proceso oficial es:
-1. **Inventario de Flejes** (`strips_stock`) → Seleccionar fleje disponible.
-2. **`OutsourcedProductionForm`** → Registrar piezas producidas.
-3. **`produceFromStrip`** → Acción atómica que descuenta stock de flejes e incrementa stock de producto terminado (Drywall).
+### 3.2 Unidad de stock (`metallic_roofing_stock.quantity`)
 
-### 5.2 Organización de Páginas
-- **Inventario Drywall:** Página separada para stock de piezas terminadas (perfiles).
-- **Producción:** Enfocada en iniciar procesos y ver historial operativo. Soporta query param `?sku=` para prefiltrado.
-- **Recepción de Flejes:** Integrada en `cut-orders` (`ReceiveStripsModal`). La ruta dedicada `strips-reception` ELIMINADA.
+**MIXTA por `ProductKind`** (derivado de `family` vía `coverageMetadataParser.ts`):
 
----
+- `COBERTURA_ML` → ML; `avgCost` en S/·ML⁻¹.
+- `PLANCHA_UND` → UND; `avgCost` en S/·UND⁻¹.
 
-## 6. Arquitectura de Datos (Actualizada)
+`produceFromCoils` resuelve unidad (`coilProduction.ts`) y la persiste en `piecesProduced`. La reversa resta `piecesProduced` sin re-consultar tipo.
 
-- **`strips_stock`:** Inventario consolidado por `widthMm`. Campos: `{ totalStrips, totalWeight, avgCostPerKg (WAC) }`.
-- **`strips_movements`:** Trazabilidad ENTRADA/SALIDA de flejes con `referenceId` y `costPerKg`.
-- **`production_logs`:** Incluyen campo `line: "drywall"`. Historial filtra estrictamente por este campo.
-- **`coil.plannedStrips`:** Mantenido como histórico. Flejes migrados llevan `migratedToStripsStock: true` + `originalPendingCount`.
-- **`cut_orders`:** Punto de entrada para nuevos procesos de corte; no se reconstruye desde logs antiguos.
+### 3.3 `voidProductionFromCoils(logId, userEmail)`
 
----
+`runTransaction`, lecturas antes de escrituras, idempotente, 0 borrado físico.
 
-## 7. Módulo SUNAT (v6.4)
+- Aborta si `status==='VOIDED'` o falta `perCoilBreakdown`.
+- **Bobinas:** devuelve `weightConsumedKg` exacto por bobina. Estado por peso resultante con tolerancia ε=0.01 kg (`>= initialWeight-ε → AVAILABLE`, `0<peso<initialWeight-ε → IN_PROGRESS`). Refleja peso NETO (puede tener otras producciones). Movimiento `IN`.
+- **PT:** `quantity -= piecesProduced`; `totalValue -= sum(perCoilBreakdown[].costPEN)` (costo congelado, NO WAC actual); `avgCost` recalculado; movimiento `SALIDA`.
+- **Audit:** `VOID_PRODUCTION_FROM_COILS`. Sin scrap (aluzinc quema `scrapWidth:0`).
 
-### 7.1 Arquitectura y Callables
-- **Emisión DIRECTA:** `xmlGenerator`, `xmlSigner`, `apiSunat` (SOAP).
-- **Secretos:** Secret Manager (binding mínimo). `functions/.secret.local` para emulador.
-- **Consultas:** RUC/DNI vía **decolecta.com** (Authorization Bearer token).
+### 3.4 Historial Aluzinc (`MetallicProductionHistory`)
+
+- `useMetallicProductionLogs` filtra `line==='metallic-roofing'`. Kit estándar + columna multi-bobina propia. `RowActionsMenu` → "Anular" (danger, solo ADMIN, si `status!=='VOIDED'`). VOIDED tachados.
+- Form de producción movido a página dedicada `/production/new` (no embebido). Página principal = historial + botón "Nueva Producción" (§5).
+
+### 3.5 Lector de rendimiento (`useCoilYield`/`yieldCalc.ts`)
+
+- `where('parentCoilIds','array-contains',coil.id)`. Suma `mlFromCoil` de la entrada del breakdown de esa bobina (NO el `totalMl` global). Excluye VOIDED. **Fallo ruidoso** si falta breakdown.
 
 ---
 
-## 8. UX y Confirmaciones 🆕
+## 4. Import Masivo de Catálogo Aluzinc (v6.9) 🆕
 
-Se han reemplazado `confirm()` y `prompt()` nativos por `useConfirm()`:
-- **`ConfirmProvider`:** Montado en el layout raíz.
-- **`ConfirmDialog`:** Variantes `default`, `danger`, `warning`.
-- **`requireInput`:** Soporta campos obligatorios y validación exacta (ej: escribir "ELIMINAR" para resetear BD).
-- **22 call sites migrados** incluyendo anulaciones, eliminaciones y acciones críticas.
+Página `/admin/catalog/import`. Acceso vía `HeaderOptionsMenu` → "Importar masivo", SOLO en catálogo aluzinc (oculto en otras líneas, código comentado para reactivar — el import volverá con otros filtros).
+
+- **Filtro:** CODIGO empieza `COB*` o `PL*` **Y** `material === 'ALUZINC'`. Excluye BOB*, ACCES*, COB*/PL* de compra-venta. (~55 ítems del Excel actual: 36 COB + 19 PL).
+- **Editor por ítem** (preview editable): cada fila editable. Campos de selección como dropdown.
+- **Acabado:** DROPDOWN de `coil_finishes` filtrado a aluzinc (sin match auto, el usuario elige por fila).
+- **densityFactor:** DERIVADO del acabado seleccionado (lookup coil_finishes). **IGNORA el FACTOR del CSV.** Fuente única de densidad = el acabado.
+- **COB\* → COBERTURA_ML** (METRO, sin length). **PL\* → PLANCHA_UND** (UND, con length).
+- **length de PL:** SUGERIDO desde el código (editable): `6MT→6`, `5MT→5`, `4MT→4`, `515→5.15`, `366→3.66`, `36→3.6`. Editable por si el parseo se equivoca.
+- **Autodetección decimal** (`parseNumValue`): coma o punto → normaliza a punto. ⚠️ **SheetJS `read(..., {raw:true})` es CRÍTICO** — sin `raw:true` SheetJS come la coma ("0,25"→25 creyéndola separador de miles). Con raw:true llega string crudo y parseNumValue lo convierte.
+- **Duplicados:** SKIP + marcar, NUNCA merge. **Quitar ítem** por fila. Delega a `catalogService` de cada línea (no shape inventado).
 
 ---
 
-## 9. Roadmap y Log de Migraciones (v6.8) 🆕
+## 5. Layout y UX (v6.9) 🆕
 
-- **HECHO (v6.8):** Import masivo Catálogo Aluzinc. Kit de tablas Multiselect. Unificación tablas Grupo 1. Patrón Forms v2 y Layout centralizado. Correcciones TDZ (Runtime).
-- **Migración Coils:** `densityFactor` desnormalizado por bobina heredado de `coil_finishes`, saneo `finish=GALV`. **APLICADO EN TEST** (41 bobinas). **PENDIENTE en PROD** (requiere verificar `coil_finishes/GALV` en prod + backup gcloud export + dry-run).
-- **Log Histórico (v6.5):** Flejes Atrapados migrados a `strips_stock` (36,204 kg). Backfill de campo `line: "drywall"` en 143 logs históricos.
-- **PENDIENTE / EN COLA:**
-  - **Ventas USD con error:** FFA1-912/913/933 sin `exchangeRate` (Fijar TC real manualmente).
-  - **SUNAT BETA:** Prueba real de emisión con certificado `.p12`.
-  - **Sprint 7 (Deuda):** `firestore.rules` por rol + Writes críticos a Functions.
-  - **Futuro:** Import XML en compras/recepción; guard de "número quemado" en SUNAT; idempotencia status-aware en re-import.
+- **Toggle único de sidebar:** vive en el HEADER. `AdminShell` es la única fuente del estado de colapso (`Sidebar` es controlado). Eliminado el toggle interno duplicado del sidebar.
+- **Breadcrumb dinámico:** reemplaza el pathname crudo. Diccionario `segmentLabels` (ruta→label español); IDs/segmentos largos → "Detalle"; residuales → capitalizado.
+- **Patrón de forms:** complejo/multi-paso → página dedicada (`/new`); simple → modal. Producción conformado movido a `/production/new`. Barrido confirmó: drywall/catálogos/cut-orders ya en modal (simples); ventas/compras ya en `/new`.
+
+---
+
+## 6. Multiselect en el Kit (v6.9) 🆕
+
+`FilterGroup` extendido con `multiple?: boolean` (default false → comportamiento single idéntico, RETROCOMPATIBLE). Con `multiple:true`: value es `string[]`, render de checkboxes/chips, matcher `selectedValues.includes(row[field])` (OR). Solo opt-in lo usa; tablas existentes sin cambio.
+
+**Filtros tabla catálogo aluzinc:** `finish` (multiselect dinámico de coil_finishes), `family/productKind`, `thickness` (dinámico), `status`, search. Eliminado el `colorFilter` custom de extraContent.
+
+---
+
+## 7. Unificación de Tablas + Ventas Server-Side (v6.9) 🆕
+
+**Auditoría global:** 3 grupos.
+
+- **Grupo 1 (HECHO):** 3 inventarios (metallic/roofing/trading) tenían paginación manual (useState + slice + currentPage fijo). Migrados a `useTableData`. Default 15, selector visible (con pageSizeOptions + onPageSizeChange).
+- **Grupo 2 (EN PROGRESO — server-side):** Ventas, Producción Drywall, CRM, Kardex, Usuarios. Paginan por cursor Firestore (volumen). NO migrar a useTableData cliente. Solo unificar lo VISUAL (TablePagination mode cursor + TableFilters), manteniendo motor server-side.
+- **Grupo 3 (ya conforme):** catálogos, inventarios drywall/flejes/bobinas, producción aluzinc, órdenes de corte, compras.
+
+**Piloto Ventas (HECHO):**
+
+- Paginación **cursor** (startAfter/endBefore). `TablePagination mode="cursor"` — flechas, no números (arregla el bug de desfase página↔datos). Selector de pageSize funciona reseteando a página 1 (descarta cursores viejos, re-consulta con nuevo limit).
+- **Totales reales** vía `getAggregateFromServer` (count + sum de totalAmount/totalProfit/totalWeight) sobre el set FILTRADO completo (no la página). Recalcula solo al cambiar filtro (cachea al paginar, flag `skipAggregates`).
+- **Degradación Algolia:** con búsqueda de texto activa, Firestore aggregation no aplica → ocultar las 3 tarjetas de dinero, mostrar solo Cantidad (nbHits de Algolia) + mensaje "Totales no disponibles en búsqueda por texto".
+- Índice SUNAT (`sales: sunat.estado + timestamp`) añadido.
+
+---
+
+## 8. Seguridad — Capa 1 (v6.9) 🆕 EN PROGRESO
+
+Modelo de 3 capas: (1) firestore.rules = seguridad real; (2) verificación server-side / writes a Functions; (3) guard de cliente (UX). Hoy se trabajó la Capa 1.
+
+### 8.1 Fix de sesión zombie (auth resiliente)
+
+`AuthContext` catch ya NO traga el error silenciosamente. Ante token inválido: intenta `getIdToken(true)` (refresh); si falla → `signOut` + limpiar estado → login. Distingue token-muerto de red transitoria (esta última expone `authError` recuperable, NO desloguea). `AuthGuard` no queda colgado (user sin role → signOut+login; authError → pantalla de error con reintentar).
+
+> ⚠️ NOTA: el bug "redirige a /dashboard 404, solo funciona en incógnito" que se investigó NO era de código — era **caché de redirect 308** en el navegador (de un proyecto viejo en localhost:3000). Se resuelve con DevTools "Disable cache" o limpieza profunda. El fix de zombie es mejora legítima aparte.
+
+### 8.2 Custom claims sincronizados — trigger `onUserWritten`
+
+Function v2 `onDocumentWritten('users/{uid}')`: inyecta `setCustomUserClaims(uid, {role})` al crear/cambiar. Idempotente (no reescribe si igual; no hace loop — escribe en Auth, no en el doc). **Revoca refresh tokens** en TODO downgrade (ADMIN→cualquiera, SUPERVISOR→OPERATOR) y en `isActive:false`. Delete del doc → limpia claims. Validado en emulador (11 casos).
+
+- ⚠️ Propagación: el claim no llega al token hasta refresh (hasta 1h). Cambios de rol → el usuario debe re-loguear o `getIdToken(true)`.
+
+### 8.3 Endpoint de roles asegurado
+
+`/api/scripts/migrate-roles` ahora exige Bearer token verificado con `role==='ADMIN'`. Ya no es público. Sirve de backfill de claims. Script `scripts/backfill-claims-test.cjs` apunta a test.
+
+### 8.4 firestore.rules Fase 1 (desplegado a TEST, NO prod)
+
+Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos verifican `'role' in request.auth.token` ANTES de leer el claim** (sin esto, usuario sin claim hace que la rule lance error CEL en vez de denegar limpio).
+
+- **Lectura por rol:** users (owner+admin), catálogos/stock/kardex/customers (isStaff), purchases (admin/supervisor), audit/settings (admin).
+- **Campos snapshot PROTEGIDOS contra update** (nadie los altera, ni ADMIN): sales (totalAmount/igv/items), production_logs (piecesProduced/baseCost/sku), users (role/isActive). Grietas cerradas gratis.
+- **Campos operativos RELAJADOS** (el cliente los muta hoy, // FASE 2): sales.status, production status, coils weight/status, \*\_stock stock/wac. Se cerrarán a `if false` en Sprint 7 cuando las Functions tomen esos writes.
+- **audit_logs / \*\_movements / scrap_logs:** append-only (`update,delete: if false` para TODOS, incluso ADMIN).
+- Validado: tests de emulador (15+ casos) + caso sin-claim deniega limpio. Desplegado a `ayrsteel-test`.
+- ⚠️ **Auto-bloqueo evitado:** ni ADMIN edita status/wac directo (fuerza lógica por backend). Prerequisito: usuario semilla necesita claim ADMIN a mano (huevo-gallina: migrate-roles exige ADMIN).
+
+---
+
+## 9. Roadmap
+
+**HECHO (v6.9):** Import masivo aluzinc; multiselect kit; layout (toggle/breadcrumb); patrón form→página; Grupo 1 tablas; piloto Ventas (cursor+agregación+Algolia); migración coils densityFactor (TEST); seguridad Capa 1 (zombie fix, claims trigger, endpoint, rules Fase 1 en TEST).
+
+**PENDIENTE / EN COLA (orden sugerido):**
+
+1. **Validar rules en TEST con roles reales:** ADMIN (anular venta, producir, anular producción, ajustar stock, compra) sin permission-denied; OPERATOR opera su línea y se bloquea en lo prohibido.
+2. **Desplegar a PROD (cuando test valide):** backfill claims prod → deploy rules prod → **deploy índices prod** (10 índices: 9 + SUNAT, declarados en firestore.indexes.json, NUNCA desplegados a prod — Ventas REVIENTA en prod sin ellos: `firebase deploy --only firestore:indexes`).
+3. **Migración coils densityFactor a PROD** (test hecho): verificar coil_finishes/GALV en prod tiene densityFactor → backup gcloud export → dry-run → apply.
+4. **Resto Grupo 2 tablas:** Kardex, Usuarios, Compras, Producción Drywall (replican mode cursor + agregación).
+5. **Sprint 7 (Seguridad Capa 2 — Fase 2 de rules):** writes críticos a Cloud Functions (`splitCoilAction`, `produceFromCoils`, `voidProductionFromCoils`, `registerCoilScrap`, ventas/anulación) → luego cerrar las rules relajadas a `if false`.
+6. **Capa 2 server-side:** session cookies + `proxy.ts` (Next 16) verificación de rutas. ⚠️ Actualizar Next 16.1.7 → **16.2.6** (parchea 13 CVEs, 3 de bypass de auth). proxy.ts es UX, NO seguridad — la seguridad real son las rules + checks en Server Actions/Functions.
+7. **Otros:** migraciones densidad (migrateFinishDensityFactors, migrate-cobertura-metadata, fix-density-factor-natural); ventas USD sin TC (FFA1-912/913/933); SUNAT BETA .p12; PDF reportes.
+
+---
+
+## 10. Deuda Técnica Menor (Backlog)
+
+- **`piecesProduced` nombre engañoso** (carga ML en coberturas). Decisión: NO renombrar (canónico compartido con Drywall).
+- **Redirects `permanent: true`** en next.config (308 cacheables): considerar pasarlos a `permanent: false` (307) para evitar que un redirect viejo se pegue al navegador.
+- **Línea ACCESORIO → Trading:** migración transversal.
+- **`HeaderOptionsMenu`:** sales/page.tsx tenía menú inline del que se extrajo; podría reusar el componente nuevo (evitar duplicación).
+
+---
+
+## 11. Convenciones
+
+- 0 `any` nuevos · nombres en inglés, datos/errores de usuario en español.
+- Patrón Strategy (`getStockStrategy`), no if/else por línea.
+- `runTransaction`: lee antes de escribir. NUNCA borrado físico (VOIDED + audit_logs).
+- Todo monto en **PEN**, peso en **kg**. USD→PEN con TC real, nunca fallback 3.75.
+- **Densidad: UNA por acabado** (`coil_finishes`, fuente única, heredada vía lookup; nunca hardcodear). **Valores: GALVANIZADO 0.00785; Aluzinc NATURAL 0.00785; Aluzinc prepintados color (AZUL/BLANCO/ROJO/VERDE/GRIS) 0.008.** ⚠️ CORRECCIÓN v6.9: NATURAL es 0.00785 (NO 0.008 como decía v6.7). Sí hay dos factores en aluzinc: natural 0.00785, colores 0.008.
+- Stock negativo permitido (warning, no bloqueo).
+- **Reversa siempre al costo congelado** de la transacción, nunca al WAC actual.
+- **Datos mal formados → fallo ruidoso** (throw / badge visible), nunca fallback silencioso.
+- **Tests:** `fileParallelism: false` (los de integración comparten emulador; en paralelo colisionan). Correr serializado para verde real (463/463).
+- **Build de Vercel = build SIN credenciales** (serviceAccountKey gitignored). Scripts de migración EXCLUIDOS del build Next (tsconfig exclude) — importan serviceAccountKey que no existe en Vercel. Verificar build renombrando la credencial localmente.
+- **Git:** push directo a `develop`. Push dispara Vercel. Credenciales (serviceAccountKey*, .env*) y \*.log en .gitignore.
