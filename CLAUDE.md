@@ -1,8 +1,8 @@
 # CLAUDE.md — AYR Steel ERP (v6.10)
 
-> **Sprint actual:** Sprint 8 (SUNAT + Estandarización UI) + Frente de Seguridad (Capa 1 rules) — En progreso 🏗️
+> **Sprint actual:** Sprint 8 (SUNAT + Estandarización UI + Flejes v2) — En progreso 🏗️
 > **Estado:** Build 🟢 | tsc limpio | 463/463 tests (config serializada) | Functions v2 operativa.
-> **v6.9:** Import masivo de catálogo Aluzinc, multiselect retrocompatible en el kit, layout unificado (toggle/breadcrumb), Grupo 1 de unificación de tablas, piloto Grupo 2 (Ventas server-side), y **frente de seguridad Capa 1**: fix de sesión zombie, trigger de custom claims, endpoint de roles asegurado y firestore.rules Fase 1 por rol (desplegado a TEST, pendiente prod). Corrección de la regla de densidad NATURAL.
+> **v6.10:** Estandarización UI de tablas (kit `@/components/ui/`), migración de datos de "flejes atrapados" completada, sistema de confirmación modal (`useConfirm`), flujo oficial Flejes → Producción, backfill de campo `line` en logs históricos. Frente de seguridad Capa 1 y 9 índices desplegados y validados en PROD.
 
 ---
 
@@ -132,9 +132,16 @@ Página `/admin/catalog/import`. Acceso vía `HeaderOptionsMenu` → "Importar m
 
 ---
 
-## 8. Seguridad — Capa 1 (v6.9) 🆕 EN PROGRESO
+## 8. Seguridad — Capa 1 (v6.10) 🆕 DESPLEGADO Y VALIDADO EN PROD
 
-Modelo de 3 capas: (1) firestore.rules = seguridad real; (2) verificación server-side / writes a Functions; (3) guard de cliente (UX). Hoy se trabajó la Capa 1.
+Modelo de 3 capas: (1) firestore.rules = seguridad real; (2) verificación server-side / writes a Functions; (3) guard de cliente (UX).
+
+Seguridad Capa 1 está DESPLEGADA Y VALIDADA EN PROD (ayrsteel-2026).
+- **Claims validados:** 4/4 usuarios clave actualizados y operativos (`frankrodrimilla` ADMIN, `doramc68` SUPERVISOR, `gsinuiri` ADMIN, `aalvarez` ADMIN).
+- **Índices en PROD:** 9 índices nuevos + configuración SUNAT habilitada en producción.
+- **Flujos críticos:** Anulación de venta (cadena `status` + `stock` + `movements`) validada en runtime sin errores de `permission-denied`.
+- **Frontend:** Alineado vía merge a master.
+- **Cierre parcial:** Las reglas de la FASE 2 (campos operativos en `sales.status`, `coils/*`, `*_stock` relajados) siguen abiertas. El candado definitivo se implementará en el Sprint 7 con Functions.
 
 ### 8.1 Fix de sesión zombie (auth resiliente)
 
@@ -152,7 +159,7 @@ Function v2 `onDocumentWritten('users/{uid}')`: inyecta `setCustomUserClaims(uid
 
 `/api/scripts/migrate-roles` ahora exige Bearer token verificado con `role==='ADMIN'`. Ya no es público. Sirve de backfill de claims. Script `scripts/backfill-claims-test.cjs` apunta a test.
 
-### 8.4 firestore.rules Fase 1 (desplegado a TEST, NO prod)
+### 8.4 firestore.rules Fase 1 (DESPLEGADO Y VALIDADO EN PROD)
 
 Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos verifican `'role' in request.auth.token` ANTES de leer el claim** (sin esto, usuario sin claim hace que la rule lance error CEL en vez de denegar limpio).
 
@@ -160,24 +167,28 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Campos snapshot PROTEGIDOS contra update** (nadie los altera, ni ADMIN): sales (totalAmount/igv/items), production_logs (piecesProduced/baseCost/sku), users (role/isActive). Grietas cerradas gratis.
 - **Campos operativos RELAJADOS** (el cliente los muta hoy, // FASE 2): sales.status, production status, coils weight/status, \*\_stock stock/wac. Se cerrarán a `if false` en Sprint 7 cuando las Functions tomen esos writes.
 - **audit_logs / \*\_movements / scrap_logs:** append-only (`update,delete: if false` para TODOS, incluso ADMIN).
-- Validado: tests de emulador (15+ casos) + caso sin-claim deniega limpio. Desplegado a `ayrsteel-test`.
+- Validado: tests de emulador (15+ casos) + caso sin-claim deniega limpio. Desplegado y validado en PROD (`ayrsteel-2026`).
 - ⚠️ **Auto-bloqueo evitado:** ni ADMIN edita status/wac directo (fuerza lógica por backend). Prerequisito: usuario semilla necesita claim ADMIN a mano (huevo-gallina: migrate-roles exige ADMIN).
 
 ---
 
 ## 9. Roadmap
 
-**HECHO (v6.9):** Import masivo aluzinc; multiselect kit; layout (toggle/breadcrumb); patrón form→página; Grupo 1 tablas; piloto Ventas (cursor+agregación+Algolia); migración coils densityFactor (TEST); seguridad Capa 1 (zombie fix, claims trigger, endpoint, rules Fase 1 en TEST).
+**HECHO (v6.10):**
+- **Despliegue de Seguridad Capa 1 en PROD:** Deploy exitoso de rules + 9 índices nuevos + custom claims de roles.
+- **Migración de Coils (Bobinas) en PROD:** 41/41 bobinas migradas a `finish=GALV` y `densityFactor=0.00785` (con backup local en `scripts/coils_backup_*.json`, gitignored), con idempotencia probada y runtime OK (cálculo de peso ↔ ML).
+- **Import masivo Aluzinc:** Editor por ítem con `densityFactor` derivado del acabado.
+- **Estandarización de Tablas:** Grupo 1 de tablas con unificación visual, y piloto de Ventas server-side con paginación cursor, agregación en tiempo real y soporte Algolia degradado.
+- **UX y confirmaciones:** Sistema `useConfirm` (Provider + Dialogs) para anulación y acciones críticas en producción/ventas.
 
 **PENDIENTE / EN COLA (orden sugerido):**
 
-1. **Validar rules en TEST con roles reales:** ADMIN (anular venta, producir, anular producción, ajustar stock, compra) sin permission-denied; OPERATOR opera su línea y se bloquea en lo prohibido.
-2. **Desplegar a PROD (cuando test valide):** backfill claims prod → deploy rules prod → **deploy índices prod** (10 índices: 9 + SUNAT, declarados en firestore.indexes.json, NUNCA desplegados a prod — Ventas REVIENTA en prod sin ellos: `firebase deploy --only firestore:indexes`).
-3. **Migración coils densityFactor a PROD** (test hecho): verificar coil_finishes/GALV en prod tiene densityFactor → backup gcloud export → dry-run → apply.
-4. **Resto Grupo 2 tablas:** Kardex, Usuarios, Compras, Producción Drywall (replican mode cursor + agregación).
-5. **Sprint 7 (Seguridad Capa 2 — Fase 2 de rules):** writes críticos a Cloud Functions (`splitCoilAction`, `produceFromCoils`, `voidProductionFromCoils`, `registerCoilScrap`, ventas/anulación) → luego cerrar las rules relajadas a `if false`.
-6. **Capa 2 server-side:** session cookies + `proxy.ts` (Next 16) verificación de rutas. ⚠️ Actualizar Next 16.1.7 → **16.2.6** (parchea 13 CVEs, 3 de bypass de auth). proxy.ts es UX, NO seguridad — la seguridad real son las rules + checks en Server Actions/Functions.
-7. **Otros:** migraciones densidad (migrateFinishDensityFactors, migrate-cobertura-metadata, fix-density-factor-natural); ventas USD sin TC (FFA1-912/913/933); SUNAT BETA .p12; PDF reportes.
+1. **Verificaciones del import masivo:** crear GRIS en `coil_finishes` (0.008) + probar import con CSV real en test (55 ítems, densityFactor derivado, length PL).
+2. **Sprint 7 (Seguridad Capa 2 — Fase 2 de rules):** migrar writes críticos a Cloud Functions (`splitCoilAction`, `produceFromCoils`, `voidProductionFromCoils`, `registerCoilScrap`, ventas/anulación) y luego cerrar las rules de Fase 2 (relajadas) a `if false` (candado final).
+3. **Capa 2 server-side / Infraestructura:** session cookies + `proxy.ts`. Actualizar Next 16.1.7 → **16.2.6** (parchea 13 CVEs, 3 de bypass de auth). proxy.ts es UX, NO seguridad.
+4. **Resto Grupo 2 tablas (mode cursor):** Kardex, Usuarios, Compras, Producción Drywall (replican mode cursor + agregación del piloto Ventas; unificación visual).
+5. **Backlog cosmético:** `piecesProduced` naming; redirects `permanent:true` → `false`; `HeaderOptionsMenu` reuso en sales; ACCESORIO → Trading.
+6. **Otros:** ventas USD sin TC (FFA1-912/913/933); SUNAT BETA .p12; PDF reportes.
 
 ---
 
@@ -203,4 +214,11 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Tests:** `fileParallelism: false` (los de integración comparten emulador; en paralelo colisionan). Correr serializado para verde real (463/463).
 - **Build de Vercel = build SIN credenciales** (serviceAccountKey gitignored). Scripts de migración EXCLUIDOS del build Next (tsconfig exclude) — importan serviceAccountKey que no existe en Vercel. Verificar build renombrando la credencial localmente.
 - **Git:** push directo a `develop`. Push dispara Vercel. Credenciales (serviceAccountKey*, .env*) y \*.log en .gitignore.
-- ⚠️ **firestore.indexes.json = fuente de verdad declarativa, edición MANUAL ADITIVA únicamente.** NUNCA sobrescribir con volcado de `firebase firestore:indexes` — el volcado pisa direcciones (ASC→DESC) y omite índices, causando deploys que BORRAN índices vivos. Lección dura: un 'formateo' automático tumbó los reportes de prod (perdió sales[status ASC,timestamp ASC]) y casi borra coils[status ASC,createdAt ASC]. SIEMPRE re-diff (--dry-run) antes de deploy de índices; revisar sección DELETE; cazar consumidor de cualquier índice antes de dejarlo morir.
+- ⚠️ **firestore.indexes.json = fuente de verdad declarativa de edición MANUAL ADITIVA.** NUNCA sobrescribir con volcado de `firebase firestore:indexes` — el volcado pisa direcciones (ASC→DESC) y omite índices, causando deploys que BORRAN índices vivos. Incidente v6.10: un commit de 'formateo' sobrescribió el archivo → perdió `sales[status ASC,timestamp ASC]` → TUMBÓ todos los reportes de prod (`getProductSalesReport`, `reportFunctions sales-kpi/by-line`) con `FAILED_PRECONDITION`. El re-diff atrapó que el deploy correctivo además iba a borrar `coils[status ASC,createdAt ASC]` huérfano. SIEMPRE: `--dry-run` antes de deploy de índices, revisar sección `DELETE`, y `grep` del consumidor antes de dejar morir cualquier índice. OJO trampa Firestore: where de rango sin orderBy explícito → exige índice ASC implícito.
+
+---
+
+## 12. Migraciones y Backups de Datos
+- **Migración de Coils (v6.10 - PROD):** Se migraron 41/41 bobinas en producción para asegurar que tengan `finish = "GALV"` y `densityFactor = 0.00785`. Idempotencia probada y runtime verificado (cálculo de peso ↔ ML).
+  - Acabados `coil_finishes` en PROD completo: `GALV` (0.00785), `ALU-NATURAL` (0.00785) y 5 colores `ALU-*` (0.008).
+  - **Backups:** Dado que `gcloud CLI` NO está instalado en el entorno, los backups de Firestore se realizan mediante un script JSON local (`scripts/coils_backup_*.json`, gitignored), lo cual es suficiente para volúmenes pequeños como 41 documentos. El backup local es restaurable ante fallos.
