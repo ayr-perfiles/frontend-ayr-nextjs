@@ -405,3 +405,9 @@ export { validarCpeSunat, consultarRuc, consultarDni } from "./callables/integra
 // ════════════════════════════════════════════════════════════
 
 export { importSireRce, parsePurchaseXml, confirmPurchaseStaging } from "./callables/purchases";
+
+// ════════════════════════════════════════════════════════════
+// MERMAS: Registro de merma en bobinas
+// ════════════════════════════════════════════════════════════
+
+export { registerCoilScrap } from "./callables/scrap";

@@ -81,8 +81,6 @@ export function RegisterScrapModal({
         coilId: coil.id,
         scrapWeightKg,
         reason,
-        adminEmail: user?.email ?? "admin",
-        role,
       });
 
       if (result.hasNegativeCoilWarning) {
