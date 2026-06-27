@@ -79,3 +79,10 @@ La meta de la próxima sesión es llevar la seguridad a su estado final:
 - `tdd`: Para desarrollar las Cloud Functions interactivamente usando el emulador y tests de integración.
 - `diagnose`: Ante cualquier comportamiento extraño o bug en runtime.
 - `handoff`: Para cerrar sesiones futuras de forma estructurada.
+
+---
+
+## 7. Deuda Técnica (Anotadas durante separación de codebases)
+
+- `correlative.ts` DUPLICADO en `functions/` y `functions-sunat/` (separación codebases). Riesgo divergencia (lección classifyLine). Resolver: paquete compartido o test de paridad.
+- `ayrsteel-TEST`: functions SUNAT/purchases huérfanas en codebase default viejo (deploy dijo N a borrar). Limpiar test antes de desplegar codebase sunat ahí.
