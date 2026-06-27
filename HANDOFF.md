@@ -41,6 +41,16 @@ La meta de la próxima sesión es llevar la seguridad a su estado final:
 
 ## 4. Pendientes en Cola (Roadmap)
 
+- 🔴 **DEUDA ÍNDICES (auditoría sesión v6.10, NO desplegados por decisión):** 6 queries sin índice declarado ni vivo — REVIENTAN en runtime al ejercerlas:
+  - **CRÍTICAS:** 
+    1. `listAvailableCoils` `[coils: status ASC, finish ASC, currentWeight ASC, createdAt DESC]` → rompe iniciar producción Drywall/Roofing.
+    2. `MovementsModal` `[strips_movements: widthMm ASC, timestamp DESC]` → rompe historial flejes.
+    3. Catálogos `trading_catalog` + `roofing_catalog` `[active ASC, displayName ASC]` → rompe listado UPVC/Trading.
+  - **CONDICIONAL:** 
+    4. `listCoils` filtros `metadata.currency/provider` → combinatoria grande; resolver por restricción de UI o vía aggregates/Algolia, NO declarar 15 índices.
+  - **LIMPIEZA:** 
+    5. El fantasma `sales[status, timestamp, totalAmount, totalProfit, totalWeight]` declarado sin consumidor (`sum()` no se indexa) → borrar del archivo en commit de limpieza.
+  *Definiciones exactas ya derivadas de las queries. Aplicar antes de que un usuario las tope en prod.*
 - **Verificaciones del Import Masivo:** Probar el import con un CSV real de 55 ítems y validar que la densidad se asigne correctamente y se detecten decimales.
 - **Seguridad & Infraestructura:**
    - Actualizar Next.js de `16.1.7` → `16.2.6` (parchea 13 CVEs, incluyendo 3 de bypass de autenticación).
