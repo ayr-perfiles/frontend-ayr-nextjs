@@ -142,7 +142,7 @@ service cloud.firestore {
 
     match /scrap_logs/{logId} {
       allow read: if isStaff();
-      allow create: if isStaff();
+      allow create: if isStaff(); // FASE 2: cerrar cuando registerCoilScrap Callable validado en prod Y frontend migrado
       allow update, delete: if false;
     }
 

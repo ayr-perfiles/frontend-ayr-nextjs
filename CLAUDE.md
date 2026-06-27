@@ -192,7 +192,19 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 
 ---
 
-## 10. Deuda Técnica Menor (Backlog)
+## 10. Decisiones de Diseño (Sprint 7 - ADRs)
+
+- **Cloud Functions Callable onCall v2:** NO server actions (razón: serviceAccountKey fuera de Vercel + request.auth nativo).
+- **Estructura de Writes:** 6 Functions separadas, una por write. Orden: scrap→split→produce→void→sale→annul.
+- **Payload thin client/fat backend:** baseCost/unitWeight/densityFactor/correlativo RE-LEÍDOS de fuente; unitPrice input vendedor, piso=costo, ADMIN lo cruza.
+- **Dominio puro:** copia canónica en `functions/src/domain/` + TEST DE PARIDAD vs copia cliente.
+- **Estrategias stock acopladas a db:** reimplementar I/O con admin SDK, extraer cálculo puro.
+- **Tests:** integración en `src/test/integration` contra emulador (`test:emu`).
+- **Candado rules:** cerrar FASE 2 a `if false` SOLO cuando Function validada runtime prod Y todos los escritores de esa colección migrados. Último paso de cada write.
+
+---
+
+## 11. Deuda Técnica Menor (Backlog)
 
 - **`piecesProduced` nombre engañoso** (carga ML en coberturas). Decisión: NO renombrar (canónico compartido con Drywall).
 - **Redirects `permanent: true`** en next.config (308 cacheables): considerar pasarlos a `permanent: false` (307) para evitar que un redirect viejo se pegue al navegador.
@@ -214,11 +226,12 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Tests:** `fileParallelism: false` (los de integración comparten emulador; en paralelo colisionan). Correr serializado para verde real (463/463).
 - **Build de Vercel = build SIN credenciales** (serviceAccountKey gitignored). Scripts de migración EXCLUIDOS del build Next (tsconfig exclude) — importan serviceAccountKey que no existe en Vercel. Verificar build renombrando la credencial localmente.
 - **Git:** push directo a `develop`. Push dispara Vercel. Credenciales (serviceAccountKey*, .env*) y \*.log en .gitignore.
+- ⚠️ **REGLA DE ORO (Functions):** Functions ACTIVE en functions:list = desplegada, NO validada. Como tsc verde. Validar runtime (invocar real en prod) antes de cerrar. Esta sesión: deploy bloqueado por secretos SUNAT acoplados; NUNCA secreto dummy en prod (rompe Algolia/APIs/SUNAT en runtime silenciosamente); NUNCA index.ts mutilado temporal; separar codebases es el fix correcto.
 - ⚠️ **firestore.indexes.json = fuente de verdad declarativa de edición MANUAL ADITIVA.** NUNCA sobrescribir con volcado de `firebase firestore:indexes` — el volcado pisa direcciones (ASC→DESC) y omite índices, causando deploys que BORRAN índices vivos. Incidente v6.10: un commit de 'formateo' sobrescribió el archivo → perdió `sales[status ASC,timestamp ASC]` → TUMBÓ todos los reportes de prod (`getProductSalesReport`, `reportFunctions sales-kpi/by-line`) con `FAILED_PRECONDITION`. El re-diff atrapó que el deploy correctivo además iba a borrar `coils[status ASC,createdAt ASC]` huérfano. SIEMPRE: `--dry-run` antes de deploy de índices, revisar sección `DELETE`, y `grep` del consumidor antes de dejar morir cualquier índice. OJO trampa Firestore: where de rango sin orderBy explícito → exige índice ASC implícito.
 
 ---
 
-## 12. Migraciones y Backups de Datos
+## 13. Migraciones y Backups de Datos
 - **Migración de Coils (v6.10 - PROD):** Se migraron 41/41 bobinas en producción para asegurar que tengan `finish = "GALV"` y `densityFactor = 0.00785`. Idempotencia probada y runtime verificado (cálculo de peso ↔ ML).
   - Acabados `coil_finishes` en PROD completo: `GALV` (0.00785), `ALU-NATURAL` (0.00785) y 5 colores `ALU-*` (0.008).
   - **Backups:** Dado que `gcloud CLI` NO está instalado en el entorno, los backups de Firestore se realizan mediante un script JSON local (`scripts/coils_backup_*.json`, gitignored), lo cual es suficiente para volúmenes pequeños como 41 documentos. El backup local es restaurable ante fallos.

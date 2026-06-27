@@ -1,5 +1,3 @@
-import type { CoilStatus } from "@/types";
-
 export function validateScrapRequest(
   scrapWeightKg: number,
   reason: string,
@@ -32,7 +30,7 @@ export function calculateNewWeight(
 
 export function determineCoilStatusAfterScrap(
   newWeight: number,
-  existingStatus: CoilStatus,
-): CoilStatus {
+  existingStatus: string,
+): string {
   return newWeight <= 0 ? "PROCESSED" : existingStatus;
 }

@@ -389,19 +389,7 @@ export const healthCheck = onCall(async () => {
 });
 
 // ════════════════════════════════════════════════════════════
-// SUNAT: Emisión y Bajas
+// MERMAS: Registro de merma en bobinas
 // ════════════════════════════════════════════════════════════
 
-export { emitirComprobante, comunicarBaja, consultarEstadoBaja } from "./sunat/callables";
-
-// ════════════════════════════════════════════════════════════
-// INTEGRACIONES: Validación CPE y Consultas RUC/DNI
-// ════════════════════════════════════════════════════════════
-
-export { validarCpeSunat, consultarRuc, consultarDni } from "./callables/integrations";
-
-// ════════════════════════════════════════════════════════════
-// COMPRAS: Importación SIRE/RCE y XML
-// ════════════════════════════════════════════════════════════
-
-export { importSireRce, parsePurchaseXml, confirmPurchaseStaging } from "./callables/purchases";
+export { registerCoilScrap } from "./callables/scrap";
