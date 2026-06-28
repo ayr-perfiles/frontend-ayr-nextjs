@@ -9,7 +9,6 @@ export const registerCoilSplit = onCall(async (request) => {
   }
 
   const { coilId, newChildWidthMm, requestId } = request.data;
-  const uid = request.auth.uid;
   const email = request.auth.token.email || "unknown";
   const role = request.auth.token.role;
 
