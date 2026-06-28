@@ -1,48 +1,73 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
 > **Subir SIEMPRE al inicio:** este `HANDOFF.md` + `CLAUDE.md` (v6.10).
-> **Foco próxima sesión:** Sprint 7 EN CURSO. Runtime B de scrap (merge frontend → merma real prod → cerrar rule scrap_logs). LUEGO write 2 (`splitCoilAction`) replicando el patrón probado.
-> **Preferencias (MANTENER):** Prompts de Claude Code por defecto. Caveman mode. Cada prompt con PASO 0 read-only. Preguntar ante cualquier duda. NUNCA dar por cerrado en verde sin validación en RUNTIME (tsc y tests verdes son necesarios, pero no suficientes para capturar todos los problemas en producción).
+> **Preferencias (MANTENER):** Prompts de Claude Code por defecto. Caveman mode. Cada prompt con PASO 0 read-only. Preguntar ante cualquier duda. NUNCA dar por cerrado en verde sin validación en RUNTIME.
 
 ---
 
-## 1. Estado al cerrar esta sesión
+## 1. Estado del Sprint 7 al cerrar esta sesión
 
-- **Sprint 7 EN CURSO:** Decisiones de diseño CERRADAS (registradas en CLAUDE.md como ADR).
-- **WRITE 1 (`registerCoilScrap`) estado:** Desplegada en prod y validada. Pendientes: cerrar rule `scrap_logs` (pero no `coils-weight` aún).
-- **WRITE 2 (`splitCoilAction`) HITO 5 (CIERRE):** Migración confirmada. `splitCoilService` ya NO escribe directo a BD vía `runTransaction` desde cliente, sólo llama a `httpsCallable('registerCoilSplit')`. (NO se cierran rules de coils/kardex/audit aún porque hay otros flujos pendientes).
-- **SEPARACIÓN CODEBASES:** `functions/` (default, sin secretos) + `functions-sunat/` (SUNAT+purchases+integrations+secrets.ts).
+- **WRITE 1 (registerCoilScrap): CERRADO en test Y prod.**
+  - Callable ACTIVE en ayrsteel-2026 (prod) y ayrsteel-test. Frontend migrado en master+develop.
+  - Rule `scrap_logs` candada (`allow create: if false`) en test. Validado runtime: la rule cerrada actuó como prueba forense de que scrap corre por la Callable (no cliente).
+  - *Pendiente prod:* confirmar rule `scrap_logs` candada también en prod (se cerró en test; verificar master).
 
----
+- **WRITE 2 (registerCoilSplit): CERRADO en test. PROD DIFERIDO.**
+  - **Backend:** Callable + dominio `coilPricing` portado con test de paridad (12 casos) + idempotencia vía `idempotency_keys`. Desplegada y ACTIVE en ayrsteel-test. Commits `a8f6f285` (backend) + `d7d510e4` (frontend) en develop.
+  - **Frontend:** `splitCoilService` migrado a `httpsCallable`, `runTransaction` cliente borrado. `requestId` idempotente POR INTENTO (`useRef`, reset-on-success) en `SplitCoilModal`.
+  - **Runtime test VALIDADO (incógnito):** hija nace con `densityFactor` (del finish, throw si falta), 2 kardex con `splitId` común, `idempotency_key` creada. Los 3 discriminadores confirman ejecución por Callable nueva.
+  - **Diseño cerrado:** roles ADMIN+SUPERVISOR, `childId` `${coilId}-S${uuid6}`, status lista-blanca AVAILABLE (dominio única fuente), `densityFactor` sin fallback, guard ruidoso de `currentWeight<=0`.
+  - *PENDIENTE PROD (secuencia obligatoria, regla de oro backend-antes-que-frontend):*
+    1. `firebase deploy --only functions:default --project ayrsteel-2026` (`registerCoilSplit` a prod)
+    2. Validar runtime prod (incógnito, 3 discriminadores)
+    3. RECIÉN merge develop→master (frontend llega a prod con backend ya vivo)
 
-## 2. Deuda Técnica y Pendientes Críticos
-
-- **Tipos Duplicados (`CoilStatus`):** copiado literal en `functions/src/domain/coilPricing.ts` (junto a `correlative.ts`) desde `src/types/index.ts` para aislar backend. Riesgo de divergencia silenciosa (paridad no lo atrapa). *Mitigación temporal*: Comentarios `// SYNC-MARKER` añadidos. *Fix futuro*: paquete de tipos compartido o test que compare definiciones.
-- **`idempotency_keys`:** Estrenada en WRITE 2 (split). scrap (WRITE 1) legacy quedó sin idempotencia. Es un patrón reusable para writes 3-6. Queda pendiente: Sin TTL/limpieza de keys aún (¿crecen indefinidamente? deuda menor a evaluar).
-- **Lección runtime:** Validar frontend en incógnito (bundle cacheado puede correr legacy). Agregar a reglas de validación en futuras pruebas.
-- **Hijas legacy huérfanas sin `densityFactor` en `ayrsteel-test`:** (de pruebas pre-migración) — basura de test, limpiar si molesta, no urgente.
-- **Candado pendiente para Rules:** Las colecciones `coils` / `kardex_movements` / `audit_logs` NO se pueden cerrar (bloquear client-writes) hasta migrar `produce` + `sale` (scrap ya migrado). 
-  - *Inventario de escritores cliente (runTransaction) restantes en `src/core/coils/`:*
-    - `coilConsumptionService.ts`
-    - `coilService.ts`
-    - `cutOrderService.ts`
-    - `stripsStockService.ts`
-- 🔴 **DEUDA ÍNDICES:** 6 índices Firestore sin desplegar (auditoría v6.10): `listAvailableCoils`, `MovementsModal`, catálogos trading/roofing CRÍTICOS (revientan en runtime). Definiciones exactas ya derivadas.
-- **ESQUEMA `kardex_movements` (Semántica de Unidades):**
-  - *Problema:* Divergencia semántica en `quantity` y `balance` entre bobinas (usan `quantity: 1` + `weightKg` + `balance` en kg) y drywall (usan `quantity`/`balance` en piezas).
-  - *Fix:* Introducir un campo `unit` explícito (`PIECES` | `KG`) por documento y eliminar el `quantity: 1` placeholder en bobinas para habilitar renderizado condicional adaptativo.
+- **WRITE 3 (coilService - voidCoil/updateCoil/cancelCoilPlan): CERRADO en test. PROD DIFERIDO.**
+  - **Backend:** Callables `voidCoil`, `updateCoil` y `cancelCoilPlan` desplegadas en `ayrsteel-test`.
+  - **Seguridad:** Agujero de `currentWeight` cerrado en el backend (se deriva directamente de `initialWeight`, ignorando el del cliente) y se limitaron los campos mutables (*allowlist*).
+  - **Frontend:** `coilService.ts` migrado para usar las 3 Callables. Limpieza de imports huérfanos realizada. Compilación (`tsc`) en verde.
 
 ---
 
-## 3. Próxima Sesión
+## 2. Estado de Candados y Escritores Cliente Restantes
 
-Arranca con: WRITE 3 (ej. `produce` o `sale`) replicando el patrón probado con idempotency keys, cerrando poco a poco las llamadas legacy de `runTransaction` en los servicios del core.
+El candado de `coils`/`kardex_movements`/`audit_logs` NO se puede cerrar en las Security Rules hasta que se migren TODOS los escritores cliente. Tras la migración de `coilService`, el mapa actualizado de escritores cliente restantes es:
+
+- **`audit_logs`** (a 1 write principal de coils de candarse):
+  - `src/core/coils/services/cutOrderService.ts` (sendToCut, receiveStrips, voidCutOrder, updateCutOrderInvoice, updateSentOrder)
+  - *Otros módulos fuera de coils:* `salesService.ts` (ventas/anulaciones), `productionService.ts` (módulos drywall/metallic), `settingsService.ts` (cambios en settings), `sales/import/page.tsx` (re-importación).
+- **`coils`**:
+  - `src/core/coils/services/coilConsumptionService.ts` (consumeCoil)
+  - `src/core/coils/services/cutOrderService.ts` (sendToCut, receiveStrips, voidCutOrder, updateSentOrder)
+  - `src/core/coils/components/` (`AddCoilForm.tsx`, `BulkUploadCoils.tsx`, `PurchaseCoilFromXml.tsx` - para registro/alta de bobinas)
+  - `src/core/sales/services/salesService.ts` (actualizaciones al vender bobinas/trading)
+  - `src/modules/` (`drywall/services/productionService.ts`, `metallic-roofing/services/productionService.ts` - para reversas/anulaciones de producción)
+- **`kardex_movements`**:
+  - `src/core/coils/services/coilConsumptionService.ts` (vía `StockStrategy.writeProductionIncrement` en drywall)
+  - `src/core/sales/services/salesService.ts` (ventas/anulaciones)
+  - `src/modules/` (producción/anulación drywall y roofing)
 
 ---
 
-## 4. Suggested Skills
+## 3. Deudas registradas (mantener)
 
-- `grill-me`: Para realizar stress-test y alineación sobre el plan del Sprint 7 de Cloud Functions.
-- `tdd`: Para desarrollar las Cloud Functions interactivamente usando el emulador y tests de integración.
-- `diagnose`: Ante cualquier comportamiento extraño o bug en runtime.
-- `handoff`: Para cerrar sesiones futuras de forma estructurada.
+- **Tipos Duplicados (`CoilStatus`):** copiado literal en `functions/` (junto a `correlative.ts`). Sync-marker en `src/types/index.ts`. Paridad NO atrapa divergencia de tipos.
+- **`idempotency_keys` sin TTL/limpieza:** → crecen indefinidamente (deuda menor). scrap (WRITE 1) legacy sin idempotencia.
+- **Hijas legacy huérfanas sin `densityFactor` en `ayrsteel-test`:** (basura de prueba pre-migración, baja prioridad).
+- 🔴 **DEUDA ÍNDICES:** 6 índices Firestore sin desplegar (auditoría v6.10): `listAvailableCoils`, `MovementsModal`, catálogos trading/roofing CRÍTICOS (revientan en runtime). Definiciones exactas ya derivadas (de HANDOFF previo — NO perder).
+- **8 secretos SUNAT inexistentes en GCP prod:** → `functions-sunat` no desplegable. `correlative.ts` duplicado. Huérfanas SUNAT en ayrsteel-test.
+- **`.vercelignore`:** `functions-sunat` agregado en develop (`8d31935d`). MASTER aún sin ese fix → si el build de prod toca `functions-sunat`, fallará. Verificar/propagar a master en próximo merge.
+- **Deuda cosmética `_userEmail`:** Se mantuvo el parámetro `_userEmail` como no-op en las firmas de `coilService.ts` para no romper llamadas en `page.tsx` sin necesidad. Pendiente limpiar en el componente de UI.
+
+---
+
+## 4. Lección reforzada esta sesión
+
+- **Validar runtime de frontend SIEMPRE en incógnito:** bundle SPA cacheado puede ejecutar código legacy horas tras el deploy. "Deploy arriba" ≠ "navegador corre lo nuevo". El `densityFactor`/`splitId`/`idempotency_key` sirven como discriminadores de código nuevo vs legacy.
+- **El candado de rules sirve como prueba forense:** si una escritura pasa con la rule cerrada, fue la Callable (Admin SDK); si rebota `permission-denied`, era cliente.
+
+---
+
+## 5. Próxima Sesión
+
+Arranca: Planificar la migración de `coilConsumptionService.ts` (WRITE 4 - `consumeCoil` y su Strategy pattern) o decidir si se lleva el bloque de WRITE 2 + WRITE 3 a producción (`ayrsteel-2026`) siguiendo la secuencia obligatoria de despliegue antes de habilitar el frontend.
