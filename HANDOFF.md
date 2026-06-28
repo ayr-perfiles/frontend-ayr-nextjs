@@ -24,6 +24,11 @@
 - **ayrsteel-TEST:** functions SUNAT/purchases huérfanas en codebase default viejo (deploy dijo N a borrar) → limpiar antes de desplegar codebase sunat a test.
 - 🔴 **DEUDA ÍNDICES:** 6 índices Firestore sin desplegar (auditoría v6.10): `listAvailableCoils`, `MovementsModal`, catálogos trading/roofing CRÍTICOS (revientan en runtime). Definiciones exactas ya derivadas.
 - **8 secretos SUNAT no existen en GCP prod:** codebase sunat no desplegable hasta crear secretos REALES (NUNCA dummy — rompería Algolia/APIs).
+- **ESQUEMA `kardex_movements` (Semántica de Unidades):**
+  - *Problema:* Divergencia semántica en `quantity` y `balance` entre bobinas (usan `quantity: 1` + `weightKg` + `balance` en kg) y drywall (usan `quantity`/`balance` en piezas).
+  - *Fix:* Introducir un campo `unit` explícito (`PIECES` | `KG`) por documento y eliminar el `quantity: 1` placeholder en bobinas para habilitar renderizado condicional adaptativo.
+  - *Decisión:* ¿Una sola tabla adaptativa o vistas separadas? (Se recomienda una sola tabla adaptativa).
+  - *⚠️ Implicación:* Dado que los writes 2-5 (split, produce, sale) escribirán más movimientos de bobina a `kardex_movements`, se debe decidir este esquema **antes o en paralelo** a dichos desarrollos para evitar acumular documentos desalineados que requieran migración.
 
 ---
 
