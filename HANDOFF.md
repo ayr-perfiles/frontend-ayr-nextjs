@@ -9,32 +9,34 @@
 ## 1. Estado al cerrar esta sesión
 
 - **Sprint 7 EN CURSO:** Decisiones de diseño CERRADAS (registradas en CLAUDE.md como ADR).
-- **WRITE 1 (`registerCoilScrap`) estado:**
-  - Function + dominio + 9 tests integración (feliz/rol/sin-rol/input/coil inválido) VERDE.
-  - DESPLEGADA Y ACTIVE en prod ayrsteel-2026. `onUserWritten` también desplegado (era deuda Fase 1) y VALIDADO runtime A en prod.
-  - PENDIENTE para cerrar scrap: (B) merge frontend scrap a master → runtime: registrar merma real en prod. (C) cerrar rule `scrap_logs` a `if false` (`coils-weight` NO cerrar aún: split/produce también escriben coils).
-  - Frontend scrap YA migrado (`RegisterScrapModal`+`scrapService` llaman Callable, `runTransaction` cliente borrado) en develop, NO mergeado a master.
-- **SEPARACIÓN CODEBASES:** `functions/` (default, sin secretos) + `functions-sunat/` (SUNAT+purchases+integrations+secrets.ts). Desbloqueó deploys. SUNAT/purchases NO están vivas en prod (código nuevo nunca desplegado, bloqueado por 8 secretos inexistentes en GCP).
+- **WRITE 1 (`registerCoilScrap`) estado:** Desplegada en prod y validada. Pendientes: cerrar rule `scrap_logs` (pero no `coils-weight` aún).
+- **WRITE 2 (`splitCoilAction`) HITO 5 (CIERRE):** Migración confirmada. `splitCoilService` ya NO escribe directo a BD vía `runTransaction` desde cliente, sólo llama a `httpsCallable('registerCoilSplit')`. (NO se cierran rules de coils/kardex/audit aún porque hay otros flujos pendientes).
+- **SEPARACIÓN CODEBASES:** `functions/` (default, sin secretos) + `functions-sunat/` (SUNAT+purchases+integrations+secrets.ts).
 
 ---
 
 ## 2. Deuda Técnica y Pendientes Críticos
 
-- **`correlative.ts` DUPLICADO:** en `functions/` y `functions-sunat/` (separación codebases). Riesgo divergencia. Resolver: test de paridad o paquete compartido.
-- **ayrsteel-TEST:** functions SUNAT/purchases huérfanas en codebase default viejo (deploy dijo N a borrar) → limpiar antes de desplegar codebase sunat a test.
+- **Tipos Duplicados (`CoilStatus`):** copiado literal en `functions/src/domain/coilPricing.ts` (junto a `correlative.ts`) desde `src/types/index.ts` para aislar backend. Riesgo de divergencia silenciosa (paridad no lo atrapa). *Mitigación temporal*: Comentarios `// SYNC-MARKER` añadidos. *Fix futuro*: paquete de tipos compartido o test que compare definiciones.
+- **`idempotency_keys`:** Estrenada en WRITE 2 (split). scrap (WRITE 1) legacy quedó sin idempotencia. Es un patrón reusable para writes 3-6. Queda pendiente: Sin TTL/limpieza de keys aún (¿crecen indefinidamente? deuda menor a evaluar).
+- **Lección runtime:** Validar frontend en incógnito (bundle cacheado puede correr legacy). Agregar a reglas de validación en futuras pruebas.
+- **Hijas legacy huérfanas sin `densityFactor` en `ayrsteel-test`:** (de pruebas pre-migración) — basura de test, limpiar si molesta, no urgente.
+- **Candado pendiente para Rules:** Las colecciones `coils` / `kardex_movements` / `audit_logs` NO se pueden cerrar (bloquear client-writes) hasta migrar `produce` + `sale` (scrap ya migrado). 
+  - *Inventario de escritores cliente (runTransaction) restantes en `src/core/coils/`:*
+    - `coilConsumptionService.ts`
+    - `coilService.ts`
+    - `cutOrderService.ts`
+    - `stripsStockService.ts`
 - 🔴 **DEUDA ÍNDICES:** 6 índices Firestore sin desplegar (auditoría v6.10): `listAvailableCoils`, `MovementsModal`, catálogos trading/roofing CRÍTICOS (revientan en runtime). Definiciones exactas ya derivadas.
-- **8 secretos SUNAT no existen en GCP prod:** codebase sunat no desplegable hasta crear secretos REALES (NUNCA dummy — rompería Algolia/APIs).
 - **ESQUEMA `kardex_movements` (Semántica de Unidades):**
   - *Problema:* Divergencia semántica en `quantity` y `balance` entre bobinas (usan `quantity: 1` + `weightKg` + `balance` en kg) y drywall (usan `quantity`/`balance` en piezas).
   - *Fix:* Introducir un campo `unit` explícito (`PIECES` | `KG`) por documento y eliminar el `quantity: 1` placeholder en bobinas para habilitar renderizado condicional adaptativo.
-  - *Decisión:* ¿Una sola tabla adaptativa o vistas separadas? (Se recomienda una sola tabla adaptativa).
-  - *⚠️ Implicación:* Dado que los writes 2-5 (split, produce, sale) escribirán más movimientos de bobina a `kardex_movements`, se debe decidir este esquema **antes o en paralelo** a dichos desarrollos para evitar acumular documentos desalineados que requieran migración.
 
 ---
 
 ## 3. Próxima Sesión
 
-Arranca con: Runtime B de scrap (merge frontend → merma real prod → cerrar rule `scrap_logs`). LUEGO write 2 (`splitCoilAction`) replicando el patrón probado.
+Arranca con: WRITE 3 (ej. `produce` o `sale`) replicando el patrón probado con idempotency keys, cerrando poco a poco las llamadas legacy de `runTransaction` en los servicios del core.
 
 ---
 
