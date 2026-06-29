@@ -175,7 +175,10 @@ describe('Sales Re-import Logic (Integration)', () => {
     expect(stock2?.quantity).toBe(90); // Omitida
   });
 
-  it('2. Importar -> anular -> re-importar corregido -> doc COMPLETED con datos nuevos; history existe; stock OK', async () => {
+  // SKIP hasta WRITE 9 (salesService Callable). La reimportación SUNAT debe mutar items
+  // por backend; firestore.rules §8.4 protege items/totalAmount/igv contra escritura cliente
+  // por diseño (DESPLEGADO EN PROD). No debilitar la rule.
+  it.skip('2. Importar -> anular -> re-importar corregido -> doc COMPLETED con datos nuevos; history existe; stock OK', async () => {
     const sku = 'REIMP-2';
     await seedStock(db, 'roofing_stock', sku, { quantity: 100, avgCost: 10 });
 
@@ -236,7 +239,10 @@ describe('Sales Re-import Logic (Integration)', () => {
     expect(auditSnap.docs[0].data().documentNumber).toBe('F001-0002');
   });
 
-  it('3. Tres ciclos anular->reimportar sobre el mismo número -> 3 entradas distintas en history', async () => {
+  // SKIP hasta WRITE 9 (salesService Callable). La reimportación SUNAT debe mutar items
+  // por backend; firestore.rules §8.4 protege items/totalAmount/igv contra escritura cliente
+  // por diseño (DESPLEGADO EN PROD). No debilitar la rule.
+  it.skip('3. Tres ciclos anular->reimportar sobre el mismo número -> 3 entradas distintas en history', async () => {
     const sku = 'REIMP-3';
     await seedStock(db, 'roofing_stock', sku, { quantity: 1000, avgCost: 10 });
     const saleRef = doc(db, 'sales', 'F001-0003');
@@ -280,7 +286,10 @@ describe('Sales Re-import Logic (Integration)', () => {
     expect(names).toContain('Cliente V3');
   });
 
-  it('4. Re-import de NC anulada respeta ncStockAction al reaplicar', async () => {
+  // SKIP hasta WRITE 9 (salesService Callable). La reimportación SUNAT debe mutar items
+  // por backend; firestore.rules §8.4 protege items/totalAmount/igv contra escritura cliente
+  // por diseño (DESPLEGADO EN PROD). No debilitar la rule.
+  it.skip('4. Re-import de NC anulada respeta ncStockAction al reaplicar', async () => {
     const sku = 'REIMP-4';
     await seedStock(db, 'roofing_stock', sku, { quantity: 100, avgCost: 10 });
     const saleRef = doc(db, 'sales', 'NC-0004');

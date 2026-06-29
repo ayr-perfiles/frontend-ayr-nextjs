@@ -22,24 +22,32 @@ const PROJECT_ID = "ayrsteel-test";
 
 export async function setupIntegrationTest() {
   const currentProjectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || PROJECT_ID;
-  let app;
+  let adminApp: admin.app.App;
   try {
-    app = admin.app(currentProjectId);
+    adminApp = admin.app(currentProjectId);
   } catch {
-    app = admin.initializeApp({ projectId: currentProjectId }, currentProjectId);
+    adminApp = admin.initializeApp({ projectId: currentProjectId }, currentProjectId);
   }
 
-  // Create and sign in a test user to satisfy firestore.rules (request.auth != null)
   const email = `test-integration@example.com`;
   const password = "password123";
+  let uid: string | undefined;
   try {
-    await createUserWithEmailAndPassword(auth, email, password);
-  } catch (e: any) {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    uid = cred.user.uid;
+  } catch {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (e2: any) {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      uid = cred.user.uid;
+    } catch {
       // ignore
     }
+  }
+
+  // Set ADMIN claim so firestore.rules (claim-only) permits writes from this user
+  if (uid) {
+    await adminApp.auth().setCustomUserClaims(uid, { role: 'ADMIN' });
+    await auth.currentUser?.getIdToken(true);
   }
 
   return { app: null as any, db, auth };
@@ -74,8 +82,16 @@ export async function cleanupIntegrationTest(_app: any, _db: Firestore) {
 }
 
 export async function setTestUserAdmin(email: string) {
-  // Dummy setTestUserAdmin to make salesReimport test happy
-  // or use admin SDK to set custom claims if needed
+  const currentProjectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || PROJECT_ID;
+  let adminApp: admin.app.App;
+  try {
+    adminApp = admin.app(currentProjectId);
+  } catch {
+    adminApp = admin.initializeApp({ projectId: currentProjectId }, currentProjectId);
+  }
+  const user = await adminApp.auth().getUserByEmail(email);
+  await adminApp.auth().setCustomUserClaims(user.uid, { role: 'ADMIN' });
+  await auth.currentUser?.getIdToken(true);
 }
 // Fixtures
 export async function seedCoil(db: any, data: any) {
