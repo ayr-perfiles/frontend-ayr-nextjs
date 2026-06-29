@@ -9,7 +9,7 @@ export const voidCoil = onCall(async (request) => {
 
   const email = request.auth.token.email || "unknown";
   const role = request.auth.token.role;
-  const isTestUser = email.endsWith("@example.com") || email.endsWith("@ayrsteel.com");
+  const isTestUser = email.endsWith("@example.com");
   if (role !== "ADMIN" && role !== "SUPERVISOR" && !isTestUser) {
     throw new HttpsError("permission-denied", "Solo un ADMIN o SUPERVISOR puede anular bobinas");
   }
@@ -68,7 +68,7 @@ export const updateCoil = onCall(async (request) => {
 
   const email = request.auth.token.email || "unknown";
   const role = request.auth.token.role;
-  const isTestUser = email.endsWith("@example.com") || email.endsWith("@ayrsteel.com");
+  const isTestUser = email.endsWith("@example.com");
   if (role !== "ADMIN" && role !== "SUPERVISOR" && !isTestUser) {
     throw new HttpsError("permission-denied", "Solo un ADMIN o SUPERVISOR puede modificar bobinas");
   }
@@ -158,7 +158,7 @@ export const cancelCoilPlan = onCall(async (request) => {
 
   const email = request.auth.token.email || "unknown";
   const role = request.auth.token.role;
-  const isTestUser = email.endsWith("@example.com") || email.endsWith("@ayrsteel.com");
+  const isTestUser = email.endsWith("@example.com");
   if (role !== "ADMIN" && role !== "SUPERVISOR" && !isTestUser) {
     throw new HttpsError("permission-denied", "Solo un ADMIN o SUPERVISOR puede cancelar planes");
   }

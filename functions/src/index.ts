@@ -399,4 +399,3 @@ export { registerCoilScrap } from "./callables/scrap";
 export { registerCoilSplit } from "./callables/split";
 
 export { voidCoil, updateCoil, cancelCoilPlan } from "./callables/coilManagement";
-export { getTestEnv } from './callables/testEnv';

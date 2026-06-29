@@ -18,7 +18,7 @@ export const registerCoilScrap = onCall(async (request) => {
   const role = request.auth.token.role;
 
   const email = request.auth.token.email || "unknown";
-  const isTestUser = email.endsWith("@example.com") || email.endsWith("@ayrsteel.com");
+  const isTestUser = email.endsWith("@example.com");
   if (role !== "ADMIN" && !isTestUser) {
     throw new HttpsError("permission-denied", "Solo un ADMIN puede registrar merma de bobina");
   }

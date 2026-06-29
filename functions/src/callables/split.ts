@@ -17,7 +17,7 @@ export const registerCoilSplit = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "El requestId es obligatorio para la idempotencia");
   }
 
-  const isTestUser = email.endsWith("@example.com") || email.endsWith("@ayrsteel.com");
+  const isTestUser = email.endsWith("@example.com");
   if (role !== "ADMIN" && role !== "SUPERVISOR" && !isTestUser) {
     throw new HttpsError("permission-denied", "Solo un ADMIN o SUPERVISOR puede dividir una bobina");
   }
