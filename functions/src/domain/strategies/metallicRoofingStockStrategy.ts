@@ -1,3 +1,4 @@
+import { FieldValue } from "firebase-admin/firestore";
 import * as admin from 'firebase-admin';
 
 export interface StockWriteParams {
@@ -62,7 +63,7 @@ export const metallicRoofingStockStrategy: StockStrategy = {
       tx.update(stockRef, {
         quantity: newBalance,
         totalValue: Number((newBalance * currentAvgCost).toFixed(2)),
-        lastUpdate: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdate: FieldValue.serverTimestamp(),
       });
     } else {
       tx.set(stockRef, {
@@ -71,7 +72,7 @@ export const metallicRoofingStockStrategy: StockStrategy = {
         quantity: newBalance,
         avgCost: 0,
         totalValue: 0,
-        lastUpdate: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdate: FieldValue.serverTimestamp(),
       });
     }
 
@@ -83,7 +84,7 @@ export const metallicRoofingStockStrategy: StockStrategy = {
       reason: `Venta ${saleId} — ${customerName}`,
       businessLine: 'metallic-roofing',
       createdBy: sellerId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
   },
 
@@ -103,7 +104,7 @@ export const metallicRoofingStockStrategy: StockStrategy = {
         quantity: newBalance,
         avgCost: Number(newAvgCost.toFixed(6)),
         totalValue: Number(newTotalValue.toFixed(2)),
-        lastUpdate: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdate: FieldValue.serverTimestamp(),
       });
     } else {
       tx.set(stockRef, {
@@ -112,7 +113,7 @@ export const metallicRoofingStockStrategy: StockStrategy = {
         quantity: newBalance,
         avgCost: 0,
         totalValue: 0,
-        lastUpdate: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdate: FieldValue.serverTimestamp(),
       });
     }
 
@@ -125,7 +126,7 @@ export const metallicRoofingStockStrategy: StockStrategy = {
       adjustedDocument: ref || null,
       businessLine: 'metallic-roofing',
       createdBy: sellerId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
   },
 
@@ -141,7 +142,7 @@ export const metallicRoofingStockStrategy: StockStrategy = {
         quantity: newBalance,
         avgCost: Number(newAverageCost.toFixed(6)),
         totalValue: Number((newBalance * newAverageCost).toFixed(2)),
-        lastUpdate: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdate: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );
@@ -154,7 +155,7 @@ export const metallicRoofingStockStrategy: StockStrategy = {
       reason: description || 'Ingreso por Producción',
       businessLine: 'metallic-roofing',
       createdBy: operatorId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
   },
 };

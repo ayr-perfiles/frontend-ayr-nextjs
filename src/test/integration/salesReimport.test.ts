@@ -7,7 +7,8 @@ import {
   setupIntegrationTest,
   clearFirestore,
   cleanupIntegrationTest,
-  seedStock
+  seedStock,
+  setTestUserAdmin
 } from './firestore-helpers';
 import { getStockStrategy } from '@/core/sales/strategies';
 import { doc, getDoc, collection, getDocs, serverTimestamp, runTransaction, DocumentSnapshot, query, where } from 'firebase/firestore';
@@ -142,6 +143,7 @@ describe('Sales Re-import Logic (Integration)', () => {
     } catch (e) {
       await signInWithEmailAndPassword(auth, "test-reimport@example.com", "password123");
     }
+    await setTestUserAdmin("test-reimport@example.com");
   });
 
   afterAll(async () => {

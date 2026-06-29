@@ -21,12 +21,12 @@ export function OutsourcedProductionForm({ strip, onClose }: OutsourcedProductio
   const [catalog, setCatalog] = useState<ProductConfig[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
   const [recentMovements, setRecentMovements] = useState<StripMovement[]>([]);
+  const requestIdRef = React.useRef<string | null>(null);
   
   const [formData, setFormData] = useState({
     sku: '',
     pieces: "" as number | "",
     stripsUsed: 1,
-    operatorId: user?.email || 'admin'
   });
 
   // 1. Cargar Catálogo y Movimientos Recientes para Trazabilidad
@@ -84,12 +84,18 @@ export function OutsourcedProductionForm({ strip, onClose }: OutsourcedProductio
     }
 
     setIsSubmitting(true);
+    if (!requestIdRef.current) {
+      requestIdRef.current = crypto.randomUUID();
+    }
+    
     try {
       await produceFromStrip({
-        ...formData,
+        sku: formData.sku,
         pieces: Number(formData.pieces),
-        userEmail: user?.email || 'admin@ayrsteel.com'
+        stripsUsed: formData.stripsUsed,
+        requestId: requestIdRef.current,
       });
+      requestIdRef.current = null;
       toast.success("¡Producción registrada! Stock actualizado.");
       onClose();
     } catch (err: any) {

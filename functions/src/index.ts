@@ -1,4 +1,6 @@
+import { FieldValue } from "firebase-admin/firestore";
 export { produceFromCoils } from "./callables/production";
+export { produceFromStrip } from "./callables/drywallProduction";
 /**
  * Cloud Functions para AYR Steel ERP
  *
@@ -62,7 +64,7 @@ export const initializeIntegrations = onCall(async (request) => {
           },
         },
         status: {
-          lastCheck: admin.firestore.FieldValue.serverTimestamp(),
+          lastCheck: FieldValue.serverTimestamp(),
           ok: true,
           message: "Inicializado",
         },
@@ -82,7 +84,7 @@ export const initializeIntegrations = onCall(async (request) => {
           grantType: "client_credentials",
         },
         status: {
-          lastCheck: admin.firestore.FieldValue.serverTimestamp(),
+          lastCheck: FieldValue.serverTimestamp(),
           ok: true,
           message: "Inicializado",
         },
@@ -99,7 +101,7 @@ export const initializeIntegrations = onCall(async (request) => {
           baseUrl: "https://api.decolecta.com/v1",
         },
         status: {
-          lastCheck: admin.firestore.FieldValue.serverTimestamp(),
+          lastCheck: FieldValue.serverTimestamp(),
           ok: true,
           message: "Inicializado",
         },
@@ -117,7 +119,7 @@ export const initializeIntegrations = onCall(async (request) => {
           searchKey: "", // Clave pública (puedes pegarla aquí con seguridad)
         },
         status: {
-          lastCheck: admin.firestore.FieldValue.serverTimestamp(),
+          lastCheck: FieldValue.serverTimestamp(),
           ok: true,
           message: "Inicializado",
         },
@@ -240,7 +242,7 @@ export const onSaleCreated = onDocumentCreated(
           entityId: saleId,
           userEmail: saleData.sellerId || "unknown",
           details: `Venta ${saleId} creada. Total: ${saleData.totalAmount || 0}`,
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          timestamp: FieldValue.serverTimestamp(),
         });
 
       console.log(`Audit log creado para venta ${saleId}`);
@@ -273,7 +275,7 @@ export const onCoilCreated = onDocumentCreated(
           entityId: coilId,
           userEmail: coilData.registeredBy || "unknown",
           details: `Bobina ${coilId} registrada. Peso: ${coilData.initialWeight}kg`,
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          timestamp: FieldValue.serverTimestamp(),
         });
 
       console.log(`Audit log creado para bobina ${coilId}`);
@@ -305,7 +307,7 @@ export const onProductionLogCreated = onDocumentCreated(
           entityId: logId,
           userEmail: logData.operatorId || "unknown",
           details: `Producción ${logId}: ${logData.piecesProduced} piezas de ${logData.sku}`,
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          timestamp: FieldValue.serverTimestamp(),
         });
 
       console.log(`Audit log creado para producción ${logId}`);
@@ -397,3 +399,4 @@ export { registerCoilScrap } from "./callables/scrap";
 export { registerCoilSplit } from "./callables/split";
 
 export { voidCoil, updateCoil, cancelCoilPlan } from "./callables/coilManagement";
+export { getTestEnv } from './callables/testEnv';

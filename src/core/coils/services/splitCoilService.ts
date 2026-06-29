@@ -26,7 +26,8 @@ export async function splitCoilAction(
     return response.data;
   } catch (error: any) {
     if (error?.code) {
-      switch (error.code) {
+      const fbCode = error.code.replace('functions/', '');
+      switch (fbCode) {
         case "unauthenticated":
           throw new Error("Debes iniciar sesión para realizar esta acción.");
         case "permission-denied":

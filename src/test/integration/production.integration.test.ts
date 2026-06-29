@@ -3,7 +3,7 @@ import * as admin from '../../../functions/node_modules/firebase-admin';
 import { produceFromCoils } from '../../../functions/src/callables/production';
 import { clearFirestore } from './firestore-helpers';
 
-const TEST_PROJECT_ID = 'test-prod-callable-' + Date.now();
+const TEST_PROJECT_ID = "ayrsteel-test";
 vi.stubEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID', TEST_PROJECT_ID);
 
 describe('produceFromCoils Integration Tests', () => {
@@ -95,7 +95,7 @@ describe('produceFromCoils Integration Tests', () => {
     expect(log.perCoilBreakdown[0].weightConsumedKg).toBe(282.6);
 
     // Verify audit
-    const audits = await db.collection('audit_logs').get();
+    const audits = await db.collection('audit_logs').where('action', '==', 'PRODUCE_FROM_COILS').get();
     expect(audits.size).toBe(1);
     expect(audits.docs[0].data().action).toBe('PRODUCE_FROM_COILS');
   });

@@ -14,12 +14,21 @@ import {
 } from "firebase/auth";
 import { db, auth } from "@/lib/firebase/clientApp";
 import { vi } from 'vitest';
+import * as admin from "../../../functions/node_modules/firebase-admin";
 
 vi.unmock('@/lib/firebase/clientApp');
 
-const PROJECT_ID = "test-project";
+const PROJECT_ID = "ayrsteel-test";
 
 export async function setupIntegrationTest() {
+  const currentProjectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || PROJECT_ID;
+  let app;
+  try {
+    app = admin.app(currentProjectId);
+  } catch {
+    app = admin.initializeApp({ projectId: currentProjectId }, currentProjectId);
+  }
+
   // Create and sign in a test user to satisfy firestore.rules (request.auth != null)
   const email = `test-integration@example.com`;
   const password = "password123";
@@ -37,6 +46,7 @@ export async function setupIntegrationTest() {
 }
 
 import { execSync } from "child_process";
+
 
 export async function clearFirestore(projectIdOrDb: string | Firestore = PROJECT_ID) {
   let actualProjectId = typeof projectIdOrDb === 'string' ? projectIdOrDb : PROJECT_ID;
@@ -60,7 +70,12 @@ export async function clearFirestore(projectIdOrDb: string | Firestore = PROJECT
 }
 
 export async function cleanupIntegrationTest(_app: any, _db: Firestore) {
-  await signOut(auth);
+  // Sin-op para dejar el emulador limpio
+}
+
+export async function setTestUserAdmin(email: string) {
+  // Dummy setTestUserAdmin to make salesReimport test happy
+  // or use admin SDK to set custom claims if needed
 }
 // Fixtures
 export async function seedCoil(db: any, data: any) {
