@@ -1,3 +1,4 @@
+export { produceFromCoils } from "./callables/production";
 /**
  * Cloud Functions para AYR Steel ERP
  *
