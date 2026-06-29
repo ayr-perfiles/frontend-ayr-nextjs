@@ -27,25 +27,32 @@
   - **Seguridad:** Agujero de `currentWeight` cerrado en el backend (se deriva directamente de `initialWeight`, ignorando el del cliente) y se limitaron los campos mutables (*allowlist*).
   - **Frontend:** `coilService.ts` migrado para usar las 3 Callables. Limpieza de imports huérfanos realizada. Compilación (`tsc`) en verde.
 
+- **WRITE 4 (produceFromCoils metallic): CERRADO en test. PROD DIFERIDO.**
+  - **Backend:** Callable `produceFromCoils` desplegada y ACTIVE en `ayrsteel-test`. Implementa lógica multi-coil (corrida de conformado consumiendo N bobinas en paralelo en un loop transaccional), cálculo de costo total/unitario ponderado, derivación de peso server-side y cálculo de WAC con lecturas transaccionales seguras.
+  - **Frontend:** Servicio de producción de `metallic-roofing` migrado a Callable, eliminando `runTransaction` cliente para el registro. Soporta idempotencia mediante `requestId` y `reportedWeightKg` opcional. Compilación en verde.
+  - **Runtime test VALIDADO (incógnito):** Corrida multi-bobina procesada exitosamente. Se comprobó la creación del log de producción con el `perCoilBreakdown` exacto, descuento de peso en ambas bobinas e incremento de stock terminado con WAC recalculado.
+  - Commits `fb3d2436` (backend) + `fd1b7f11` (frontend).
+
 ---
 
 ## 2. Estado de Candados y Escritores Cliente Restantes
 
-El candado de `coils`/`kardex_movements`/`audit_logs` NO se puede cerrar en las Security Rules hasta que se migren TODOS los escritores cliente. Tras la migración de `coilService`, el mapa actualizado de escritores cliente restantes es:
+El candado de `coils`/`kardex_movements`/`audit_logs` NO se puede cerrar en las Security Rules hasta que se migren TODOS los escritores cliente. Tras la migración de `produceFromCoils`, el mapa actualizado de escritores cliente restantes es:
 
 - **`audit_logs`** (a 1 write principal de coils de candarse):
   - `src/core/coils/services/cutOrderService.ts` (sendToCut, receiveStrips, voidCutOrder, updateCutOrderInvoice, updateSentOrder)
   - *Otros módulos fuera de coils:* `salesService.ts` (ventas/anulaciones), `productionService.ts` (módulos drywall/metallic), `settingsService.ts` (cambios en settings), `sales/import/page.tsx` (re-importación).
 - **`coils`**:
-  - `src/core/coils/services/coilConsumptionService.ts` (consumeCoil)
   - `src/core/coils/services/cutOrderService.ts` (sendToCut, receiveStrips, voidCutOrder, updateSentOrder)
   - `src/core/coils/components/` (`AddCoilForm.tsx`, `BulkUploadCoils.tsx`, `PurchaseCoilFromXml.tsx` - para registro/alta de bobinas)
   - `src/core/sales/services/salesService.ts` (actualizaciones al vender bobinas/trading)
-  - `src/modules/` (`drywall/services/productionService.ts`, `metallic-roofing/services/productionService.ts` - para reversas/anulaciones de producción)
+  - `src/modules/drywall/services/productionService.ts` y `src/modules/metallic-roofing/services/productionService.ts` (para reversas/anulaciones de producción - `voidProductionFromCoils`)
+  - *Omitidos:* `consumeCoil` y `processSingleStrip` (marcados como deprecated / inactivos tras deshabilitar la pestaña en la terminal móvil del operador).
 - **`kardex_movements`**:
-  - `src/core/coils/services/coilConsumptionService.ts` (vía `StockStrategy.writeProductionIncrement` en drywall)
+  - `src/core/coils/services/cutOrderService.ts` (movimientos de bobinas)
   - `src/core/sales/services/salesService.ts` (ventas/anulaciones)
-  - `src/modules/` (producción/anulación drywall y roofing)
+  - `src/modules/drywall/services/productionService.ts` (`produceFromStrip` - próximo a migrar en WRITE 5)
+  - `src/modules/metallic-roofing/services/productionService.ts` (para reversa/anulación de producción)
 
 ---
 
@@ -58,6 +65,8 @@ El candado de `coils`/`kardex_movements`/`audit_logs` NO se puede cerrar en las 
 - **8 secretos SUNAT inexistentes en GCP prod:** → `functions-sunat` no desplegable. `correlative.ts` duplicado. Huérfanas SUNAT en ayrsteel-test.
 - **`.vercelignore`:** `functions-sunat` agregado en develop (`8d31935d`). MASTER aún sin ese fix → si el build de prod toca `functions-sunat`, fallará. Verificar/propagar a master en próximo merge.
 - **Deuda cosmética `_userEmail`:** Se mantuvo el parámetro `_userEmail` como no-op en las firmas de `coilService.ts` para no romper llamadas en `page.tsx` sin necesidad. Pendiente limpiar en el componente de UI.
+- **Deuda cosmética "200 u" en logs de conformado:** La descripción de auditoría inyecta la palabra "piezas" o "u" de forma genérica para `COBERTURA_ML`, lo cual es cosmético pero inconsistente.
+- **`coilDensityFactor` singular en `production_logs`:** Se asume y guarda únicamente el factor de densidad de la primera bobina del arreglo en `production_logs`, en lugar de mapear dinámicamente un arreglo para cada bobina consumida.
 
 ---
 
@@ -70,4 +79,4 @@ El candado de `coils`/`kardex_movements`/`audit_logs` NO se puede cerrar en las 
 
 ## 5. Próxima Sesión
 
-Arranca: Planificar la migración de `coilConsumptionService.ts` (WRITE 4 - `consumeCoil` y su Strategy pattern) o decidir si se lleva el bloque de WRITE 2 + WRITE 3 a producción (`ayrsteel-2026`) siguiendo la secuencia obligatoria de despliegue antes de habilitar el frontend.
+Arranca: Planificar la migración de `produceFromStrip` (Drywall - WRITE 5) y las reversas de conformado para remover por completo los escritores de producción restantes, o decidir el despliegue del bloque (WRITE 2, 3 y 4) a producción (`ayrsteel-2026`).
