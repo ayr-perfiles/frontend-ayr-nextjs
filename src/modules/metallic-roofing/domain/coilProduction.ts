@@ -1,4 +1,7 @@
 /**
+ * ⚠️ SYNC MARKER: existe copia de este archivo en functions/src/domain/ y functions/src/types/production.ts.
+ * Si cambias esto (tipos o lógica), replica los cambios allá.
+ *
  * Cálculo puro de producción conformado: bobinas → SKU terminado.
  * Sin I/O. Sin side-effects. Testeable Fase 1.
  *
