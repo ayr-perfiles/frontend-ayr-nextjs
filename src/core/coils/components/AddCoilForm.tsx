@@ -250,53 +250,29 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
 
     setLoading(true);
     try {
-      const batch = writeBatch(db);
-      const finalInvoiceDate = new Date(`${values.invoiceDate}T12:00:00`);
+      const payloadCoils = coils.map((coil) => ({
+        coilId: coil.coilId.toString().toUpperCase(),
+        weight: Number(coil.weight),
+        width: Number(coil.width),
+        thickness: Number(coil.thickness),
+        finish: coil.finish,
+        value: Number(coil.value),
+      }));
 
-      for (const coil of coils) {
-        const docRef = doc(db, "coils", coil.coilId.toString().toUpperCase());
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          toast.error(
-            `La serie ${coil.coilId.toString().toUpperCase()} ya existe. Revisa tus datos.`,
-          );
-          setLoading(false);
-          return;
-        }
+      const payloadInvoice = {
+        docType: values.docType,
+        providerDoc: values.providerDoc || null,
+        provider: values.providerName || "SIN PROVEEDOR",
+        invoiceNumber: values.invoiceNumber || null,
+        invoiceDate: values.invoiceDate,
+        currency: values.currency,
+        exchangeRate: values.currency === "USD" ? values.exchangeRate : 1,
+        isManualEntry: true,
+      };
 
-        const weight = Number(coil.weight);
-        const inputVal = Number(coil.value);
-        const finalTotalValuePEN =
-          values.currency === "USD" ? inputVal * values.exchangeRate : inputVal;
-        const exactCostPerKg = weight > 0 ? finalTotalValuePEN / weight : 0;
+      const registerCoilFn = httpsCallable(functions, "registerCoil");
+      await registerCoilFn({ coils: payloadCoils, invoice: payloadInvoice });
 
-        batch.set(docRef, {
-          id: coil.coilId.toString().toUpperCase(),
-          initialWeight: weight,
-          currentWeight: weight,
-          masterWidth: Number(coil.width),
-          thickness: Number(coil.thickness),
-          finish: coil.finish,
-          pricePerKg: Number(exactCostPerKg.toFixed(6)),
-          status: "AVAILABLE",
-          registeredBy: user?.email || "Admin",
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          metadata: {
-            providerDocType: values.docType,
-            providerDoc: values.providerDoc || null,
-            provider: values.providerName || "SIN PROVEEDOR",
-            invoiceNumber: values.invoiceNumber || null,
-            invoiceDate: finalInvoiceDate,
-            currency: values.currency,
-            exchangeRate: values.currency === "USD" ? values.exchangeRate : 1,
-            originalCurrencyValue: inputVal,
-            isManualEntry: true,
-          },
-        });
-      }
-
-      await batch.commit();
       const isConverted = values.currency === "USD";
       toast.success(
         isConverted
@@ -304,11 +280,16 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
           : `Se registraron ${coils.length} bobinas correctamente.`,
       );
       onOpenChange(false);
-    } catch (error: unknown) {
-      toast.error(
-        "Error al guardar: " +
-          (error instanceof Error ? error.message : "Error desconocido"),
-      );
+    } catch (error: any) {
+      if (error.code === 'already-exists') {
+        toast.error(error.message || 'Una o más bobinas ya existen. Revisa tus datos.');
+      } else if (error.code === 'invalid-argument') {
+        toast.error('Datos inválidos: ' + (error.message || 'Revisa el formulario.'));
+      } else if (error.code === 'failed-precondition') {
+        toast.error('Condición fallida: ' + (error.message || 'Error de estado.'));
+      } else {
+        toast.error("Error al guardar: " + (error.message || "Error desconocido"));
+      }
     } finally {
       setLoading(false);
     }

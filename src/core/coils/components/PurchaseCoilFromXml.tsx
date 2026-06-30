@@ -14,11 +14,12 @@ import {
   Plus,
   Layers,
 } from "lucide-react";
-import { db } from "@/lib/firebase/clientApp";
+import { db, functions } from "@/lib/firebase/clientApp";
 import { writeBatch, doc, serverTimestamp, getDoc } from "firebase/firestore";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
+import { httpsCallable } from "firebase/functions";
 
 interface CoilEntry {
   uid: string;
@@ -225,62 +226,28 @@ export function PurchaseCoilFromXml() {
 
     setLoading(true);
     try {
-      const batches = [];
-      let currentBatch = writeBatch(db);
-      let opCount = 0;
-      const finalInvoiceDate = new Date(`${invoiceDate}T12:00:00`);
+      const payloadCoils = coils.map((coil) => ({
+        coilId: coil.coilId.toString().toUpperCase(),
+        weight: Number(coil.weight),
+        width: Number(coil.width),
+        thickness: Number(coil.thickness),
+        finish: defaultFinish,
+        value: Number(coil.value),
+      }));
 
-      for (const coil of coils) {
-        if (opCount === 490) {
-          batches.push(currentBatch);
-          currentBatch = writeBatch(db);
-          opCount = 0;
-        }
+      const payloadInvoice = {
+        docType: docType,
+        providerDoc: providerDoc || null,
+        provider: providerName || "SIN PROVEEDOR",
+        invoiceNumber: invoiceNumber || null,
+        invoiceDate: invoiceDate,
+        currency: currency,
+        exchangeRate: currency === "USD" ? exchangeRate : 1,
+        isManualEntry: false,
+      };
 
-        const docRef = doc(db, "coils", coil.coilId.toUpperCase());
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          toast.error(`La serie ${coil.coilId.toUpperCase()} ya existe.`);
-          setLoading(false);
-          return;
-        }
-
-        const weight = Number(coil.weight);
-        const inputVal = Number(coil.value);
-        const finalTotalValuePEN =
-          currency === "USD" ? inputVal * exchangeRate : inputVal;
-        const exactCostPerKg = weight > 0 ? finalTotalValuePEN / weight : 0;
-
-        currentBatch.set(docRef, {
-          id: coil.coilId.toUpperCase(),
-          initialWeight: weight,
-          currentWeight: weight,
-          masterWidth: Number(coil.width),
-          thickness: Number(coil.thickness),
-          finish: defaultFinish, // Aplicar acabado
-          pricePerKg: Number(exactCostPerKg.toFixed(6)),
-          status: "AVAILABLE",
-          registeredBy: user?.email || "Admin (XML)",
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          metadata: {
-            providerDocType: docType,
-            providerDoc: providerDoc || null,
-            provider: providerName || "SIN PROVEEDOR",
-            invoiceNumber: invoiceNumber || null,
-            invoiceDate: finalInvoiceDate,
-            currency,
-            exchangeRate: currency === "USD" ? exchangeRate : 1,
-            originalCurrencyValue: inputVal,
-            originalDescription: coil.originalDesc || null,
-            isManualEntry: false,
-          },
-        });
-        opCount++;
-      }
-
-      if (opCount > 0) batches.push(currentBatch);
-      await Promise.all(batches.map((b) => b.commit()));
+      const registerCoilFn = httpsCallable(functions, "registerCoil");
+      await registerCoilFn({ coils: payloadCoils, invoice: payloadInvoice });
 
       const isConverted = currency === "USD";
       toast.success(
@@ -289,8 +256,16 @@ export function PurchaseCoilFromXml() {
           : `Se registraron ${coils.length} bobinas correctamente.`,
       );
       setCoils([]); // Limpiar tras el guardado
-    } catch (error: unknown) {
-      toast.error("Error al guardar: " + (error instanceof Error ? error.message : "Error desconocido"));
+    } catch (error: any) {
+      if (error.code === 'already-exists') {
+        toast.error(error.message || 'Una o más bobinas ya existen. Revisa tus datos.');
+      } else if (error.code === 'invalid-argument') {
+        toast.error('Datos inválidos: ' + (error.message || 'Revisa el formulario.'));
+      } else if (error.code === 'failed-precondition') {
+        toast.error('Condición fallida: ' + (error.message || 'Error de estado.'));
+      } else {
+        toast.error("Error al guardar: " + (error.message || "Error desconocido"));
+      }
     } finally {
       setLoading(false);
     }
