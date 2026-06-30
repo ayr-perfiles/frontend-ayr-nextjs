@@ -13,6 +13,8 @@ import {
 } from "firebase/firestore";
 import { BusinessLine } from "@/types";
 
+// ⚠️ SYNC MARKER: existe copia de este tipo en functions/src/types/production.ts.
+// Si cambias esto, replica los cambios allá para mantener paridad en Callables.
 export interface CoilFinish {
   id: string;
   label: string;

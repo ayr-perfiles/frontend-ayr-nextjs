@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { X, Scissors, AlertTriangle, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 import { Coil } from "@/types";
 import { splitCoilAction } from "@/core/coils/services/splitCoilService";
 import { validateAndCalculateSplit } from "@/core/coils/domain/coilPricing";
-import { useAuth } from "@/context/AuthContext";
+
 
 interface SplitCoilModalProps {
   coil: Coil;
@@ -15,9 +15,9 @@ interface SplitCoilModalProps {
 }
 
 export function SplitCoilModal({ coil, onClose, onSuccess }: SplitCoilModalProps) {
-  const { user } = useAuth();
   const [childWidthMm, setChildWidthMm] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const requestIdRef = useRef<string | null>(null);
 
   const masterWidth = coil.masterWidth ?? 0;
   const widthNum = Number(childWidthMm);
@@ -34,9 +34,15 @@ export function SplitCoilModal({ coil, onClose, onSuccess }: SplitCoilModalProps
     e.preventDefault();
     if (!isValidWidth) return;
 
+    if (!requestIdRef.current) {
+      requestIdRef.current = crypto.randomUUID();
+    }
+    const currentRequestId = requestIdRef.current;
+
     setLoading(true);
     try {
-      const { childId } = await splitCoilAction(coil.id, widthNum, user?.email ?? "admin");
+      const { childId } = await splitCoilAction(coil.id, widthNum, currentRequestId);
+      requestIdRef.current = null; // Éxito: limpiar para próximo intento
       toast.success(`Slitting completado. Hija creada: ${childId}`);
       onSuccess();
     } catch (err: unknown) {

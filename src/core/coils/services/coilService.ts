@@ -1,9 +1,6 @@
-import { db } from "@/lib/firebase/clientApp";
+import { db, functions } from "@/lib/firebase/clientApp";
 import {
   collection,
-  doc,
-  runTransaction,
-  serverTimestamp,
   getDocs,
   query,
   where,
@@ -18,6 +15,7 @@ import {
   QueryDocumentSnapshot,
   DocumentData,
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import { Coil, BusinessLine } from "@/types";
 import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
 import { listFinishes } from "./finishService";
@@ -237,140 +235,93 @@ export const listAvailableCoils = async (line: BusinessLine) => {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Coil);
 };
 
-export const voidCoil = async (coilId: string, userEmail: string) => {
-  const coilRef = doc(db, "coils", coilId);
-  const auditRef = doc(collection(db, "audit_logs"));
-
+export const voidCoil = async (coilId: string, _userEmail: string) => {
+  const callable = httpsCallable<{ coilId: string }, { success: boolean }>(
+    functions,
+    "voidCoil"
+  );
   try {
-    await runTransaction(db, async (transaction) => {
-      const coilDoc = await transaction.get(coilRef);
-      if (!coilDoc.exists()) throw new Error("La bobina no existe.");
-
-      if (coilDoc.data().status !== "AVAILABLE") {
-        throw new Error(
-          "Solo se pueden anular bobinas DISPONIBLES. Si ya tiene cortes, anula los cortes primero.",
-        );
+    const response = await callable({ coilId });
+    return response.data;
+  } catch (error: any) {
+    if (error?.code) {
+      switch (error.code) {
+        case "unauthenticated":
+          throw new Error("Debes iniciar sesión para anular bobinas.");
+        case "permission-denied":
+          throw new Error("Solo un administrador o supervisor puede anular bobinas.");
+        case "not-found":
+          throw new Error("La bobina especificada no existe.");
+        case "failed-precondition":
+          throw new Error(error.message || "Solo se pueden anular bobinas DISPONIBLES.");
+        case "invalid-argument":
+          throw new Error(error.message || "Datos inválidos.");
+        default:
+          throw new Error(error.message || "Error al anular bobina.");
       }
-
-      transaction.update(coilRef, {
-        status: "VOIDED",
-        voidedBy: userEmail,
-        voidedAt: serverTimestamp(),
-      });
-
-      transaction.set(auditRef, {
-        action: "VOID_COIL",
-        entityId: coilId,
-        userEmail: userEmail,
-        details: `Se anuló el ingreso de la bobina madre: ${coilId}`,
-        timestamp: serverTimestamp(),
-      });
-    });
-    return { success: true };
-  } catch (error: unknown) {
-    throw new Error(error instanceof Error ? error.message : "Error desconocido al anular.");
+    }
+    throw new Error("Error de red o de servidor al anular la bobina.");
   }
 };
 
 export const updateCoil = async (
   coilId: string,
   updates: CoilUpdates,
-  userEmail: string,
+  _userEmail: string
 ) => {
-  const coilRef = doc(db, "coils", coilId);
-  const auditRef = doc(collection(db, "audit_logs"));
-
+  const callable = httpsCallable<{ coilId: string; updates: CoilUpdates }, { success: boolean }>(
+    functions,
+    "updateCoil"
+  );
   try {
-    await runTransaction(db, async (transaction) => {
-      const coilDoc = await transaction.get(coilRef);
-      if (!coilDoc.exists()) throw new Error("La bobina no existe.");
-
-      if (coilDoc.data().status !== "AVAILABLE") {
-        throw new Error(
-          "Solo puedes editar bobinas DISPONIBLES para no corromper los costos actuales.",
-        );
+    const response = await callable({ coilId, updates });
+    return response.data;
+  } catch (error: any) {
+    if (error?.code) {
+      switch (error.code) {
+        case "unauthenticated":
+          throw new Error("Debes iniciar sesión para editar bobinas.");
+        case "permission-denied":
+          throw new Error("Solo un administrador o supervisor puede editar bobinas.");
+        case "not-found":
+          throw new Error("La bobina especificada no existe.");
+        case "failed-precondition":
+          throw new Error(error.message || "Solo puedes editar bobinas DISPONIBLES.");
+        case "invalid-argument":
+          throw new Error(error.message || "Datos inválidos.");
+        default:
+          throw new Error(error.message || "Error al editar bobina.");
       }
-
-      const finalInvoiceDate = updates.invoiceDate
-        ? new Date(`${updates.invoiceDate}T12:00:00`)
-        : null;
-
-      const updatePayload: Record<string, unknown> = {
-        initialWeight: updates.initialWeight,
-        currentWeight: updates.currentWeight,
-        masterWidth: updates.masterWidth,
-        thickness: updates.thickness,
-        finish: updates.finish,
-        pricePerKg: updates.pricePerKg,
-        "metadata.providerName": updates.providerName,
-        "metadata.provider": updates.providerName,
-        "metadata.providerDoc": updates.providerDoc,
-        "metadata.providerDocType": updates.providerDocType,
-        "metadata.invoiceNumber": updates.invoiceNumber,
-        updatedAt: serverTimestamp(),
-      };
-
-      if (finalInvoiceDate) {
-        updatePayload["metadata.invoiceDate"] = finalInvoiceDate;
-      }
-
-      transaction.update(coilRef, updatePayload);
-
-      transaction.set(auditRef, {
-        action: "EDIT_COIL",
-        entityId: coilId,
-        userEmail: userEmail,
-        details: `Editó bobina: Peso ${updates.initialWeight}kg, Espesor ${updates.thickness}mm, Acabado ${updates.finish}, Valor /Kg S/ ${updates.pricePerKg}.`,
-        timestamp: serverTimestamp(),
-      });
-    });
-    return { success: true };
-  } catch (error: unknown) {
-    throw new Error(error instanceof Error ? error.message : "Error al editar.");
+    }
+    throw new Error("Error de red o de servidor al editar la bobina.");
   }
 };
 
-export const cancelCoilPlan = async (coilId: string, userEmail: string) => {
-  const coilRef = doc(db, "coils", coilId);
-  const auditRef = doc(collection(db, "audit_logs"));
-
+export const cancelCoilPlan = async (coilId: string, _userEmail: string) => {
+  const callable = httpsCallable<{ coilId: string }, { success: boolean }>(
+    functions,
+    "cancelCoilPlan"
+  );
   try {
-    await runTransaction(db, async (transaction) => {
-      const coilDoc = await transaction.get(coilRef);
-      if (!coilDoc.exists()) throw new Error("La bobina no existe.");
-
-      const coilData = coilDoc.data() as Coil;
-
-      if (coilData.status !== "IN_PROGRESS") {
-        throw new Error("Solo se pueden cancelar planes de bobinas EN PROCESO.");
+    const response = await callable({ coilId });
+    return response.data;
+  } catch (error: any) {
+    if (error?.code) {
+      switch (error.code) {
+        case "unauthenticated":
+          throw new Error("Debes iniciar sesión para cancelar planes.");
+        case "permission-denied":
+          throw new Error("Solo un administrador o supervisor puede cancelar planes.");
+        case "not-found":
+          throw new Error("La bobina especificada no existe.");
+        case "failed-precondition":
+          throw new Error(error.message || "Solo se pueden cancelar planes de bobinas EN PROCESO.");
+        case "invalid-argument":
+          throw new Error(error.message || "Datos inválidos.");
+        default:
+          throw new Error(error.message || "Error al cancelar plan.");
       }
-
-      const hasProcessedStrips = coilData.plannedStrips?.some(
-        (strip) => strip.initialCount !== strip.pendingCount,
-      );
-
-      if (hasProcessedStrips) {
-        throw new Error(
-          "⛔ IMPOSIBLE CANCELAR: Ya se han ejecutado cortes en esta bobina. Para cancelar, primero debes anular los cortes realizados desde el historial de producción.",
-        );
-      }
-
-      transaction.update(coilRef, {
-        status: "AVAILABLE",
-        plannedStrips: [],
-        updatedAt: serverTimestamp(),
-      });
-
-      transaction.set(auditRef, {
-        action: "CANCEL_CUTTING_PLAN",
-        entityId: coilId,
-        userEmail: userEmail,
-        details: `Canceló plan de corte/producción. Bobina devuelta a DISPONIBLE de forma segura.`,
-        timestamp: serverTimestamp(),
-      });
-    });
-    return { success: true };
-  } catch (error: unknown) {
-    throw new Error(error instanceof Error ? error.message : "Error al cancelar el plan.");
+    }
+    throw new Error("Error de red o de servidor al cancelar el plan.");
   }
 };

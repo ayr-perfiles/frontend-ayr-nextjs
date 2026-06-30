@@ -1,4 +1,5 @@
-import { db } from "@/lib/firebase/clientApp";
+import { db, functions } from "@/lib/firebase/clientApp";
+import { httpsCallable } from "firebase/functions";
 import {
   doc,
   runTransaction,
@@ -199,123 +200,49 @@ export const processSingleStrip = async (
   }
 };
 
-/**
- * NUEVA FASE 2: PRODUCIR DESDE FLEJE TERCERIZADO (Drywall)
- */
+const errorMap: Record<string, string> = {
+  'unauthenticated': 'Debe iniciar sesión para registrar producción.',
+  'permission-denied': 'No tiene permisos para registrar producción.',
+  'not-found': 'Un recurso necesario no existe (ej. producto o stock).',
+  'failed-precondition': 'Requisito incumplido (ej. falta de stock o configuración incompleta).',
+  'invalid-argument': 'Parámetros inválidos.',
+};
+
 export const produceFromStrip = async (params: {
   sku: string;
   pieces: number;
   stripsUsed: number;
-  operatorId: string;
-  userEmail: string;
+  requestId: string;
 }) => {
-  const { sku, pieces, stripsUsed, operatorId, userEmail } = params;
-  const prodRef = doc(db, "products", sku);
-  const stockRef = doc(db, "inventory_stock", sku);
+  const { sku, pieces, stripsUsed, requestId } = params;
 
   try {
-    await runTransaction(db, async (transaction) => {
-      // 1. TODAS LAS LECTURAS PRIMERO
-      const prodSnap = await transaction.get(prodRef);
-      const stockSnap = await transaction.get(stockRef);
-      if (!prodSnap.exists()) throw new Error(`El producto ${sku} no existe.`);
-      
-      const product = prodSnap.data();
-      const stripWidth = product.stripWidth;
-      if (!stripWidth) throw new Error("Producto sin ancho de fleje definido.");
+    const produceCallable = httpsCallable<{
+      sku: string;
+      pieces: number;
+      stripsUsed: number;
+      requestId: string;
+    }, {
+      success: boolean;
+      hasNegativeCoilWarning: boolean;
+      cantidadProducida: number;
+      costoUnitarioPEN: number;
+    }>(functions, "produceFromStrip");
 
-      const stripStockRef = doc(db, "strips_stock", stripWidth.toString());
-      const stripStockSnap = await transaction.get(stripStockRef);
-
-      // 2. CÁLCULOS Y VALIDACIONES
-      if (!stripStockSnap.exists() || stripStockSnap.data().totalStrips < stripsUsed) {
-        throw new Error(`Stock insuficiente de flejes de ${stripWidth}mm.`);
-      }
-
-      const stripStock = stripStockSnap.data() as StripStock;
-      const avgWeight = stripStock.totalWeight / (stripStock.totalStrips || 1);
-      const consumedWeight = stripsUsed * avgWeight;
-      const consumedCost = stripsUsed * (stripStock.avgCostPerKg * avgWeight);
-
-      const currentQty = stockSnap.exists() ? stockSnap.data().totalQuantity || 0 : 0;
-      const currentAvgCost = stockSnap.exists() ? stockSnap.data().lastCostPerPiece || 0 : 0;
-      const currentTotalWeight = stockSnap.exists() ? stockSnap.data().totalWeight || 0 : 0;
-
-      const newAverageCost = calculateWeightedAverageCost({
-        currentQty,
-        currentAverageCost: currentAvgCost,
-        batchTotalCost: consumedCost,
-        newPieces: pieces
-      });
-
-      const reportedWeight = pieces * (product.standardWeight || 0);
-
-      // 3. TODAS LAS ESCRITURAS AL FINAL
-      const logRef = doc(collection(db, "production_logs"));
-      const kardexRef = doc(collection(db, "kardex_movements"));
-      const moveRef = doc(collection(db, "strips_movements"));
-
-      // 3.1. Descuento strips
-      transaction.update(stripStockRef, {
-        totalStrips: stripStock.totalStrips - stripsUsed,
-        totalWeight: stripStock.totalWeight - consumedWeight,
-        lastUpdate: serverTimestamp()
-      });
-
-      // 3.2. Movimiento strips
-      transaction.set(moveRef, {
-        type: 'SALIDA',
-        widthMm: stripWidth,
-        quantity: stripsUsed,
-        weight: consumedWeight,
-        costPerKg: stripStock.avgCostPerKg,
-        referenceId: logRef.id, 
-        description: `Producción ${pieces} pzas ${sku}`,
-        timestamp: serverTimestamp(),
-        user: userEmail
-      });
-
-      // 3.3. Incremento stock
-      transaction.set(stockRef, {
-        totalQuantity: currentQty + pieces,
-        totalWeight: currentTotalWeight + reportedWeight,
-        lastCostPerPiece: newAverageCost,
-        lastUpdate: serverTimestamp()
-      }, { merge: true });
-
-      // 3.4. Log
-      transaction.set(logRef, {
-        sku,
-        line: 'drywall',
-        piecesProduced: pieces,
-        totalUsedWidth: stripWidth,
-        scrapWidth: 0,
-        stripCost: consumedCost,
-        costPerPiece: Number((consumedCost / pieces).toFixed(6)),
-        averageCostAfter: Number(newAverageCost.toFixed(6)),
-        reportedWeight,
-        operatorId,
-        timestamp: serverTimestamp(),
-        status: "ACTIVE"
-      });
-
-      // 3.5. Kardex
-      transaction.set(kardexRef, {
-        sku,
-        date: serverTimestamp(),
-        type: "IN",
-        quantity: pieces,
-        balance: currentQty + pieces,
-        reference: logRef.id,
-        description: "Producción desde Fleje Tercerizado",
-        user: userEmail,
-      });
+    const result = await produceCallable({
+      sku,
+      pieces,
+      stripsUsed,
+      requestId,
     });
 
-    return { success: true };
-  } catch (e: unknown) {
-    console.error("Error en produceFromStrip:", e);
-    throw new Error(e instanceof Error ? e.message : "Error al producir.");
+    return result.data;
+  } catch (error: any) {
+    if (error.code && typeof error.code === 'string') {
+      const fbCode = error.code.replace('functions/', '');
+      throw new Error(error.message || errorMap[fbCode] || 'Error al registrar producción.');
+    }
+    throw error;
   }
 };
 

@@ -65,6 +65,7 @@ function MetallicProductionForm() {
     costoUnitarioPEN: number;
     hasNegativeCoilWarning: boolean;
   } | null>(null);
+  const requestIdRef = React.useRef<string | null>(null);
 
   // Cargar catálogo
   useEffect(() => {
@@ -212,6 +213,10 @@ function MetallicProductionForm() {
     setSubmitting(true);
     setLastResult(null);
 
+    if (!requestIdRef.current) {
+      requestIdRef.current = crypto.randomUUID();
+    }
+
     try {
       const result = await produceFromCoils({
         targetSku: selectedSku,
@@ -222,8 +227,7 @@ function MetallicProductionForm() {
           declared: Number(r.declared),
           reportedWeightKg: r.reportedWeight ? Number(r.reportedWeight) : undefined,
         })),
-        operatorId: user?.email ?? "operador",
-        userEmail: user?.email ?? "operador",
+        requestId: requestIdRef.current,
       });
 
       if (result.hasNegativeCoilWarning) {
@@ -237,6 +241,7 @@ function MetallicProductionForm() {
         );
       }
 
+      requestIdRef.current = null;
       router.push('/admin/lines/metallic-roofing/production');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Error al registrar producción.");

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
-const TEST_PROJECT_ID = 'test-metallic-prod-' + Date.now();
+const TEST_PROJECT_ID = "ayrsteel-test";
 vi.stubEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID', TEST_PROJECT_ID);
 
 import {
@@ -90,15 +90,15 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
 
     const result = await produceFromCoils({
       targetSku: 'COB045ALU',
+        requestId: "req-" + Math.random().toString(),
       productKind: 'COBERTURA_ML',
       lengthM: null,
       coilInputs: [
         { coilId: coilIdA, declared: 50 },
         { coilId: coilIdB, declared: 80 },
       ],
-      operatorId: OPERATOR,
-      userEmail: OPERATOR,
-    });
+      
+          });
 
     expect(result.success).toBe(true);
     expect(result.cantidadProducida).toBe(130);
@@ -161,12 +161,12 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     // Usar 48 ML para sobrepasar levemente (forzar PROCESSED)
     await produceFromCoils({
       targetSku: 'COB045ALU',
+        requestId: "req-" + Math.random().toString(),
       productKind: 'COBERTURA_ML',
       lengthM: null,
       coilInputs: [{ coilId, declared: 48 }],
-      operatorId: OPERATOR,
-      userEmail: OPERATOR,
-    });
+      
+          });
 
     const snap = await getDoc(doc(db, 'coils', coilId));
     expect(snap.data()!.currentWeight).toBeLessThanOrEqual(0);
@@ -182,12 +182,12 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     // 200 ML → weight = 200 × 0.45 × 1200 × 0.00785 = 847.8 kg >> 50 kg
     const result = await produceFromCoils({
       targetSku: 'COB045ALU',
+        requestId: "req-" + Math.random().toString(),
       productKind: 'COBERTURA_ML',
       lengthM: null,
       coilInputs: [{ coilId, declared: 200 }],
-      operatorId: OPERATOR,
-      userEmail: OPERATOR,
-    });
+      
+          });
 
     expect(result.success).toBe(true);
     expect(result.hasNegativeCoilWarning).toBe(true);
@@ -218,12 +218,12 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
 
     await produceFromCoils({
       targetSku: 'SKU-WAC',
+        requestId: "req-" + Math.random().toString(),
       productKind: 'COBERTURA_ML',
       lengthM: null,
       coilInputs: [{ coilId, declared: 100 }],
-      operatorId: OPERATOR,
-      userEmail: OPERATOR,
-    });
+      
+          });
 
     const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'SKU-WAC'));
     expect(stockSnap.data()!.quantity).toBe(120);
@@ -247,12 +247,12 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     await expect(
       produceFromCoils({
         targetSku: 'COB045ALU',
+        requestId: "req-" + Math.random().toString(),
         productKind: 'COBERTURA_ML',
         lengthM: null,
         coilInputs: [{ coilId, declared: 50 }],
-        operatorId: OPERATOR,
-        userEmail: OPERATOR,
-      }),
+        
+              }),
     ).rejects.toThrow('factor de densidad');
   });
 
@@ -264,12 +264,12 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     await expect(
       produceFromCoils({
         targetSku: 'COB045ALU',
+        requestId: "req-" + Math.random().toString(),
         productKind: 'COBERTURA_ML',
         lengthM: null,
         coilInputs: [{ coilId: 'BOB-NO-EXISTE', declared: 50 }],
-        operatorId: OPERATOR,
-        userEmail: OPERATOR,
-      }),
+        
+              }),
     ).rejects.toThrow('no existe');
   });
 
@@ -282,12 +282,12 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     await expect(
       produceFromCoils({
         targetSku: 'COB045ALU',
+        requestId: "req-" + Math.random().toString(),
         productKind: 'COBERTURA_ML',
         lengthM: null,
         coilInputs: [{ coilId, declared: 50 }],
-        operatorId: OPERATOR,
-        userEmail: OPERATOR,
-      }),
+        
+              }),
     ).rejects.toThrow('SOLD');
   });
 
@@ -300,15 +300,15 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     await expect(
       produceFromCoils({
         targetSku: 'COB045ALU',
+        requestId: "req-" + Math.random().toString(),
         productKind: 'COBERTURA_ML',
         lengthM: null,
         coilInputs: [
           { coilId, declared: 50 },
           { coilId: 'BOB-INEXISTENTE', declared: 30 },
         ],
-        operatorId: OPERATOR,
-        userEmail: OPERATOR,
-      }),
+        
+              }),
     ).rejects.toThrow();
 
     // La bobina real no debe haber cambiado (rollback)
@@ -352,15 +352,15 @@ describe('voidProductionFromCoils — Anulación de Aluzinc (Integration)', () =
     // Producir
     const prodResult = await produceFromCoils({
       targetSku: 'COB045ALU',
+        requestId: "req-" + Math.random().toString(),
       productKind: 'COBERTURA_ML',
       lengthM: null,
       coilInputs: [
         { coilId: coilIdA, declared: 50 },
         { coilId: coilIdB, declared: 80 },
       ],
-      operatorId: OPERATOR,
-      userEmail: OPERATOR,
-    });
+      
+          });
 
     expect(prodResult.success).toBe(true);
 

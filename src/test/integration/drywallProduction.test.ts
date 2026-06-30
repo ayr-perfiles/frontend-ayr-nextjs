@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
-const TEST_PROJECT_ID = 'test-drywall-production-' + Date.now();
+const TEST_PROJECT_ID = "ayrsteel-test";
 vi.stubEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID', TEST_PROJECT_ID);
 
 import { 
@@ -11,6 +11,7 @@ import {
   seedFinish,
   seedStock
 } from './firestore-helpers';
+import { produceFromStrip as callableProduceFromStrip } from '../../../functions/src/callables/drywallProduction';
 import { 
   saveCuttingPlan, 
   processSingleStrip, 

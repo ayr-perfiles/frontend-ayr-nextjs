@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import * as admin from '../../../functions/node_modules/firebase-admin';
 
-const TEST_PROJECT_ID = 'test-scrap-' + Date.now();
+const TEST_PROJECT_ID = "ayrsteel-test";
 vi.stubEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID', TEST_PROJECT_ID);
 
 import { clearFirestore } from './firestore-helpers';

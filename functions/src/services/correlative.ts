@@ -1,3 +1,4 @@
+import { FieldValue } from "firebase-admin/firestore";
 import * as admin from "firebase-admin";
 
 /**
@@ -21,7 +22,7 @@ export async function getNextSequence(serie: string): Promise<string> {
       counterRef,
       {
         current: nextValue,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );

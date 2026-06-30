@@ -1,6 +1,7 @@
 /**
  * Estados posibles de una bobina de acero
  */
+// SYNC-MARKER: CoilStatus (sync with functions/src/domain/coilPricing.ts)
 export type CoilStatus = "AVAILABLE" | "IN_PROGRESS" | "PROCESSED" | "VOIDED" | "EN_TERCERO" | "SOLD" | "SPLIT_PARENT";
 
 export interface PlannedStrip {

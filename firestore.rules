@@ -142,7 +142,7 @@ service cloud.firestore {
 
     match /scrap_logs/{logId} {
       allow read: if isStaff();
-      allow create: if isStaff(); // FASE 2: cerrar cuando registerCoilScrap Callable validado en prod Y frontend migrado
+      allow create: if false; // FASE 2: cerrado (registerCoilScrap Callable y frontend migrados)
       allow update, delete: if false;
     }
 
@@ -193,6 +193,11 @@ service cloud.firestore {
     match /supplier_sku_map/{document=**} {
       allow read: if isStaff();
       allow write: if isAdmin() || hasRole('SUPERVISOR');
+    }
+
+    match /_noop_stock/{document=**} {
+      allow read: if isStaff();
+      allow write: if false;
     }
 
     // Default deny

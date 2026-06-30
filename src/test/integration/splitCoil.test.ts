@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
-const TEST_PROJECT_ID = 'test-split-coil-' + Date.now();
+const TEST_PROJECT_ID = "ayrsteel-test";
 vi.stubEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID', TEST_PROJECT_ID);
 
 import {
@@ -8,6 +8,7 @@ import {
   clearFirestore,
   cleanupIntegrationTest,
   seedCoil,
+  seedFinish,
 } from './firestore-helpers';
 import { splitCoilAction } from '@/core/coils/services/splitCoilService';
 import { db } from '@/lib/firebase/clientApp';
@@ -28,6 +29,13 @@ describe('splitCoilAction — slitting por ancho (Integration — Emulador)', ()
 
   beforeEach(async () => {
     await clearFirestore(db);
+    await seedFinish(db, {
+      id: 'ALUZINC',
+      label: 'Aluzinc',
+      active: true,
+      lines: ['metallic-roofing'],
+      densityFactor: 0.00785,
+    });
   });
 
   // ── spec: padre 1200mm/1000kg, corte 800mm ────────────────────────────────
@@ -80,9 +88,10 @@ describe('splitCoilAction — slitting por ancho (Integration — Emulador)', ()
       initialWeight: 1000,
       pricePerKg: 4.0,
       status: 'AVAILABLE',
+      finish: 'ALUZINC',
     });
 
-    const { childId } = await splitCoilAction(parentId, 500, OPERATOR);
+    const { childId } = await splitCoilAction(parentId, 500, 'req-split-1');
 
     const parent = (await getDoc(doc(db, 'coils', parentId))).data()!;
     const child = (await getDoc(doc(db, 'coils', childId))).data()!;
@@ -100,9 +109,10 @@ describe('splitCoilAction — slitting por ancho (Integration — Emulador)', ()
       initialWeight: 1000,
       pricePerKg: 3.5,
       status: 'AVAILABLE',
+      finish: 'ALUZINC',
     });
 
-    const { childId } = await splitCoilAction(parentId, 800, OPERATOR);
+    const { childId } = await splitCoilAction(parentId, 800, 'req-split-2');
 
     const kardexSnap = await getDocs(collection(db, 'kardex_movements'));
     const movements = kardexSnap.docs.map((d) => d.data());
@@ -130,12 +140,12 @@ describe('splitCoilAction — slitting por ancho (Integration — Emulador)', ()
       initialWeight: 1200,
       pricePerKg: 3.5,
       status: 'AVAILABLE',
+      finish: 'ALUZINC',
     });
 
     // 1er corte: 400mm
-    const { childId: child1 } = await splitCoilAction(parentId, 400, OPERATOR);
-    // 2do corte: 400mm (padre ahora tiene 800mm)
-    const { childId: child2 } = await splitCoilAction(parentId, 400, OPERATOR);
+    const { childId: child1 } = await splitCoilAction(parentId, 400, 'req-split-3');
+    const { childId: child2 } = await splitCoilAction(parentId, 400, 'req-split-4');
 
     expect(child1).not.toBe(child2);
 

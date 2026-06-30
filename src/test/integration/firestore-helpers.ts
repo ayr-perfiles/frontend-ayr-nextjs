@@ -14,29 +14,47 @@ import {
 } from "firebase/auth";
 import { db, auth } from "@/lib/firebase/clientApp";
 import { vi } from 'vitest';
+import * as admin from "../../../functions/node_modules/firebase-admin";
 
 vi.unmock('@/lib/firebase/clientApp');
 
-const PROJECT_ID = "test-project";
+const PROJECT_ID = "ayrsteel-test";
 
 export async function setupIntegrationTest() {
-  // Create and sign in a test user to satisfy firestore.rules (request.auth != null)
+  const currentProjectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || PROJECT_ID;
+  let adminApp: admin.app.App;
+  try {
+    adminApp = admin.app(currentProjectId);
+  } catch {
+    adminApp = admin.initializeApp({ projectId: currentProjectId }, currentProjectId);
+  }
+
   const email = `test-integration@example.com`;
   const password = "password123";
+  let uid: string | undefined;
   try {
-    await createUserWithEmailAndPassword(auth, email, password);
-  } catch (e: any) {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    uid = cred.user.uid;
+  } catch {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (e2: any) {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      uid = cred.user.uid;
+    } catch {
       // ignore
     }
+  }
+
+  // Set ADMIN claim so firestore.rules (claim-only) permits writes from this user
+  if (uid) {
+    await adminApp.auth().setCustomUserClaims(uid, { role: 'ADMIN' });
+    await auth.currentUser?.getIdToken(true);
   }
 
   return { app: null as any, db, auth };
 }
 
 import { execSync } from "child_process";
+
 
 export async function clearFirestore(projectIdOrDb: string | Firestore = PROJECT_ID) {
   let actualProjectId = typeof projectIdOrDb === 'string' ? projectIdOrDb : PROJECT_ID;
@@ -60,7 +78,20 @@ export async function clearFirestore(projectIdOrDb: string | Firestore = PROJECT
 }
 
 export async function cleanupIntegrationTest(_app: any, _db: Firestore) {
-  await signOut(auth);
+  // Sin-op para dejar el emulador limpio
+}
+
+export async function setTestUserAdmin(email: string) {
+  const currentProjectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || PROJECT_ID;
+  let adminApp: admin.app.App;
+  try {
+    adminApp = admin.app(currentProjectId);
+  } catch {
+    adminApp = admin.initializeApp({ projectId: currentProjectId }, currentProjectId);
+  }
+  const user = await adminApp.auth().getUserByEmail(email);
+  await adminApp.auth().setCustomUserClaims(user.uid, { role: 'ADMIN' });
+  await auth.currentUser?.getIdToken(true);
 }
 // Fixtures
 export async function seedCoil(db: any, data: any) {
