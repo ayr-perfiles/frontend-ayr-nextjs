@@ -85,6 +85,48 @@ describe('Coil Management Module (Integration)', () => {
       };
       await expect(voidCoil.run(request as any)).rejects.toMatchObject({ code: 'failed-precondition' });
     });
+
+    it('rechaza anular bobina madre con hijos vivos', async () => {
+      const adminDb = admin.firestore();
+      await adminDb.collection("coils").doc("BOB-MADRE-2").set({
+        initialWeight: 5000,
+        currentWeight: 2500,
+        status: "AVAILABLE",
+      });
+      await adminDb.collection("coils").doc("BOB-HIJO-VIVO").set({
+        initialWeight: 2500,
+        currentWeight: 2500,
+        status: "AVAILABLE",
+        parentCoilId: "BOB-MADRE-2",
+      });
+      const request = {
+        data: { coilId: "BOB-MADRE-2" },
+        auth: { token: { role: "ADMIN", email: "admin@test.com" } },
+      };
+      await expect(voidCoil.run(request as any)).rejects.toMatchObject({ code: 'failed-precondition' });
+    });
+
+    it('permite anular madre cuando todos sus hijos son VOIDED', async () => {
+      const adminDb = admin.firestore();
+      await adminDb.collection("coils").doc("BOB-MADRE-3").set({
+        initialWeight: 5000,
+        currentWeight: 5000,
+        status: "AVAILABLE",
+      });
+      await adminDb.collection("coils").doc("BOB-HIJO-VOIDED").set({
+        initialWeight: 2500,
+        currentWeight: 2500,
+        status: "VOIDED",
+        parentCoilId: "BOB-MADRE-3",
+      });
+      const request = {
+        data: { coilId: "BOB-MADRE-3" },
+        auth: { token: { role: "ADMIN", email: "admin@test.com" } },
+      };
+      await voidCoil.run(request as any);
+      const coilSnap = await adminDb.collection("coils").doc("BOB-MADRE-3").get();
+      expect(coilSnap.data()?.status).toBe("VOIDED");
+    });
   });
 
   describe('updateCoil', () => {

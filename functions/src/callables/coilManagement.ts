@@ -19,8 +19,18 @@ export const voidCoil = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "El coilId es obligatorio");
   }
 
-
   const db = admin.firestore();
+
+  const liveChildren = await db.collection("coils")
+    .where("parentCoilId", "==", coilId)
+    .where("status", "!=", "VOIDED")
+    .get();
+  if (!liveChildren.empty) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Esta bobina tiene hijos de split activos. Revierte los splits antes de anularla."
+    );
+  }
 
   return await db.runTransaction(async (transaction) => {
     const coilRef = db.collection("coils").doc(coilId);
