@@ -1,8 +1,8 @@
-# CLAUDE.md — AYR Steel ERP (v6.10)
+# CLAUDE.md — AYR Steel ERP (v6.11)
 
-> **Sprint actual:** Sprint 8 (SUNAT + Estandarización UI + Flejes v2) — En progreso 🏗️
-> **Estado:** Build 🟢 | tsc limpio | 463/463 tests (config serializada) | Functions v2 operativa.
-> **v6.10:** Estandarización UI de tablas (kit `@/components/ui/`), migración de datos de "flejes atrapados" completada, sistema de confirmación modal (`useConfirm`), flujo oficial Flejes → Producción, backfill de campo `line` en logs históricos. Frente de seguridad Capa 1 y 9 índices desplegados y validados en PROD.
+> **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
+> **Estado:** Build 🟢 | tsc limpio | 85 passed / 3 skipped (test:emu serializado) | Functions v2 operativa.
+> **v6.11:** Writes 2-5 (`registerCoilSplit` / `voidCoil` / `updateCoil` / `cancelCoilPlan` / `produceFromCoils` / `produceFromStrip`) desplegados y validados en runtime PROD. Rules claim-only + `scrap_logs` candado (`if false`) en PROD. Agujero auth `@ayrsteel.com` cerrado (código + runtime). Fix `next build`: `src/test` excluido de tsconfig.
 
 ---
 
@@ -163,11 +163,14 @@ Function v2 `onDocumentWritten('users/{uid}')`: inyecta `setCustomUserClaims(uid
 
 Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos verifican `'role' in request.auth.token` ANTES de leer el claim** (sin esto, usuario sin claim hace que la rule lance error CEL en vez de denegar limpio).
 
+- **`isAdmin` / `isStaff`: CLAIM-ONLY en prod.** El bypass por email (`@ayrsteel.com`) que existía en develop para tests NUNCA fue a prod y fue eliminado del código en v6.11. Los tests de integración siembran custom claims via `adminApp.auth().setCustomUserClaims()` + `getIdToken(true)`.
 - **Lectura por rol:** users (owner+admin), catálogos/stock/kardex/customers (isStaff), purchases (admin/supervisor), audit/settings (admin).
 - **Campos snapshot PROTEGIDOS contra update** (nadie los altera, ni ADMIN): sales (totalAmount/igv/items), production_logs (piecesProduced/baseCost/sku), users (role/isActive). Grietas cerradas gratis.
-- **Campos operativos RELAJADOS** (el cliente los muta hoy, // FASE 2): sales.status, production status, coils weight/status, \*\_stock stock/wac. Se cerrarán a `if false` en Sprint 7 cuando las Functions tomen esos writes.
-- **audit_logs / \*\_movements / scrap_logs:** append-only (`update,delete: if false` para TODOS, incluso ADMIN).
-- Validado: tests de emulador (15+ casos) + caso sin-claim deniega limpio. Desplegado y validado en PROD (`ayrsteel-2026`).
+- **Campos operativos RELAJADOS** (el cliente los muta hoy, // FASE 2): sales.status, production status, coils weight/status, \*\_stock stock/wac. Se cerrarán a `if false` cuando las Functions tomen esos writes Y todos los escritores de esa colección estén migrados. Es multi-sprint. NO marcar como cerrado hasta que cada colección tenga 0 escritores cliente.
+- **`audit_logs` / `*_movements`:** append-only (`update,delete: if false` para TODOS, incluso ADMIN).
+- **`scrap_logs`:** `create: if false` → DESPLEGADO EN PROD (v6.11). `registerCoilScrap` Callable es el único escritor. Rule candada.
+- **`_noop_stock`:** `read: if isStaff(); write: if false` — colección dummy referenciada por `servicesStockStrategy.getStockRef()` para que `tx.get()` en ventas de línea `services` no lance permission-denied.
+- Validado: tests de emulador (85 passed / 3 skipped) + caso sin-claim deniega limpio. Desplegado y validado en PROD (`ayrsteel-2026`).
 - ⚠️ **Auto-bloqueo evitado:** ni ADMIN edita status/wac directo (fuerza lógica por backend). Prerequisito: usuario semilla necesita claim ADMIN a mano (huevo-gallina: migrate-roles exige ADMIN).
 
 ---
@@ -181,14 +184,27 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Estandarización de Tablas:** Grupo 1 de tablas con unificación visual, y piloto de Ventas server-side con paginación cursor, agregación en tiempo real y soporte Algolia degradado.
 - **UX y confirmaciones:** Sistema `useConfirm` (Provider + Dialogs) para anulación y acciones críticas en producción/ventas.
 
+**HECHO (v6.11):**
+- **Writes 2-5 desplegados y validados en runtime PROD:** `registerCoilSplit`, `voidCoil`, `updateCoil`, `cancelCoilPlan`, `produceFromCoils`, `produceFromStrip`. Thin-clients en master.
+- **Agujero auth cerrado:** bypass `@ayrsteel.com` eliminado de 7 callables + rules (código + runtime). Commit `837cca82`.
+- **Rules v6.11 en PROD:** `isAdmin`/`isStaff` claim-only, `scrap_logs` candada (`if false`), `_noop_stock` rule añadida.
+- **Fix `next build`:** `src/test` excluido de tsconfig. Incidente invisible en develop (Vercel solo buildea master) resuelto. Commit `5b3c75f3`.
+- **Guardarraíl voidCoil (dirección-hijo):** bloquea anular hijas de split (`parentCoilId` presente) → `failed-precondition` antes del check de status. Audit string neutralizado. Commit `920dce8f`, merge `2b9c57a9`, validado en prod incógnito.
+
 **PENDIENTE / EN COLA (orden sugerido):**
 
-1. **Verificaciones del import masivo:** crear GRIS en `coil_finishes` (0.008) + probar import con CSV real en test (55 ítems, densityFactor derivado, length PL).
-2. **Sprint 7 (Seguridad Capa 2 — Fase 2 de rules):** migrar writes críticos a Cloud Functions (`splitCoilAction`, `produceFromCoils`, `voidProductionFromCoils`, `registerCoilScrap`, ventas/anulación) y luego cerrar las rules de Fase 2 (relajadas) a `if false` (candado final).
-3. **Capa 2 server-side / Infraestructura:** session cookies + `proxy.ts`. Actualizar Next 16.1.7 → **16.2.6** (parchea 13 CVEs, 3 de bypass de auth). proxy.ts es UX, NO seguridad.
-4. **Resto Grupo 2 tablas (mode cursor):** Kardex, Usuarios, Compras, Producción Drywall (replican mode cursor + agregación del piloto Ventas; unificación visual).
-5. **Backlog cosmético:** `piecesProduced` naming; redirects `permanent:true` → `false`; `HeaderOptionsMenu` reuso en sales; ACCESORIO → Trading.
-6. **Otros:** ventas USD sin TC (FFA1-912/913/933); SUNAT BETA .p12; PDF reportes.
+1. **🔴 P1-bis — Guardarraíl `voidCoil` (dirección-madre):** `voidCoil` sobre madre CON hijos de split vivos la marca VOIDED sin tocar los hijos → hijos quedan colgando de padre muerto (inventario fantasma, pérdida silenciosa espejo de P1). Validado en prod: `TEST-001-2` VOIDED con hijo `TEST-001-2-S34C735` AVAILABLE. FIX: precondición que detecte hijos vivos (query `parentCoilId == coilId` & `status != VOIDED`) → fallo ruidoso, bloquear (no cascada-void). Mini-ciclo propio. Resolución real de ambos P1 = reversa de split completa (WRITE separado).
+2. **Reversa de split (WRITE nuevo, ¿7.5?):** restaurar madre + VOIDED hijo + reversa `kardex_movements`. Operación distinta de `voidProductionFromCoils`.
+3. **Verificaciones del import masivo:** crear GRIS en `coil_finishes` (0.008) + probar import con CSV real en test (55 ítems, densityFactor derivado, length PL).
+4. **WRITE 6:** altas coils (`AddCoilForm` / `BulkUploadCoils` / `PurchaseCoilFromXml`).
+5. **WRITE 7:** `voidProductionFromCoils` metallic+drywall (costo congelado del `production_log`).
+6. **WRITE 8:** `cutOrder` (monstruo: WAC+prorrateo, 5 funciones).
+7. **WRITE 9:** `salesService` (payload crítico precio/correlativo). Desbloquea 3 tests `salesReimport` skipped.
+8. **Candado final rules Fase 2:** cerrar `coils`/`kardex`/`audit` a `if false` colección por colección, solo cuando 0 escritores cliente queden.
+9. **Capa 2 server-side / Infraestructura:** session cookies + `proxy.ts`. Actualizar Next 16.1.7 → **16.2.6** (parchea 13 CVEs, 3 de bypass de auth). proxy.ts es UX, NO seguridad.
+10. **Resto Grupo 2 tablas (mode cursor):** Kardex, Usuarios, Compras, Producción Drywall.
+11. **Backlog cosmético:** `piecesProduced` naming; redirects `permanent:true` → `false`; `HeaderOptionsMenu` reuso en sales; ACCESORIO → Trading.
+12. **Otros:** ventas USD sin TC (FFA1-912/913/933); SUNAT BETA .p12; PDF reportes.
 
 ---
 
@@ -201,6 +217,8 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Estrategias stock acopladas a db:** reimplementar I/O con admin SDK, extraer cálculo puro.
 - **Tests:** integración en `src/test/integration` contra emulador (`test:emu`).
 - **Candado rules:** cerrar FASE 2 a `if false` SOLO cuando Function validada runtime prod Y todos los escritores de esa colección migrados. Último paso de cada write.
+- **Reversa de split ≠ voidCoil (v6.11):** `voidCoil` = baja de ingreso (status AVAILABLE → VOIDED, sin tocar genealogía de splits). La reversa de split (restaurar madre + VOIDED hijo + reversa kardex) es un WRITE futuro separado. Mientras tanto `voidCoil` debe BLOQUEARSE si `coil.parentCoilId` existe (`failed-precondition`), nunca permitir pérdida silenciosa de masa. [DEUDA P1]
+- **Auth de callables (v6.11):** bypass por dominio de email PROHIBIDO en prod (`@ayrsteel.com` = dominio real → cualquier empleado sin claim pasaría el check de rol). Solo `@example.com` (emulador, inerte en prod) es aceptable. Rol SIEMPRE por custom claim (`request.auth.token.role`).
 
 ---
 
@@ -227,6 +245,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Build de Vercel = build SIN credenciales** (serviceAccountKey gitignored). Scripts de migración EXCLUIDOS del build Next (tsconfig exclude) — importan serviceAccountKey que no existe en Vercel. Verificar build renombrando la credencial localmente.
 - **Git:** push directo a `develop`. Push dispara Vercel. Credenciales (serviceAccountKey*, .env*) y \*.log en .gitignore.
 - ⚠️ **REGLA DE ORO (Functions):** Functions ACTIVE en functions:list = desplegada, NO validada. Como tsc verde. Validar runtime (invocar real en prod) antes de cerrar. Esta sesión: deploy bloqueado por secretos SUNAT acoplados; NUNCA secreto dummy en prod (rompe Algolia/APIs/SUNAT en runtime silenciosamente); NUNCA index.ts mutilado temporal; separar codebases es el fix correcto.
+- ⚠️ **`npm run build` LOCAL obligatorio antes de merge a master.** `tsc` verde + `test:emu` verde NO atrapan fallos de `next build` (test-only code que entra al bundle, imports server-only, paths crudos a `node_modules` anidados). Incidente v6.11: `firestore-helpers.ts` importaba `firebase-admin` con path crudo a `functions/node_modules` → `next build` roto, invisible en `develop` (Vercel solo buildea `master`). Fix: `"src/test"` en `exclude` de `tsconfig.json`. Tests fuera del bundle de prod siempre. Los 5 callable test files conservan path crudo a `functions/node_modules/firebase-admin` a propósito (identidad de módulo con los callables que prueban).
 - ⚠️ **firestore.indexes.json = fuente de verdad declarativa de edición MANUAL ADITIVA.** NUNCA sobrescribir con volcado de `firebase firestore:indexes` — el volcado pisa direcciones (ASC→DESC) y omite índices, causando deploys que BORRAN índices vivos. Incidente v6.10: un commit de 'formateo' sobrescribió el archivo → perdió `sales[status ASC,timestamp ASC]` → TUMBÓ todos los reportes de prod (`getProductSalesReport`, `reportFunctions sales-kpi/by-line`) con `FAILED_PRECONDITION`. El re-diff atrapó que el deploy correctivo además iba a borrar `coils[status ASC,createdAt ASC]` huérfano. SIEMPRE: `--dry-run` antes de deploy de índices, revisar sección `DELETE`, y `grep` del consumidor antes de dejar morir cualquier índice. OJO trampa Firestore: where de rango sin orderBy explícito → exige índice ASC implícito.
 
 ---

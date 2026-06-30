@@ -188,6 +188,20 @@
       "density": "SPARSE_ALL"
     },
     {
+      "collectionGroup": "coils",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "parentCoilId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "kardex_movements",
       "queryScope": "COLLECTION",
       "fields": [
