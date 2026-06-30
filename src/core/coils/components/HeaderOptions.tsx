@@ -6,7 +6,6 @@ import {
   Download,
   FileCode2,
   FileSpreadsheet,
-  Database,
 } from "lucide-react";
 
 interface HeaderOptionsProps {
@@ -14,7 +13,6 @@ interface HeaderOptionsProps {
   onExport: () => void;
   onOpenXml: () => void;
   onOpenExcel: () => void;
-  onSeed: () => void;
 }
 
 export function HeaderOptions({
@@ -22,7 +20,6 @@ export function HeaderOptions({
   onExport,
   onOpenXml,
   onOpenExcel,
-  onSeed,
 }: HeaderOptionsProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -69,20 +66,7 @@ export function HeaderOptions({
             >
               <FileSpreadsheet size={18} className="text-green-500" /> Migración Masiva (Excel)
             </button> */}
-            {role === "ADMIN" && (
-              <>
-                <div className="h-px bg-gray-100 my-2 mx-4" />
-                <p className="px-4 py-2 text-[10px] font-black text-purple-400 uppercase tracking-widest">
-                  Herramientas de Admin
-                </p>
-                <button
-                  onClick={() => { setIsOpen(false); onSeed(); }}
-                  className="w-full text-left px-4 py-2.5 text-sm text-purple-600 hover:bg-purple-50 flex items-center gap-3 font-bold transition"
-                >
-                  <Database size={18} /> Sembrar Acabados Base
-                </button>
-              </>
-            )}
+
           </div>
         </>
       )}
