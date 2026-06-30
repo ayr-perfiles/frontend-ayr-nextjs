@@ -16,7 +16,7 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest src/test/integration",
-    "test:emu": "firebase emulators:exec \"vitest run src/test/integration --no-file-parallelism --maxWorkers 1\" --only auth,firestore,storage",
+    "test:emu": "firebase emulators:exec --project ayrsteel-test \"vitest run src/test/integration --no-file-parallelism --maxWorkers 1\" --only auth,firestore,storage,functions",
     "emulators": "firebase emulators:start --import=./firebase-data --export-on-exit",
     "emulate": "concurrently \"npm run emulators\" \"npm run dev\""
   },
