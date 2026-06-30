@@ -16,7 +16,6 @@ import { Plus, Scissors } from "lucide-react";
 import toast from "react-hot-toast";
 import { useCoils } from "@/core/coils/hooks/useCoils";
 
-import { seedFinishes } from "@/core/coils/services/finishService";
 import {
   voidCoil,
   updateCoil,
@@ -372,10 +371,6 @@ export default function CoilsPage() {
             onExport={exportToExcel}
             onOpenXml={() => setShowXmlModal(true)}
             onOpenExcel={() => setShowExcelModal(true)}
-            onSeed={async () => {
-              await seedFinishes();
-              toast.success("Acabados base generados");
-            }}
           />
           <button
             onClick={() => setIsAddModalOpen(true)}

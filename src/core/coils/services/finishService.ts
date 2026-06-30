@@ -76,19 +76,3 @@ export const migrateFinishDensityFactors = async () => {
     }
   }
 };
-
-export const seedFinishes = async () => {
-  const initialFinishes: CoilFinish[] = [
-    { id: 'GALVANIZADO', label: 'GALVANIZADO', active: true, lines: ['drywall'], densityFactor: 0.00785 },
-    { id: 'ALUZINC', label: 'ALUZINC', active: true, lines: ['metallic-roofing'], densityFactor: 0.008 },
-    { id: 'NATURAL', label: 'NATURAL', active: true, lines: ['metallic-roofing'], densityFactor: 0.008 },
-    { id: 'AZUL', label: 'AZUL', active: true, lines: ['metallic-roofing'], densityFactor: 0.008 },
-    { id: 'BLANCO', label: 'BLANCO', active: true, lines: ['metallic-roofing'], densityFactor: 0.008 },
-    { id: 'ROJO', label: 'ROJO', active: true, lines: ['metallic-roofing'], densityFactor: 0.008 },
-    { id: 'VERDE', label: 'VERDE', active: true, lines: ['metallic-roofing'], densityFactor: 0.008 },
-  ];
-
-  for (const f of initialFinishes) {
-    await createFinish(f);
-  }
-};
