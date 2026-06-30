@@ -32,6 +32,13 @@ export const voidCoil = onCall(async (request) => {
 
     const coilData = coilSnap.data()!;
 
+    if (coilData.parentCoilId) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Esta bobina es hija de un split. Usa la reversa de split para revertirla."
+      );
+    }
+
     if (coilData.status !== "AVAILABLE") {
       throw new HttpsError(
         "failed-precondition",
@@ -53,7 +60,7 @@ export const voidCoil = onCall(async (request) => {
       action: "VOID_COIL",
       entityId: coilId,
       userEmail: email,
-      details: `Se anuló el ingreso de la bobina madre: ${coilId}`,
+      details: `Se anuló el ingreso de la bobina: ${coilId}`,
       timestamp: now,
     });
 
