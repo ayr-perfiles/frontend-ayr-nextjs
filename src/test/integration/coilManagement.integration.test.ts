@@ -70,6 +70,21 @@ describe('Coil Management Module (Integration)', () => {
       };
       await expect(voidCoil.run(request as any)).rejects.toMatchObject({ code: 'failed-precondition' });
     });
+
+    it('rechaza anular bobina hija de split (parentCoilId presente)', async () => {
+      const adminDb = admin.firestore();
+      await adminDb.collection("coils").doc("BOB-CHILD-1").set({
+        initialWeight: 2500,
+        currentWeight: 2500,
+        status: "AVAILABLE",
+        parentCoilId: "BOB-MADRE-1",
+      });
+      const request = {
+        data: { coilId: "BOB-CHILD-1" },
+        auth: { token: { role: "ADMIN", email: "admin@test.com" } },
+      };
+      await expect(voidCoil.run(request as any)).rejects.toMatchObject({ code: 'failed-precondition' });
+    });
   });
 
   describe('updateCoil', () => {
