@@ -14,7 +14,7 @@ import {
 } from "firebase/auth";
 import { db, auth } from "@/lib/firebase/clientApp";
 import { vi } from 'vitest';
-import * as admin from "../../../functions/node_modules/firebase-admin";
+import * as admin from "firebase-admin";
 
 vi.unmock('@/lib/firebase/clientApp');
 
