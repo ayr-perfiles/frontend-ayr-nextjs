@@ -35,14 +35,19 @@ const functions: Functions = getFunctions(firebaseApp, "us-central1");
 
 // --- CONFIGURACIÓN DE EMULADORES (DESARROLLO Y TESTS) ---
 // Usamos '127.0.0.1' para evitar problemas de resolución de 'localhost' en algunos sistemas
-if (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") {
+const useEmulator = process.env.NEXT_PUBLIC_USE_EMULATOR !== "false"
+  && (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test");
+
+if (useEmulator) {
   connectFirestoreEmulator(db, "127.0.0.1", 8080);
   connectAuthEmulator(auth, "http://127.0.0.1:9099");
   connectStorageEmulator(storage, "127.0.0.1", 9199);
   connectFunctionsEmulator(functions, "127.0.0.1", 5001);
-  if (process.env.NODE_ENV === "development") {
-    console.log("🚀 Conectado a Firebase Local Emulators");
+  if (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") {
+    console.log("🚀 Conectado a Firebase Local Emulators (🔌 Emuladores)");
   }
+} else if (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") {
+  console.log("☁️ Firebase TEST-nube (emulador desactivado)");
 }
 
 export { auth, db, storage, functions };

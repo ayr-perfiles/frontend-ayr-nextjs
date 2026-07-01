@@ -9,6 +9,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     fileParallelism: false, // Evita colisiones de BD emulador entre suites de integración
+    testTimeout: 15000, // suite creció (100+ tests int.), default 5s insuficiente al final de la corrida por carga acumulada del emulador.
     include: ['**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
     exclude: [
       '**/node_modules/**',
