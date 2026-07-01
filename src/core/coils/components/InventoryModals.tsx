@@ -9,7 +9,6 @@ import {
 } from "@/core/coils/components/EditCoilModal";
 import { CoilDetailsModal } from "@/core/coils/components/CoilDetailsModal";
 import { PurchaseCoilFromXml } from "@/core/coils/components/PurchaseCoilFromXml";
-import { BulkUploadCoils } from "@/core/coils/components/BulkUploadCoils";
 import { SplitCoilModal } from "@/core/coils/components/SplitCoilModal";
 import { RegisterScrapModal } from "@/core/coils/components/RegisterScrapModal";
 
@@ -28,9 +27,6 @@ interface InventoryModalsProps {
 
   showXmlModal: boolean;
   onCloseXml: () => void;
-
-  showExcelModal: boolean;
-  onCloseExcel: () => void;
 
   splittingCoil: Coil | null;
   onCloseSplit: () => void;
@@ -53,8 +49,6 @@ export function InventoryModals({
   onCloseDetails,
   showXmlModal,
   onCloseXml,
-  showExcelModal,
-  onCloseExcel,
   splittingCoil,
   onCloseSplit,
   onSplitSuccess,
@@ -100,20 +94,6 @@ export function InventoryModals({
               <X size={20} />
             </button>
             <PurchaseCoilFromXml />
-          </div>
-        </div>
-      )}
-
-      {showExcelModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl relative my-8 animate-in fade-in zoom-in-95">
-            <button
-              onClick={onCloseExcel}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 z-10 bg-white rounded-full p-1 shadow-sm border border-gray-100 transition"
-            >
-              <X size={20} />
-            </button>
-            <BulkUploadCoils />
           </div>
         </div>
       )}

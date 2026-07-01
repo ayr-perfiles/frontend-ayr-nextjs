@@ -84,7 +84,6 @@ export default function CoilsPage() {
   const [splittingCoil, setSplittingCoil] = useState<Coil | null>(null);
   const [scrappingCoil, setScrappingCoil] = useState<Coil | null>(null);
   const [showXmlModal, setShowXmlModal] = useState(false);
-  const [showExcelModal, setShowExcelModal] = useState(false);
 
   // 2. Data Hook
   const {
@@ -370,7 +369,6 @@ export default function CoilsPage() {
             role={role}
             onExport={exportToExcel}
             onOpenXml={() => setShowXmlModal(true)}
-            onOpenExcel={() => setShowExcelModal(true)}
           />
           <button
             onClick={() => setIsAddModalOpen(true)}
@@ -493,11 +491,6 @@ export default function CoilsPage() {
         showXmlModal={showXmlModal}
         onCloseXml={() => {
           setShowXmlModal(false);
-          refresh();
-        }}
-        showExcelModal={showExcelModal}
-        onCloseExcel={() => {
-          setShowExcelModal(false);
           refresh();
         }}
       />

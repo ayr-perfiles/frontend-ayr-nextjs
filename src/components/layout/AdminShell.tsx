@@ -127,6 +127,7 @@ function HeaderComponent({
     import: "Importar",
     new: "Nuevo",
     operator: "Operador",
+    "bulk-import": "Importación masiva",
   };
 
   const pathSegments = pathname.split("/").filter(Boolean);
