@@ -52,6 +52,7 @@ serviceAccountKeyTest.json
 serviceAccount.json
 
 # Scripts y archivos temporales de migración/pruebas (no versionar)
+/scripts/local/
 /prod-indexes.json
 /prod-indexes-final.json
 /run_backfill_api.*

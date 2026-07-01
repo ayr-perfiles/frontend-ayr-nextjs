@@ -7,21 +7,21 @@ import {
   FileCode2,
   FileSpreadsheet,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface HeaderOptionsProps {
   role: string | null | undefined;
   onExport: () => void;
   onOpenXml: () => void;
-  onOpenExcel: () => void;
 }
 
 export function HeaderOptions({
   role,
   onExport,
   onOpenXml,
-  onOpenExcel,
 }: HeaderOptionsProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
 
   return (
     <div className="relative z-40">
@@ -58,14 +58,14 @@ export function HeaderOptions({
             >
               <FileCode2 size={18} className="text-blue-500" /> Ingresar vía Factura XML
             </button>
-            {/* BulkUpload deshabilitado temporalmente: escribe coils directo desde cliente.
-                Reactivar cuando exista el callable registerCoilsBulk (WRITE 6 mini-ciclo 2). */}
-            {/* <button
-              onClick={() => { setIsOpen(false); onOpenExcel(); }}
-              className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-3 font-medium transition"
-            >
-              <FileSpreadsheet size={18} className="text-green-500" /> Migración Masiva (Excel)
-            </button> */}
+            {["ADMIN", "SUPERVISOR"].includes(role?.toUpperCase() || "") && (
+              <button
+                onClick={() => { setIsOpen(false); router.push("/admin/coils/bulk-import"); }}
+                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-3 font-medium transition"
+              >
+                <FileSpreadsheet size={18} className="text-green-500" /> Migración Masiva (Excel)
+              </button>
+            )}
 
           </div>
         </>

@@ -1,82 +1,69 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> **Subir SIEMPRE al inicio:** este `HANDOFF.md` + `CLAUDE.md` (v6.11, ya committeado en develop `cb6df2a1`).
-> **Preferencias (MANTENER):** Prompts de Claude Code por defecto. Caveman mode. Cada prompt con PASO 0 read-only. Preguntar ante cualquier duda de negocio. NUNCA cerrar en verde sin validación en RUNTIME incógnito. `npm run build` LOCAL antes de merge a master.
+> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.12).
+> Preferencias: Prompts Claude Code por defecto. Caveman mode. PASO 0 read-only en cada prompt.
+> Preguntar ante duda de negocio. NUNCA cerrar en verde sin RUNTIME incógnito. npm run build LOCAL antes de merge a master.
 
----
+## 🔴 DEUDA DE INFRAESTRUCTURA — divergencia test↔prod (hallazgo grande de la sesión)
+Los entornos DIVERGIERON. Documentado, NO resuelto:
+- SUNAT (comunicarBaja, emitirComprobante, validarCpeSunat, importSireRce, parsePurchaseXml,
+  confirmPurchaseStaging, consultarRuc/Dni) existe SOLO en ayrsteel-test, NO en prod.
+- Algolia (ext-firestore-algolia-search-*) existe SOLO en prod, NO en test.
+- Metadata de codebase roto en test: deploy --only functions:default propone BORRAR las 9
+  funciones legacy/SUNAT (las ve en default remoto, no en functions/ local). CASI causó borrado masivo.
+- ⚠️ REGLA: deploy a test SIEMPRE por función específica: firebase deploy --only functions:NOMBRE
+  --project ayrsteel-test. NUNCA --only functions:default. NUNCA --force.
+- voidCoil con guardarraíles P1/P1-bis: validado en PROD directo. TEST tiene voidCoil viejo SIN
+  guardarraíles (no se actualizó). Paridad pendiente.
+- Sanear esto (reconciliar codebases, igualar functions test↔prod) es deuda multi-sprint, pero
+  el riesgo de borrado accidental es ALTO hasta resolverlo.
 
 ## Cerrado esta sesión ✅
+- P1-bis guardarraíl voidCoil (dirección-madre): bloquea anular madre con hijos vivos. Commits
+  7b8e0fd2/52d8b92f. Índice compuesto coils(parentCoilId,status) deployado prod. Validado incógnito.
+- WRITE 6 mini-ciclo 1 — registerCoil callable: alta de coils server-side. AddCoilForm +
+  PurchaseCoilFromXml migrados a thin-client. Recalcula pricePerKg(=totalPEN/weight),
+  currentWeight, status, id.toUpperCase(), registeredBy; dedup atómico por existencia de doc
+  (already-exists, todo-o-nada por factura); valida finish vs coil_finishes (densityFactor);
+  TC USD rango [2,7], PEN→1; gate ADMIN+SUPERVISOR. ACTIVE en prod Y test. Validado en TEST
+  pruebas 1-4 (alta pricePerKg=3.0 recalculado, dedup, TC fuera de rango, XML). 95 passed/3 skipped.
+- BulkUpload: acceso COMENTADO en HeaderOptions (escribe coils directo; reactivar con mini-ciclo 2).
+- seedFinishes() + su botón: ELIMINADOS (ya no se usan). Tabla densityFactor preservada en CLAUDE.md.
 
-**DEUDA P1 (dirección-hijo) — CERRADA.** Guardarraíl `voidCoil`: bloquea anular hijas de split (`parentCoilId` presente) → `failed-precondition` ANTES del check de status. Audit string neutralizado (`"bobina"`, no `"bobina madre"`).
+## 🔴 ARRANCAR PRÓXIMA SESIÓN — opciones (decidir al inicio)
+1. WRITE 6 mini-ciclo 2 = registerCoilsBulk: callable para BulkUpload. Decisión de negocio
+   pendiente: ¿atomicidad todo-o-nada (rechazar los ~490 si uno falla) o tolerar fallo parcial
+   (migración histórica "lo que entró, entró")? Hoy es Promise.all de batches, NO atómico, sin
+   dedup. Tras el callable, reactivar (descomentar) el botón en HeaderOptions.
+2. Sanear divergencia test↔prod (deuda infra arriba) — más urgente que WRITE 7+ por el riesgo
+   de borrado. Al menos: reconciliar metadata de codebase en test, igualar voidCoil en test.
+3. Seguir drenando writes: WRITE 7 (voidProductionFromCoils, costo congelado), WRITE 8 (cutOrder,
+   monstruo WAC/prorrateo), WRITE 9 (salesService).
 
-- Commit guardarraíl: `920dce8f` (develop). Merge a master: `2b9c57a9`.
-- Deploy: `voidCoil` ACTIVE en prod (`ayrsteel-2026`).
-- **Validado en prod incógnito:** hijo `TEST-001-2-S34C735` AVAILABLE → intento Anular → error ruidoso, hijo SIGUIÓ AVAILABLE (no VOIDED). ✓
-- Tests: 85 passed / 3 skipped (guardarraíl sumó 1).
-- **Vercel master: VERDE confirmado** (commit `2b9c57a9`).
+## Deudas vivas
+- registerCoil: TC USD validado solo por rango [2,7], no contra fuente de verdad (cliente trae el
+  TC de SUNAT API). Atrapa fat-finger grueso, no error fino. Aceptable, anotado.
+- Prueba 5 de WRITE 6 (BulkUpload) ya no aplica como "abre OK" — ahora es "botón no visible".
+- UI gating P1/P1-bis: botón "Anular" sigue apareciendo en hijos y madres-con-hijos en
+  InventoryTable.tsx; rebota con error correcto, pero ocultarlo mejora UX. Cosmético.
+- Reversa de split COMPLETA = WRITE separado (resuelve P1+P1-bis de raíz). Diseño grande.
+- parsePurchaseXml existe como Cloud Function en test PERO PurchaseCoilFromXml parsea en browser
+  (DOMParser). Contradicción/migración a medias — aclarar.
+- SPLIT_PARENT status muerto (inalcanzable por guard de ancho). Limpieza pendiente.
+- GEMINI.md deprecado, enterrar tras auditoría. 3 tests salesReimport skipped hasta WRITE 9.
+- consumeCoil/processSingleStrip inertes. idempotency_keys sin TTL.
 
-**Docs:** CLAUDE.md v6.11 committeado `cb6df2a1` (header + §8.4 conteo 84→85; §9 P1 a HECHO, P1-bis nuevo en PENDIENTE; §10 +2 ADRs; §11 regla `npm run build` local).
-
----
-
-## 🔴 ARRANCAR PRÓXIMA SESIÓN — DEUDA P1-bis: guardarraíl voidCoil (dirección-MADRE)
-
-**Bug NUEVO, descubierto en la validación de P1.** Espejo exacto de P1, dirección opuesta.
-
-`voidCoil` sobre una bobina MADRE que tiene hijos de split VIVOS la marca VOIDED **sin tocar los hijos** → los hijos quedan colgando de un padre muerto = **inventario fantasma con origen anulado** (pérdida silenciosa, viola "fallo ruidoso").
-
-**Validado en prod:** `TEST-001-2` (madre, initialWeight 5000, currentWeight 1250) quedó VOIDED mientras su hijo `TEST-001-2-S34C735` (1250 kg) sigue AVAILABLE colgando. El guardarraíl P1 NO la frenó porque la madre no tiene `parentCoilId` (correcto: P1 solo bloquea hijos).
-
-**FIX (mini-ciclo, NO la reversa completa):** precondición en `voidCoil` que detecte hijos vivos →
-
-- Query dentro de la transacción / pre-check: `coils where parentCoilId == coilId & status != 'VOIDED'`.
-- Si existe al menos uno → `throw HttpsError('failed-precondition', 'Esta bobina tiene hijos de split activos. Revierte los splits antes de anular.')`.
-- **Bloquear, NO cascada-void** (cascada perdería la masa de los hijos = otro fallo silencioso).
-
-**Decisión de diseño pendiente para PASO 0:** ¿dónde va el check — pre-transacción (query collection) o dentro de runTransaction? Una query de colección dentro de runTransaction tiene implicancias (no es una lectura de doc puntual). Evaluar en recon. Confirmar también que `status != VOIDED` es el filtro correcto de "hijo vivo" (¿cuenta un hijo ya producido/consumido como vivo? — preguntar si no está explícito).
-
-**Ciclo completo obligatorio:** PASO 0 read-only → test RED (void de madre con hijo vivo lanza `failed-precondition`; void de madre SIN hijos / con hijos ya VOIDED sigue OK) → `test:emu` verde → `npm run build` LOCAL → deploy functions prod → validar incógnito → re-merge develop→master.
-
----
-
-## DEUDA — Reversa de split COMPLETA = WRITE separado (resuelve P1 + P1-bis de raíz)
-
-Ambos guardarraíles (P1 hijo, P1-bis madre) son CANDADOS, no la solución. La solución real es la reversa de split: restaurar `currentWeight` + `masterWidth` de la madre a pre-split, VOIDED al hijo, revertir `kardex_movements` del split (`splitId` compartido), manejar splits encadenados / producciones posteriores. Diseño grande. Designar como WRITE en roadmap (≠ WRITE 7, que es `voidProductionFromCoils`).
-
----
-
-## Roadmap escritores (orden propuesto, decidir tras P1-bis)
-
-- **P1-bis** (arriba) — próximo mini-ciclo.
-- **WRITE 6:** altas de coils (`AddCoilForm` / `BulkUpload` / `PurchaseXml`).
-- **WRITE 7:** `voidProductionFromCoils` (metallic+drywall), costo CONGELADO.
-- **WRITE 8:** `cutOrder` (monstruo: WAC+prorrateo, 5 funciones).
-- **WRITE 9:** `salesService` (payload crítico precio/correlativo).
-- Luego: candar rules `coils`/`kardex`/`audit` cuando cada colección tenga 0 escritores cliente (multi-sprint).
-
----
-
-## Deudas que se mantienen (detalle en CLAUDE.md §9)
-
-- **Deuda menor nueva — UI gating:** ocultar botón "Anular" en `InventoryTable.tsx` cuando `coil.parentCoilId` exista (cosmético; hoy el hijo muestra el botón y recibe el error al click — funciona, pero el gate mejora UX). NO bloquea seguridad.
-- **`GEMINI.md`:** auditar vs `CLAUDE.md` → consolidar negocio → enterrar (baja en commit propio tras auditoría).
-- **3 tests `salesReimport` (casos 2-4) skipped** hasta WRITE 9. NO re-debilitar rule §8.4 para revivirlos.
-- **Test rollback MID-transaction faltante en WRITE 5** (el actual prueba guard de input, no atomicidad real).
-- **`consumeCoil`/`processSingleStrip`:** inertes en UI (solo tests legacy), destino final pendiente.
-- **`idempotency_keys`:** sin TTL/limpieza.
-- **`TEST-001*` en prod:** bobinas SACRIFICIALES de validación, NO inventario real. `TEST-001-2` quedó VOIDED-con-hijo-colgando tras la validación de hoy — inerte, ignorable, limpieza opcional.
-
----
+## Convenciones (resto en CLAUDE.md)
+Caveman. PASO 0 read-only. develop=fuente, master solo merges. Backend prod antes que frontend a
+master. npm run build LOCAL antes de merge. Runtime incógnito obligatorio (la hace el usuario, no
+Claude — Claude no tiene URL Vercel ni login ADMIN ni navegador con sesión). Deploy a test por
+función específica. densityFactor de coil_finishes lookup. Cliente solo metadata física, backend
+recalcula todo derivado.
 
 ## Suggested skills
+tdd (red-green de registerCoilsBulk), diagnose (si runtime falla), grill-me (stress-test atomicidad
+bulk), handoff (cerrar próxima sesión).
 
-- `tdd` — test RED-GREEN del guardarraíl P1-bis (mismo patrón que P1).
-- `diagnose` — si algo runtime falla en la validación incógnito.
-- `grill-me` — stress-test si dudas del diseño del check (pre-tx vs dentro de tx).
-- `handoff` — cerrar la próxima sesión.
-
----
-
-## Próxima sesión — arranque
-
-PASO 0 read-only del guardarraíl **P1-bis**: trazar `voidCoil` (ya conocido del recon de hoy — lee solo `coils/{coilId}`, sin query de hijos actualmente), confirmar el filtro de "hijo vivo" (`status != VOIDED` ¿suficiente?), decidir ubicación del check (pre-tx vs dentro de runTransaction). Preguntar si la semántica de "hijo vivo" no está explícita en CLAUDE.md. Subir `CLAUDE.md` v6.11 + este HANDOFF.
+## Arranque
+Decidir entre las 3 opciones. Si mini-ciclo 2: PASO 0 read-only de BulkUploadCoils (parseo regex,
+batches, dedup ausente) + decisión de atomicidad. Subir CLAUDE.md v6.12 + este HANDOFF.

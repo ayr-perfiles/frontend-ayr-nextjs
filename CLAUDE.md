@@ -1,7 +1,8 @@
-# CLAUDE.md — AYR Steel ERP (v6.11)
+# CLAUDE.md — AYR Steel ERP (v6.12)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
-> **Estado:** Build 🟢 | tsc limpio | 85 passed / 3 skipped (test:emu serializado) | Functions v2 operativa.
+> **Estado:** Build 🟢 | tsc limpio | 95 passed / 3 skipped (test:emu serializado) | Functions v2 operativa.
+> **v6.12:** WRITE 6 mini-ciclo 1 (registerCoil) y guardarraíl P1-bis desplegados en prod. Paginación y kit de tablas (v6.9) operativos. Reglas auth Capa 1 y custom claims vigentes.
 > **v6.11:** Writes 2-5 (`registerCoilSplit` / `voidCoil` / `updateCoil` / `cancelCoilPlan` / `produceFromCoils` / `produceFromStrip`) desplegados y validados en runtime PROD. Rules claim-only + `scrap_logs` candado (`if false`) en PROD. Agujero auth `@ayrsteel.com` cerrado (código + runtime). Fix `next build`: `src/test` excluido de tsconfig.
 
 ---
@@ -191,20 +192,23 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Fix `next build`:** `src/test` excluido de tsconfig. Incidente invisible en develop (Vercel solo buildea master) resuelto. Commit `5b3c75f3`.
 - **Guardarraíl voidCoil (dirección-hijo):** bloquea anular hijas de split (`parentCoilId` presente) → `failed-precondition` antes del check de status. Audit string neutralizado. Commit `920dce8f`, merge `2b9c57a9`, validado en prod incógnito.
 
+**HECHO (v6.12):**
+- **P1-bis guardarraíl voidCoil (dirección-madre):** bloquea anular madre con hijos de split vivos (query `parentCoilId==coilId` & `status!=VOIDED`, pre-tx). Índice compuesto `coils(parentCoilId,status)` deployado. Commits 7b8e0fd2/52d8b92f, validado prod.
+- **WRITE 6 mini-ciclo 1 — registerCoil:** alta de coils server-side (AddCoilForm + PurchaseCoilFromXml thin-clients). Recalcula pricePerKg/currentWeight/status/id; dedup atómico; valida finish vs coil_finishes; TC USD rango [2,7]; gate ADMIN+SUPERVISOR. Validado en test (pruebas 1-4). BulkUpload oculto + seedFinishes eliminado.
+
 **PENDIENTE / EN COLA (orden sugerido):**
 
-1. **🔴 P1-bis — Guardarraíl `voidCoil` (dirección-madre):** `voidCoil` sobre madre CON hijos de split vivos la marca VOIDED sin tocar los hijos → hijos quedan colgando de padre muerto (inventario fantasma, pérdida silenciosa espejo de P1). Validado en prod: `TEST-001-2` VOIDED con hijo `TEST-001-2-S34C735` AVAILABLE. FIX: precondición que detecte hijos vivos (query `parentCoilId == coilId` & `status != VOIDED`) → fallo ruidoso, bloquear (no cascada-void). Mini-ciclo propio. Resolución real de ambos P1 = reversa de split completa (WRITE separado).
+1. **WRITE 6 mini-ciclo 2:** `registerCoilsBulk` (reactivar BulkUpload; decidir atomicidad todo-o-nada vs fallo parcial en migración histórica).
 2. **Reversa de split (WRITE nuevo, ¿7.5?):** restaurar madre + VOIDED hijo + reversa `kardex_movements`. Operación distinta de `voidProductionFromCoils`.
 3. **Verificaciones del import masivo:** crear GRIS en `coil_finishes` (0.008) + probar import con CSV real en test (55 ítems, densityFactor derivado, length PL).
-4. **WRITE 6:** altas coils (`AddCoilForm` / `BulkUploadCoils` / `PurchaseCoilFromXml`).
-5. **WRITE 7:** `voidProductionFromCoils` metallic+drywall (costo congelado del `production_log`).
-6. **WRITE 8:** `cutOrder` (monstruo: WAC+prorrateo, 5 funciones).
-7. **WRITE 9:** `salesService` (payload crítico precio/correlativo). Desbloquea 3 tests `salesReimport` skipped.
-8. **Candado final rules Fase 2:** cerrar `coils`/`kardex`/`audit` a `if false` colección por colección, solo cuando 0 escritores cliente queden.
-9. **Capa 2 server-side / Infraestructura:** session cookies + `proxy.ts`. Actualizar Next 16.1.7 → **16.2.6** (parchea 13 CVEs, 3 de bypass de auth). proxy.ts es UX, NO seguridad.
-10. **Resto Grupo 2 tablas (mode cursor):** Kardex, Usuarios, Compras, Producción Drywall.
-11. **Backlog cosmético:** `piecesProduced` naming; redirects `permanent:true` → `false`; `HeaderOptionsMenu` reuso en sales; ACCESORIO → Trading.
-12. **Otros:** ventas USD sin TC (FFA1-912/913/933); SUNAT BETA .p12; PDF reportes.
+4. **WRITE 7:** `voidProductionFromCoils` metallic+drywall (costo congelado del `production_log`).
+5. **WRITE 8:** `cutOrder` (monstruo: WAC+prorrateo, 5 funciones).
+6. **WRITE 9:** `salesService` (payload crítico precio/correlativo). Desbloquea 3 tests `salesReimport` skipped.
+7. **Candado final rules Fase 2:** cerrar `coils`/`kardex`/`audit` a `if false` colección por colección, solo cuando 0 escritores cliente queden.
+8. **Capa 2 server-side / Infraestructura:** session cookies + `proxy.ts`. Actualizar Next 16.1.7 → **16.2.6** (parchea 13 CVEs, 3 de bypass de auth). proxy.ts es UX, NO seguridad.
+9. **Resto Grupo 2 tablas (mode cursor):** Kardex, Usuarios, Compras, Producción Drywall.
+10. **Backlog cosmético:** `piecesProduced` naming; redirects `permanent:true` → `false`; `HeaderOptionsMenu` reuso en sales; ACCESORIO → Trading.
+11. **Otros:** ventas USD sin TC (FFA1-912/913/933); SUNAT BETA .p12; PDF reportes.
 
 ---
 
@@ -219,6 +223,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Candado rules:** cerrar FASE 2 a `if false` SOLO cuando Function validada runtime prod Y todos los escritores de esa colección migrados. Último paso de cada write.
 - **Reversa de split ≠ voidCoil (v6.11):** `voidCoil` = baja de ingreso (status AVAILABLE → VOIDED, sin tocar genealogía de splits). La reversa de split (restaurar madre + VOIDED hijo + reversa kardex) es un WRITE futuro separado. Mientras tanto `voidCoil` debe BLOQUEARSE si `coil.parentCoilId` existe (`failed-precondition`), nunca permitir pérdida silenciosa de masa. [DEUDA P1]
 - **Auth de callables (v6.11):** bypass por dominio de email PROHIBIDO en prod (`@ayrsteel.com` = dominio real → cualquier empleado sin claim pasaría el check de rol). Solo `@example.com` (emulador, inerte en prod) es aceptable. Rol SIEMPRE por custom claim (`request.auth.token.role`).
+- **Deploy a tests (v6.12):** Deploy a `ayrsteel-test` SIEMPRE por función específica (`--only functions:NOMBRE`), NUNCA `--only functions:default` (propone borrar funciones legacy incl. SUNAT por metadata de codebase desincronizado).
 
 ---
 
@@ -232,6 +237,10 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 ---
 
 ## 11. Convenciones
+
+### densityFactor por acabado (referencia, fuente seedFinishes eliminada)
+GALVANIZADO (drywall) 0.00785; ALUZINC/NATURAL/AZUL/BLANCO/ROJO/VERDE (metallic) 0.008.
+Runtime: lookup desde `coil_finishes`, throw si falta.
 
 - 0 `any` nuevos · nombres en inglés, datos/errores de usuario en español.
 - Patrón Strategy (`getStockStrategy`), no if/else por línea.
