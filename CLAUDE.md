@@ -1,7 +1,8 @@
-# CLAUDE.md — AYR Steel ERP (v6.13)
+# CLAUDE.md — AYR Steel ERP (v6.14)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + integración serializada verde | Functions v2 operativa.
+> **v6.14:** deleteCoilDraft (callable + UI) CERRADO EN PROD. Borrado físico de bobina inerte solo si VOIDED y cero movimientos. Fix tsconfig functions-sunat (npm run build local restaurado).
 > **v6.13:** WRITE 6 mini-ciclo 2 (`registerCoilsBulk`) desplegado en prod Y test. BulkUpload reescrito thin-client en página dedicada `/admin/coils/bulk-import`. Callable ACTIVE en prod; UI desplegada en master. ⚠️ Runtime PROD end-to-end NO ejercitado aún (validado en test-nube; primera corrida prod real = importación de abril, pendiente como operación). Ver §14.
 > **v6.12:** WRITE 6 mini-ciclo 1 (registerCoil) y guardarraíl P1-bis desplegados en prod. Paginación y kit de tablas (v6.9) operativos. Reglas auth Capa 1 y custom claims vigentes.
 > **v6.11:** Writes 2-5 (`registerCoilSplit` / `voidCoil` / `updateCoil` / `cancelCoilPlan` / `produceFromCoils` / `produceFromStrip`) desplegados y validados en runtime PROD. Rules claim-only + `scrap_logs` candado (`if false`) en PROD. Agujero auth `@ayrsteel.com` cerrado (código + runtime). Fix `next build`: `src/test` excluido de tsconfig.
@@ -83,6 +84,15 @@ Modelo **A2 desacoplado**: producción y ventas independientes. Anular venta NO 
 ### 3.5 Lector de rendimiento (`useCoilYield`/`yieldCalc.ts`)
 
 - `where('parentCoilIds','array-contains',coil.id)`. Suma `mlFromCoil` de la entrada del breakdown de esa bobina (NO el `totalMl` global). Excluye VOIDED. **Fallo ruidoso** si falta breakdown.
+
+### 3.6 `deleteCoilDraft` (borrador inerte)
+
+- Callable ADMIN-only. Modelo A: exige status==VOIDED previo (anular antes de borrar).
+- 5 guards (todos deben pasar): status==VOIDED; no parentCoilId (no hija de split); cero hijas (coils where parentCoilId==coilId); cero producción (production_logs array-contains coilId); cero scrap (scrap_logs where coilId); cero kardex (kardex_movements where sku==coilId). Cualquiera >0 → failed-precondition con motivo específico.
+- Borrado FÍSICO (transaction.delete) + audit_log action DELETE_COIL_DRAFT (shape: action, entityId, userEmail, details, timestamp — espeja voidCoil, NO coilId/deletedBy).
+- UI: filtro "Anuladas" (status==VOIDED) en InventoryFilters; en celda de acciones de un VOIDED, ADMIN ve botón "Eliminar borrador" (danger, ConfirmDialog requireInput {matchValue:"ELIMINAR"}); no-ADMIN conserva badge "Sin Efecto". Índice coils[status,createdAt] ya existente (reusado).
+- Runtime prod validado (script invoke ayrsteel-2026, happy borra + bloqueo scrap sobrevive).
+- Commits: merge cb9d11fc (backend c0245711 + UI 0eabdebe + tsconfig 858126df + docs 34033330).
 
 ---
 
@@ -211,9 +221,20 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - Commits (develop→master): backend `31236045`, lógica pura `38fe1df6`, UI `2cac4082`, infra `79ed7be2`.
 - ⚠️ **Runtime PROD end-to-end NO ejercitado.** Validado a fondo en test-nube (doc E001-6498-01: pricePerKg 2.906779 = value×tc/weight, TON→kg 4820, originalCurrencyValue 4003.05 a 2 dec). Callable ACTIVE en prod, UI en master. La primera corrida real de prod = importación de abril (§14).
 
+**HECHO (v6.14) — `deleteCoilDraft` + Deuda:**
+
+- **`deleteCoilDraft` (callable + UI):** Borrado físico de bobina SOLO si cero movimientos (sin producción/split/venta/consumo). Distingue borrador inerte de bobina con efecto contable. Guards 100% atómicos. UI con confirmación estricta y filtro de anuladas. Validado en runtime PROD (script 2026).
+- **Fix tsconfig functions-sunat:** `npm run build` local restaurado como señal válida antes de merge.
+- **Importación de abril:** DESBLOQUEADA (deleteCoilDraft es la red de re-importación: importar mal → anular → borrar → re-importar).
+
 **PENDIENTE / EN COLA (orden sugerido):**
 
-1. **`deleteCoilDraft` (WRITE nuevo):** borrado FÍSICO de bobina SOLO si cero movimientos (sin producción/split/venta/consumo). Resuelve "importé mal, anulé, quiero re-importar" sin romper dedup (que bloquea por existencia, ciego a VOIDED — correcto). Distingue borrador inerte (borrable, libera ID) de bobina con efecto contable (solo VOIDED, histórico). Guard cero-movimientos estilo voidCoil. NO tocar dedup del bulk. Nace de necesidad real en runtime v6.13.
+1. **`voidCoilScrap` (PRÓXIMO WRITE — recon hecho, decisiones tomadas, NO implementado):**
+   - **Necesidad:** revertir un scrap mal registrado (deja la bobina en callejón sin salida).
+   - **Recon:** registerCoilScrap descuenta peso, recalcula status, escribe scrap_logs (costo congelado, sin status), kardex, audit. Efectos deterministas.
+   - **Reversa propuesta:** currentWeight += scrapWeightKg, recalcular status, scrap_log → status VOIDED, kardex compensatorio type "SCRAP_REVERSAL" (verificar reportes antes), audit VOID_COIL_SCRAP. Molde: voidProductionFromCoils (restaura peso al costo congelado).
+   - **Decisiones tomadas:** P1(b) BLOQUEAR si hay movimientos POSTERIORES al scrap (comparar timestamps en PASO 0). P2 idempotencia. P3 bloquear si bobina VOIDED. P4 ADMIN-only. P5 type SCRAP_REVERSAL.
+   - **UI pendiente:** trazar si hay vista de mermas hoy, o si hace falta crearla para anular.
 2. **`PurchaseCoilFromXml` finish por-fila:** hoy usa select global por factura (L49/234/404 → mismo acabado a todas las bobinas del XML, ignora colores mixtos). Patrón muerto preexistente. Fix: mover a por-fila como BulkUpload (parseCoilDescription + dropdown por fila). Ver §11.
 3. **Reversa de split (WRITE nuevo, ¿7.5?):** restaurar madre + VOIDED hijo + reversa `kardex_movements`. Operación distinta de `voidProductionFromCoils`.
 4. **WRITE 7:** `voidProductionFromCoils` metallic+drywall (costo congelado del `production_log`).
@@ -256,6 +277,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 
 ### Deudas destapadas en v6.13 (WRITE 6 mc2)
 
+- **Fix tsconfig functions-sunat (CERRADA v6.14):** .vercelignore excluía functions+functions-sunat pero el exclude del tsconfig raíz solo tenía functions → npm run build local roto (rojo que Vercel no sufría). RESUELTO en 858126df: añadido functions-sunat al exclude. npm run build local = señal válida otra vez.
 - **Fecha `T12:00:00Z` (mediodía UTC) en single + bulk:** ambos concatenan `T12:00:00` a la fecha YYYY-MM-DD y la persisten como Timestamp. Funciona para Perú (UTC-5 → 07:00 sigue siendo el día correcto), pero es frágil ante lectura en otras zonas / agrupación por día. Artefacto heredado, no decisión consciente. Compartido single+bulk.
 - **`registerCoil` single SIN guards de fecha ni dimensiones:** el bulk (v6.13) valida fecha (regex+componentes) y width/thickness>0; el single NO. Bug latente: fecha basura o dimensión 0/null enviada al single → crash Firestore Timestamp o doc con dimensión inválida. Portar los guards del bulk al single.
 - **`migrateFinishDensityFactors` + scripts backfill esperan naming MUERTO:** `finishService.ts` (`migrateFinishDensityFactors`), `scripts/backfillCoilFinish.ts`, `scripts/check_finishes.ts` usan `GALVANIZADO`/`NATURAL` (español completo). La BD VIVA usa `GALV`/`ALU-NATURAL`. Correr esas migraciones hoy crearía finishes basura o fallaría. Auditar y corregir/enterrar.

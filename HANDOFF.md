@@ -1,54 +1,26 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.13).
+> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.14).
 > Preferencias: Prompts Claude Code por defecto. Caveman mode. PASO 0 read-only en cada prompt.
 > Preguntar ante duda de negocio. NUNCA cerrar en verde sin RUNTIME (lo corre el USUARIO, no Claude).
 > npm run build LOCAL antes de merge a master. Un frente a la vez, confirmar cierre antes de seguir.
 
-## ✅ Cerrado esta sesión — WRITE 6 mini-ciclo 2 (`registerCoilsBulk`)
+## ✅ Cerrado esta sesión — `deleteCoilDraft` (v6.14)
 
-Bulk de alta masiva de bobinas, completo y desplegado. Detalle en CLAUDE.md §9 (HECHO v6.13) y §10.
-
-- **Backend** `registerCoilsBulk` (coilBulkRegistration.ts): atómico por factura, fallo parcial tolerado,
-  dedup por existencia (ciego a VOIDED), guards finish/TC[2,7]/fecha/dimensiones>0, reporte por factura,
-  audit REGISTER_COIL_BULK. 12 tests int. ACTIVE en prod Y test.
-- **Lógica pura:** parseCoilDescription (14 tests, token semántico) + bulkUploadLogic (32 tests:
-  validateCoilRow, buildInvoicesPayload, parseWeightToKg, guard peso [2000-7000], value 2 dec).
-- **UI:** BulkUploadCoils reescrito thin-client en página dedicada /admin/coils/bulk-import (no modal).
-  Preview editable, dropdown finish vivo, peso kg editable, sugerir-TC (api tipo-cambio). Botón→href.
-  Modal viejo extirpado. Breadcrumb registrado.
-- **Config:** NEXT_PUBLIC_USE_EMULATOR opt-out (default emulador). testTimeout 15s. scripts/local/ gitignored.
-- Commits en master: backend 31236045, lógica 38fe1df6, UI 2cac4082, infra 79ed7be2. develop=master synced.
-
-## 🔴 CRÍTICO — Runtime PROD NO ejercitado
-
-Validado a FONDO en test-nube (doc E001-6498-01 verificado: pricePerKg cuadra, TON→kg, value 2 dec).
-Callable ACTIVE en prod, UI en master (Vercel). PERO **la UI en prod NO se ejercitó end-to-end con un
-envío real**. La primera corrida prod = la importación de abril (abajo). NO asumir prod probado.
+- **CERRADO ESTA SESIÓN:** `deleteCoilDraft` (callable + UI) EN PROD, runtime prod verde. Fix tsconfig functions-sunat (build local restaurado). `develop`=`master` synced (merge `cb9d11fc`).
+- **ESTADO:** `deleteCoilDraft` cierra el caso "importé mal → anulé → re-importo". Abril DESBLOQUEADA.
 
 ## 🔴 ARRANCAR PRÓXIMA SESIÓN — opciones (decidir al inicio)
 
-Reco: **1 o 2 primero** (nacen de necesidad real, desbloquean operación), luego drenar writes.
+1. **`voidCoilScrap`** (recon+decisiones ya en CLAUDE.md §nuevo; arrancar PASO 0 del matiz timestamps P1(b) + molde `voidProductionFromCoils` + trazar UI de mermas). Reco media.
+2. **Importación REAL de abril a PROD** (ahora desbloqueada; operación de curación §14, sesión dedicada, backup coils prod primero, pre-filtrar CSV, finishes a mano, líneas UNIDAD manual).
+3. **`PurchaseCoilFromXml` finish por-fila** (deuda preexistente).
+4. **Drenar writes** 7/8/9.
+5. **Saneamiento infra test↔prod** (SUNAT solo test, Algolia solo prod, metadata codebase test rota).
 
-1. **`deleteCoilDraft` (WRITE nuevo, reco alta):** borrado FÍSICO de bobina SOLO si cero movimientos
-   (sin producción/split/venta/consumo). Resuelve "importé mal → anulé (VOIDED) → quiero re-importar
-   pero el dedup me bloquea porque el doc existe". Distingue borrador inerte (borrable, libera ID) de
-   bobina con efecto contable (solo VOIDED). Guard cero-movimientos estilo voidCoil. NO tocar dedup del
-   bulk (bloquear VOIDED es correcto). Nació en runtime de esta sesión — el usuario chocó con esto.
+- **MANTENER:** las reglas de oro (runtime lo corre el usuario; números crudos no conclusiones; npm run build local antes de merge; deploy por función específica leyendo el plan; PASO 0 read-only; un frente a la vez).
+- **Recordatorio de disciplina (esta sesión):** contra PROD, revisar uid del ADMIN + guard de proyecto ANTES de correr el script, no correr directo. Esta vez los guards del script (proyecto==ayrsteel-2026 + prefijo TESTPROD-) aguantaron, pero es la última red antes de la BD real.
 
-2. **Importación REAL de abril a PROD (operación, NO código):** ver CLAUDE.md §14. Es curación fila por
-   fila, NO un clic. Realidades: pre-filtrar CSV a coil-only; filas TREAM sin color → elegir finish a
-   mano; filas JAVISAC en UNIDAD = líneas agrupadas (varias bobinas/línea) → fuera del bulk 1:1, desglose
-   manual. Backup coils prod antes. Es también el runtime prod pendiente. Hacer con calma, sesión dedicada.
-
-3. **`PurchaseCoilFromXml` finish por-fila:** hoy select global por factura (mismo acabado a todas,
-   ignora colores mixtos). Fix a por-fila como BulkUpload. Deuda preexistente, no urgente.
-
-4. **Drenar writes:** WRITE 7 (voidProductionFromCoils costo congelado), WRITE 8 (cutOrder monstruo
-   WAC/prorrateo, 5 fns), WRITE 9 (salesService, desbloquea 3 tests salesReimport skipped).
-
-5. **Saneamiento infra test↔prod** (deuda multi-sprint): SUNAT solo test, Algolia solo prod, voidCoil
-   viejo en test, metadata codebase test rota. Riesgo de borrado accidental alto hasta resolver.
 
 ## Deudas vivas destapadas esta sesión (detalle en CLAUDE.md §11)
 
