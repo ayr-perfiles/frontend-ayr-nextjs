@@ -863,6 +863,15 @@ export const runAluzincCosto = async (params: {
 
 // ─── P-M7: ALUZINC — RESUMEN (Venta + Costo + Merma + Ganancia) ──────────────
 
+type ScrapDocLike = { data: () => { status?: string; scrapCostPEN?: number } };
+export function calculateTotalMermaSoles(scrapDocs: ScrapDocLike[]): number {
+  return scrapDocs.reduce((acc, d) => {
+    const data = d.data();
+    if (data.status === "VOIDED") return acc;
+    return acc + (data.scrapCostPEN ?? 0);
+  }, 0);
+}
+
 /** Combina ventas, costo y merma del periodo en un resumen por color. */
 export const runAluzincResumen = async (params: {
   period: string;
@@ -931,10 +940,7 @@ export const runAluzincResumen = async (params: {
       where("timestamp", "<=", Timestamp.fromDate(end)),
     ),
   );
-  const totalMermaSoles = scrapSnap.docs.reduce(
-    (acc, d) => acc + ((d.data().scrapCostPEN as number) ?? 0),
-    0,
-  );
+  const totalMermaSoles = calculateTotalMermaSoles(scrapSnap.docs);
 
   const ventasResult = buildAluzincSalesReport(saleInputs);
   const costoResult = buildAluzincCostReport(costInputs);
