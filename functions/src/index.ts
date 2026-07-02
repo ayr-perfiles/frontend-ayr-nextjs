@@ -395,7 +395,7 @@ export const healthCheck = onCall(async () => {
 // MERMAS: Registro de merma en bobinas
 // ════════════════════════════════════════════════════════════
 
-export { registerCoilScrap } from "./callables/scrap";
+export { registerCoilScrap, voidCoilScrap } from "./callables/scrap";
 export { registerCoilSplit } from "./callables/split";
 export { registerCoil } from "./callables/coilRegistration";
 
