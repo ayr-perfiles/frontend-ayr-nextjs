@@ -8,6 +8,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { DataTable, ColumnDef } from "@/components/ui/DataTable";
+import { getKardexMovementDisplay } from "@/core/kardex/kardexMovementDisplay";
 
 interface KardexTableProps {
   movements: KardexMovement[];
@@ -48,23 +49,19 @@ export function KardexTable({
       key: "type",
       header: "Tipo",
       render: (mov) => {
-        if (mov.type === "IN") {
-          return (
-            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border border-emerald-200">
-              <ArrowDownRight size={12} /> Entrada
-            </span>
-          );
+        const display = getKardexMovementDisplay(mov.type);
+        let Icon = AlertCircle;
+        if (mov.type === "IN" || mov.type === "ENTRADA" || mov.type === "SCRAP_REVERSAL") {
+          Icon = ArrowDownRight;
+        } else if (mov.type === "OUT" || mov.type === "SALIDA") {
+          Icon = ArrowUpRight;
+        } else if (mov.type === "SCRAP") {
+          Icon = AlertTriangle;
         }
-        if (mov.type === "SCRAP") {
-          return (
-            <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border border-amber-200">
-              <AlertTriangle size={12} /> Merma
-            </span>
-          );
-        }
+
         return (
-          <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border border-red-200">
-            <ArrowUpRight size={12} /> Salida
+          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest border ${display.className}`}>
+            <Icon size={12} /> {display.label}
           </span>
         );
       },
@@ -88,14 +85,20 @@ export function KardexTable({
       key: "quantity",
       header: "Cantidad",
       align: "right",
-      render: (mov) => (
-        <span
-          className={`font-mono text-base font-black ${mov.type === "IN" ? "text-emerald-600" : "text-red-600"}`}
-        >
-          {mov.type === "IN" ? "+" : "-"}
-          {mov.quantity}
-        </span>
-      ),
+      render: (mov) => {
+        const display = getKardexMovementDisplay(mov.type);
+        const colorClass = display.sign === "+" 
+          ? "text-emerald-600" 
+          : display.sign === "-" 
+            ? (mov.type === "SCRAP" ? "text-amber-600" : "text-red-600")
+            : "text-gray-600";
+            
+        return (
+          <span className={`font-mono text-base font-black ${colorClass}`}>
+            {display.sign}{mov.quantity}
+          </span>
+        );
+      },
     },
     {
       key: "balance",

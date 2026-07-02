@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { fetchAllKardexForExport, KardexMovement } from "@/services/kardexService";
+import { getKardexMovementDisplay } from "@/core/kardex/kardexMovementDisplay";
 import { getCatalog, ProductConfig } from "@/services/catalogService";
 import { History, Package, FileSpreadsheet } from "lucide-react";
 import toast from "react-hot-toast";
@@ -35,16 +36,19 @@ export default function KardexPage() {
       if (allData.length === 0) throw new Error("No hay datos para exportar");
 
       const headers = ["Fecha", "Hora", "Tipo de Movimiento", "Documento/Origen", "Detalle", "Cantidad", "Saldo Corriente", "Usuario Responsable"];
-      const rows = allData.map((m: KardexMovement) => [
-        m.date.toLocaleDateString("es-PE"),
-        m.date.toLocaleTimeString("es-PE"),
-        m.type === "IN" ? "ENTRADA" : "SALIDA",
-        m.reference,
-        m.description,
-        m.type === "IN" ? `+${m.quantity}` : `-${m.quantity}`,
-        m.balance,
-        m.user,
-      ]);
+      const rows = allData.map((m: KardexMovement) => {
+        const display = getKardexMovementDisplay(m.type);
+        return [
+          m.date.toLocaleDateString("es-PE"),
+          m.date.toLocaleTimeString("es-PE"),
+          display.label,
+          m.reference,
+          m.description,
+          `${display.sign}${m.quantity}`,
+          m.balance,
+          m.user,
+        ];
+      });
 
       const csvContent = [headers.join(","), ...rows.map((r) => r.map((cell) => `"${cell}"`).join(","))].join("\n");
       const blob = new Blob(["﻿" + csvContent], { type: "text/csv;charset=utf-8;" });

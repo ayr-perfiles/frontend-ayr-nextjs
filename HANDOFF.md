@@ -25,7 +25,9 @@
 
 ## Deudas vivas (detalle en CLAUDE.md §11)
 
-- **DEUDA KardexTab binario IN/OUT.**
+- **/admin/kardex rotulado como global:** Es product-scoped (solo lee products de drywall). Decisión pendiente: rotular/mover bajo Drywall o hacer selector global (products+coils).
+- **strips_movements render de AJUSTE:** Revisar si tiene mismo bug binario que tenía el kardex (frente aparte).
+- **kardex bobina 'Cantidad' siempre +1/-1:** Magnitud real = weightKg, no mostrada en la UI (mejora opcional en KardexTable compartido).
 - **Fecha T12:00:00Z (mediodía UTC)** en single + bulk. Funciona Perú, frágil timezones.
 - **registerCoil single SIN guards de fecha ni dimensiones** (el bulk sí). Bug latente. Portar guards.
 - **migrateFinishDensityFactors + scripts backfill esperan naming MUERTO** (GALVANIZADO/NATURAL vs vivo GALV/ALU-NATURAL).

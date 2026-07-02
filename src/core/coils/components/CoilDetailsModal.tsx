@@ -37,6 +37,10 @@ import { useAuth } from "@/context/AuthContext";
 import { useConfirm } from "@/context/ConfirmContext";
 import toast from "react-hot-toast";
 import Link from "next/link";
+import { useKardex } from "@/core/hooks/useKardex";
+import { KardexTable } from "@/components/kardex/KardexTable";
+import { TablePagination } from "@/components/ui/TablePagination";
+import { TableSkeleton } from "@/components/ui/TableSkeleton";
 
 interface CoilDetailsModalProps {
   coil: Coil;
@@ -72,10 +76,18 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
   const confirm = useConfirm();
 
   // --- TABS Y HOOKS DE DATOS ---
-  const [activeTab, setActiveTab] = useState<"general" | "cortes" | "mermas">("general");
+  const [activeTab, setActiveTab] = useState<"general" | "cortes" | "mermas" | "movimientos">("general");
   const { scraps, loading: scrapsLoading, error: scrapsError, refresh: refreshScraps } = useCoilScraps(
     activeTab === "mermas" ? coil.id : undefined
   );
+
+  const [kardexPageSize, setKardexPageSize] = useState(15);
+  const kardex = useKardex({
+    selectedSku: activeTab === "movimientos" ? coil.id : "",
+    pageSize: kardexPageSize,
+    startDate: "",
+    endDate: "",
+  });
 
   // --- NUEVA LÓGICA DE ORDEN DE CORTE ---
   const [linkedOrder, setLinkedOrder] = useState<CutOrder | null>(null);
@@ -221,6 +233,16 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
             }`}
           >
             Mermas
+          </button>
+          <button
+            onClick={() => setActiveTab("movimientos")}
+            className={`px-4 py-2 text-sm font-black tracking-widest uppercase transition-colors rounded-t-lg ${
+              activeTab === "movimientos"
+                ? "text-blue-600 bg-blue-50/50 border-b-2 border-blue-600"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            }`}
+          >
+            Movimientos
           </button>
         </div>
 
@@ -702,6 +724,36 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
                 </table>
               </div>
             )}
+          </div>
+        )}
+        {/* 6. KARDEX (TAB MOVIMIENTOS) */}
+        {activeTab === "movimientos" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="relative">
+              {kardex.loading && kardex.movements.length === 0 ? (
+                <TableSkeleton rows={8} columns={6} />
+              ) : (
+                <KardexTable 
+                  movements={kardex.movements} 
+                  currentPage={kardex.currentPage} 
+                  pageSize={kardexPageSize} 
+                  isLoading={kardex.loading && kardex.movements.length > 0} 
+                />
+              )}
+            </div>
+
+            <TablePagination
+              currentPage={kardex.currentPage}
+              pageSize={kardexPageSize}
+              totalItems={kardex.totalCount}
+              totalLabel="movimientos"
+              onPageChange={(page) => {
+                if (page > kardex.currentPage) kardex.nextPage();
+                else kardex.prevPage();
+              }}
+              pageSizeOptions={[15, 50]}
+              onPageSizeChange={setKardexPageSize}
+            />
           </div>
         )}
       </div>
