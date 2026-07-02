@@ -1,7 +1,8 @@
-# CLAUDE.md — AYR Steel ERP (v6.14)
+# CLAUDE.md — AYR Steel ERP (v6.15)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + integración serializada verde | Functions v2 operativa.
+> **v6.15:** voidCoilScrap (callable) CERRADO EN PROD. Reversa de merma mal registrada: restaura peso al costo congelado, marca scrap_log VOIDED, kardex compensatorio SCRAP_REVERSAL, audit VOID_COIL_SCRAP. Filtro de reporte de merma (scrap VOIDED no cuenta en totalMermaSoles). Helper backend determineCoilStatusAfterReversal. UI de mermas PENDIENTE (frente B).
 > **v6.14:** deleteCoilDraft (callable + UI) CERRADO EN PROD. Borrado físico de bobina inerte solo si VOIDED y cero movimientos. Fix tsconfig functions-sunat (npm run build local restaurado).
 > **v6.13:** WRITE 6 mini-ciclo 2 (`registerCoilsBulk`) desplegado en prod Y test. BulkUpload reescrito thin-client en página dedicada `/admin/coils/bulk-import`. Callable ACTIVE en prod; UI desplegada en master. ⚠️ Runtime PROD end-to-end NO ejercitado aún (validado en test-nube; primera corrida prod real = importación de abril, pendiente como operación). Ver §14.
 > **v6.12:** WRITE 6 mini-ciclo 1 (registerCoil) y guardarraíl P1-bis desplegados en prod. Paginación y kit de tablas (v6.9) operativos. Reglas auth Capa 1 y custom claims vigentes.
@@ -93,6 +94,16 @@ Modelo **A2 desacoplado**: producción y ventas independientes. Anular venta NO 
 - UI: filtro "Anuladas" (status==VOIDED) en InventoryFilters; en celda de acciones de un VOIDED, ADMIN ve botón "Eliminar borrador" (danger, ConfirmDialog requireInput {matchValue:"ELIMINAR"}); no-ADMIN conserva badge "Sin Efecto". Índice coils[status,createdAt] ya existente (reusado).
 - Runtime prod validado (script invoke ayrsteel-2026, happy borra + bloqueo scrap sobrevive).
 - Commits: merge cb9d11fc (backend c0245711 + UI 0eabdebe + tsconfig 858126df + docs 34033330).
+
+### 3.7 `voidCoilScrap` (reversa de merma)
+
+- Callable ADMIN-only, molde `voidProductionFromCoils` (runTransaction, lee antes de escribir, idempotente, 0 borrado físico).
+- 5 guards pre-escritura: P4 ADMIN-only; scrapLogId presente (invalid-argument); scrap_log existe (not-found); P2 scrap_log.status==VOIDED (failed-precondition, idempotente); P3 coil.status==VOIDED (failed-precondition); P1(b) movimiento POSTERIOR (production_logs array-contains coilId status ACTIVE, o coil hija parentCoilId==coilId, con createdAt.toMillis() > scrap.timestamp.toMillis()). FAIL-CLOSED: sin createdAt comparable → bloquea.
+- Escrituras txn costo congelado: coil currentWeight += scrapWeightKg + status determineCoilStatusAfterReversal + updatedAt; scrap_log.status="VOIDED" (campo NUEVO); kardex {sku:coilId, date, type:"SCRAP_REVERSAL", quantity:1, weightKg, costPerKg: scrapCostPEN/scrapWeightKg CONGELADO, balance:newWeight, reference:scrapLogId, user}; audit VOID_COIL_SCRAP.
+- costPerKg congelado = scrapCostPEN/scrapWeightKg (scrap_log NO guarda pricePerKg; se deriva). NUNCA re-leer costo del coil (WAC pudo cambiar).
+- Helper `determineCoilStatusAfterReversal(newWeight, initialWeight)` en `functions/src/domain/scrap.ts`: newWeight >= initialWeight - 0.01 → AVAILABLE, else IN_PROGRESS. EPSILON 0.01 paridad con cliente voidProductionFromCoils. Coexiste con determineCoilStatusAfterScrap (PROCESSED en peso 0). Reversa nunca da PROCESSED. Test paridad 5 casos.
+- Reporte: `calculateTotalMermaSoles(scrapDocs)` función pura en `reportFunctions.ts` filtra IN-MEMORY status==="VOIDED" (no cuenta). Retrocompat: históricos SIN status → CUENTAN. NUNCA where("status","!=","VOIDED"). Consumidor de suma de merma ÚNICO en repo (verificado grep scrapCostPEN).
+- Runtime prod ACTIVE ayrsteel-2026 (deploy por nombre CREATE puro). Test-nube validado (invoke_void_scrap_test.cjs): A happy (800→1000, AVAILABLE, VOIDED, kardex 200/2.5/1000, audit), B/C/D failed-precondition. Commits: backend 3bc70a40, reporte 16eff2db, merge 85387553.
 
 ---
 
@@ -227,15 +238,12 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Fix tsconfig functions-sunat:** `npm run build` local restaurado como señal válida antes de merge.
 - **Importación de abril:** DESBLOQUEADA (deleteCoilDraft es la red de re-importación: importar mal → anular → borrar → re-importar).
 
+**HECHO (v6.15) — `voidCoilScrap`:**
+- **`voidCoilScrap` (callable):** Reversa de merma mal registrada. Restaura peso al costo congelado, marca scrap_log VOIDED, kardex compensatorio SCRAP_REVERSAL, audit VOID_COIL_SCRAP. Filtro de reporte de merma (scrap VOIDED no cuenta en totalMermaSoles). Helper backend determineCoilStatusAfterReversal. CERRADO EN PROD. (Ver §3.7).
+
 **PENDIENTE / EN COLA (orden sugerido):**
 
-1. **`voidCoilScrap` (PRÓXIMO WRITE — recon hecho, decisiones tomadas, NO implementado):**
-   - **Necesidad:** revertir un scrap mal registrado (deja la bobina en callejón sin salida).
-   - **Recon:** registerCoilScrap descuenta peso, recalcula status, escribe scrap_logs (costo congelado, sin status), kardex, audit. Efectos deterministas.
-   - **Reversa propuesta:** currentWeight += scrapWeightKg, recalcular status, scrap_log → status VOIDED, kardex compensatorio type "SCRAP_REVERSAL" (verificar reportes antes), audit VOID_COIL_SCRAP. Molde: voidProductionFromCoils (restaura peso al costo congelado).
-   - **Decisiones tomadas:** P1(b) BLOQUEAR si hay movimientos POSTERIORES al scrap (comparar timestamps en PASO 0). P2 idempotencia. P3 bloquear si bobina VOIDED. P4 ADMIN-only. P5 type SCRAP_REVERSAL.
-   - **UI pendiente:** trazar si hay vista de mermas hoy, o si hace falta crearla para anular.
-2. **`PurchaseCoilFromXml` finish por-fila:** hoy usa select global por factura (L49/234/404 → mismo acabado a todas las bobinas del XML, ignora colores mixtos). Patrón muerto preexistente. Fix: mover a por-fila como BulkUpload (parseCoilDescription + dropdown por fila). Ver §11.
+1. **`PurchaseCoilFromXml` finish por-fila:** hoy usa select global por factura (L49/234/404 → mismo acabado a todas las bobinas del XML, ignora colores mixtos). Patrón muerto preexistente. Fix: mover a por-fila como BulkUpload (parseCoilDescription + dropdown por fila). Ver §11.
 3. **Reversa de split (WRITE nuevo, ¿7.5?):** restaurar madre + VOIDED hijo + reversa `kardex_movements`. Operación distinta de `voidProductionFromCoils`.
 4. **WRITE 7:** `voidProductionFromCoils` metallic+drywall (costo congelado del `production_log`).
 5. **WRITE 8:** `cutOrder` (monstruo: WAC+prorrateo, 5 funciones).
@@ -275,13 +283,20 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Línea ACCESORIO → Trading:** migración transversal.
 - **`HeaderOptionsMenu`:** sales/page.tsx tenía menú inline del que se extrajo; podría reusar el componente nuevo (evitar duplicación).
 
+### Deudas destapadas en v6.15 (voidCoilScrap)
+
+- **Frente B UI de mermas PENDIENTE:** no existe vista que liste mermas de una bobina; scrap invisible fuera de reportes; voidCoilScrap solo se invoca por script. Falta pestaña/lista "Mermas" en detalle de bobina + botón ADMIN "Anular merma". Hueco operativo resuelto en BACKEND, no en operador.
+- **Gap runtime P4:** guard ADMIN-only NO probado en runtime (falta usuario no-admin en test). Cubierto por test integración 7, no por runtime. Cubrir en frente B.
+- **DEUDA KardexTab binario IN/OUT (preexistente, agravada):** `src/components/reports/tabs/KardexTab.tsx` renderiza cualquier type ≠ "IN" como rojo/SALIDA. SCRAP_REVERSAL (entrada +) se verá rojo/salida. Ya afecta SCRAP/AJUSTE. Reporte NO lee kardex → datos correctos, solo tabla visual miente. Fix = frente aparte (mapa type→signo/color).
+- **registerCoilScrap guarda scrap_log SIN campo status:** (undefined=activo, "VOIDED"=anulado). Por eso filtro reporte es in-memory retrocompat. Intencional.
+
 ### Deudas destapadas en v6.13 (WRITE 6 mc2)
 
 - **Fix tsconfig functions-sunat (CERRADA v6.14):** .vercelignore excluía functions+functions-sunat pero el exclude del tsconfig raíz solo tenía functions → npm run build local roto (rojo que Vercel no sufría). RESUELTO en 858126df: añadido functions-sunat al exclude. npm run build local = señal válida otra vez.
 - **Fecha `T12:00:00Z` (mediodía UTC) en single + bulk:** ambos concatenan `T12:00:00` a la fecha YYYY-MM-DD y la persisten como Timestamp. Funciona para Perú (UTC-5 → 07:00 sigue siendo el día correcto), pero es frágil ante lectura en otras zonas / agrupación por día. Artefacto heredado, no decisión consciente. Compartido single+bulk.
 - **`registerCoil` single SIN guards de fecha ni dimensiones:** el bulk (v6.13) valida fecha (regex+componentes) y width/thickness>0; el single NO. Bug latente: fecha basura o dimensión 0/null enviada al single → crash Firestore Timestamp o doc con dimensión inválida. Portar los guards del bulk al single.
 - **`migrateFinishDensityFactors` + scripts backfill esperan naming MUERTO:** `finishService.ts` (`migrateFinishDensityFactors`), `scripts/backfillCoilFinish.ts`, `scripts/check_finishes.ts` usan `GALVANIZADO`/`NATURAL` (español completo). La BD VIVA usa `GALV`/`ALU-NATURAL`. Correr esas migraciones hoy crearía finishes basura o fallaría. Auditar y corregir/enterrar.
-- **`PurchaseCoilFromXml` finish global** (ver §9 pendiente #2).
+- **`PurchaseCoilFromXml` finish global** (ver §9 pendiente #1).
 - **Barrel muerto** `src/components/purchases/BulkUploadCoils.tsx` (re-export no montado por nadie).
 - **ADMIN de test = `demo@cliente.com`** (uid `1e3aV7XEmvdLjMally7g1zQJ6Fu1`, claim `{role:ADMIN}` real). Naming engañoso (email "cliente" con rol ADMIN), no bug.
 
