@@ -260,7 +260,36 @@ export const voidCoil = async (coilId: string, _userEmail: string) => {
           throw new Error(error.message || "Error al anular bobina.");
       }
     }
-    throw new Error("Error de red o de servidor al anular la bobina.");
+    throw new Error("Error interno del servidor.");
+  }
+};
+
+export const deleteCoilDraft = async (coilId: string) => {
+  const callable = httpsCallable<{ coilId: string }, { success: boolean }>(
+    functions,
+    "deleteCoilDraft"
+  );
+  try {
+    const response = await callable({ coilId });
+    return response.data;
+  } catch (error: any) {
+    if (error?.code) {
+      switch (error.code) {
+        case "unauthenticated":
+          throw new Error("Debes iniciar sesión para eliminar bobinas.");
+        case "permission-denied":
+          throw new Error("Solo un administrador puede eliminar bobinas.");
+        case "not-found":
+          throw new Error("La bobina especificada no existe.");
+        case "failed-precondition":
+          throw new Error(error.message || "La bobina tiene movimientos y no puede ser eliminada.");
+        case "invalid-argument":
+          throw new Error(error.message || "Datos inválidos.");
+        default:
+          throw new Error(error.message || "Error al eliminar bobina.");
+      }
+    }
+    throw new Error("Error interno del servidor.");
   }
 };
 
