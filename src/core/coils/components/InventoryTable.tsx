@@ -21,6 +21,7 @@ interface InventoryTableProps {
   onEdit: (coil: Coil) => void;
   onVoid: (coilId: string) => void;
   onCancelPlan: (coilId: string) => void;
+  onDeleteDraft?: (coilId: string) => void;
   onSendToCut?: (coil: Coil) => void;
   onSplit?: (coil: Coil) => void;
   onViewDetails: (coil: Coil) => void;
@@ -134,6 +135,7 @@ export default function InventoryTable({
   onEdit,
   onVoid,
   onCancelPlan,
+  onDeleteDraft,
   onSendToCut,
   onSplit,
   onViewDetails,
@@ -300,6 +302,27 @@ export default function InventoryTable({
       width: "w-32",
       render: (coil) => {
         if (coil.status === "VOIDED") {
+          if (role === "ADMIN") {
+            return (
+              <div className="flex items-center justify-center gap-1">
+                <span className="flex items-center justify-center gap-1 text-[10px] font-black text-red-400 uppercase tracking-widest">
+                  <AlertCircle size={14} /> Sin Efecto
+                </span>
+                <RowActionsMenu
+                  items={[
+                    {
+                      id: "deleteDraft",
+                      label: "Eliminar borrador",
+                      icon: <Trash2 size={16} />,
+                      variant: "danger",
+                      section: "danger",
+                      onClick: () => onDeleteDraft?.(coil.id),
+                    },
+                  ]}
+                />
+              </div>
+            );
+          }
           return (
             <span className="flex items-center justify-center gap-1 text-[10px] font-black text-red-400 uppercase tracking-widest">
               <AlertCircle size={14} /> Sin Efecto

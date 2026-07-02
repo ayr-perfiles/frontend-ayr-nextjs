@@ -56,6 +56,7 @@ export function InventoryFilters({
         { value: "EN_TERCERO", label: "En Corte Externo" },
         { value: "IN_PROGRESS", label: "En Producción" },
         { value: "PROCESSED", label: "Ya Procesadas" },
+        { value: "VOIDED", label: "Anuladas" },
       ],
     },
     {

@@ -20,6 +20,7 @@ import {
   voidCoil,
   updateCoil,
   cancelCoilPlan,
+  deleteCoilDraft,
 } from "@/core/coils/services/coilService";
 import { fetchAvailableCoilsForExport } from "@/core/coils/services/coilService";
 import { useAuth } from "@/context/AuthContext";
@@ -260,6 +261,26 @@ export default function CoilsPage() {
     }
   };
 
+  const onDeleteDraft = async (coilId: string) => {
+    if (
+      await confirm({
+        title: "Eliminar borrador de bobina",
+        message: `Esto BORRA FÍSICAMENTE la bobina ${coilId}. Es IRREVERSIBLE y solo procede si no tiene movimientos (producción, split, merma, venta). Escribe ELIMINAR para confirmar.`,
+        variant: "danger",
+        confirmLabel: "Eliminar",
+        requireInput: { label: 'Escribe "ELIMINAR"', matchValue: "ELIMINAR" },
+      })
+    ) {
+      toast
+        .promise(deleteCoilDraft(coilId), {
+          loading: "Eliminando...",
+          success: "Borrador eliminado.",
+          error: (err: any) => err.message,
+        })
+        .then(() => refresh());
+    }
+  };
+
   const handleCancelPlan = async (coilId: string) => {
     if (
       await confirm({
@@ -439,6 +460,7 @@ export default function CoilsPage() {
           onSelectAll={handleSelectAll}
           onEdit={handleOpenEdit}
           onVoid={handleVoidCoil}
+          onDeleteDraft={onDeleteDraft}
           onCancelPlan={handleCancelPlan}
           onSendToCut={(coil) => {
             setSelectedIds([coil.id]);

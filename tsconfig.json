@@ -36,5 +36,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "sunat", "functions", "scripts", "src/test"]
+  "exclude": ["node_modules", "sunat", "functions", "functions-sunat", "scripts", "src/test"]
 }

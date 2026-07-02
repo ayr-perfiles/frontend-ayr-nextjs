@@ -1,7 +1,8 @@
-# CLAUDE.md — AYR Steel ERP (v6.12)
+# CLAUDE.md — AYR Steel ERP (v6.13)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
-> **Estado:** Build 🟢 | tsc limpio | 95 passed / 3 skipped (test:emu serializado) | Functions v2 operativa.
+> **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + integración serializada verde | Functions v2 operativa.
+> **v6.13:** WRITE 6 mini-ciclo 2 (`registerCoilsBulk`) desplegado en prod Y test. BulkUpload reescrito thin-client en página dedicada `/admin/coils/bulk-import`. Callable ACTIVE en prod; UI desplegada en master. ⚠️ Runtime PROD end-to-end NO ejercitado aún (validado en test-nube; primera corrida prod real = importación de abril, pendiente como operación). Ver §14.
 > **v6.12:** WRITE 6 mini-ciclo 1 (registerCoil) y guardarraíl P1-bis desplegados en prod. Paginación y kit de tablas (v6.9) operativos. Reglas auth Capa 1 y custom claims vigentes.
 > **v6.11:** Writes 2-5 (`registerCoilSplit` / `voidCoil` / `updateCoil` / `cancelCoilPlan` / `produceFromCoils` / `produceFromStrip`) desplegados y validados en runtime PROD. Rules claim-only + `scrap_logs` candado (`if false`) en PROD. Agujero auth `@ayrsteel.com` cerrado (código + runtime). Fix `next build`: `src/test` excluido de tsconfig.
 
@@ -138,6 +139,7 @@ Página `/admin/catalog/import`. Acceso vía `HeaderOptionsMenu` → "Importar m
 Modelo de 3 capas: (1) firestore.rules = seguridad real; (2) verificación server-side / writes a Functions; (3) guard de cliente (UX).
 
 Seguridad Capa 1 está DESPLEGADA Y VALIDADA EN PROD (ayrsteel-2026).
+
 - **Claims validados:** 4/4 usuarios clave actualizados y operativos (`frankrodrimilla` ADMIN, `doramc68` SUPERVISOR, `gsinuiri` ADMIN, `aalvarez` ADMIN).
 - **Índices en PROD:** 9 índices nuevos + configuración SUNAT habilitada en producción.
 - **Flujos críticos:** Anulación de venta (cadena `status` + `stock` + `movements`) validada en runtime sin errores de `permission-denied`.
@@ -179,6 +181,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 ## 9. Roadmap
 
 **HECHO (v6.10):**
+
 - **Despliegue de Seguridad Capa 1 en PROD:** Deploy exitoso de rules + 9 índices nuevos + custom claims de roles.
 - **Migración de Coils (Bobinas) en PROD:** 41/41 bobinas migradas a `finish=GALV` y `densityFactor=0.00785` (con backup local en `scripts/coils_backup_*.json`, gitignored), con idempotencia probada y runtime OK (cálculo de peso ↔ ML).
 - **Import masivo Aluzinc:** Editor por ítem con `densityFactor` derivado del acabado.
@@ -186,6 +189,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **UX y confirmaciones:** Sistema `useConfirm` (Provider + Dialogs) para anulación y acciones críticas en producción/ventas.
 
 **HECHO (v6.11):**
+
 - **Writes 2-5 desplegados y validados en runtime PROD:** `registerCoilSplit`, `voidCoil`, `updateCoil`, `cancelCoilPlan`, `produceFromCoils`, `produceFromStrip`. Thin-clients en master.
 - **Agujero auth cerrado:** bypass `@ayrsteel.com` eliminado de 7 callables + rules (código + runtime). Commit `837cca82`.
 - **Rules v6.11 en PROD:** `isAdmin`/`isStaff` claim-only, `scrap_logs` candada (`if false`), `_noop_stock` rule añadida.
@@ -193,22 +197,34 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Guardarraíl voidCoil (dirección-hijo):** bloquea anular hijas de split (`parentCoilId` presente) → `failed-precondition` antes del check de status. Audit string neutralizado. Commit `920dce8f`, merge `2b9c57a9`, validado en prod incógnito.
 
 **HECHO (v6.12):**
+
 - **P1-bis guardarraíl voidCoil (dirección-madre):** bloquea anular madre con hijos de split vivos (query `parentCoilId==coilId` & `status!=VOIDED`, pre-tx). Índice compuesto `coils(parentCoilId,status)` deployado. Commits 7b8e0fd2/52d8b92f, validado prod.
 - **WRITE 6 mini-ciclo 1 — registerCoil:** alta de coils server-side (AddCoilForm + PurchaseCoilFromXml thin-clients). Recalcula pricePerKg/currentWeight/status/id; dedup atómico; valida finish vs coil_finishes; TC USD rango [2,7]; gate ADMIN+SUPERVISOR. Validado en test (pruebas 1-4). BulkUpload oculto + seedFinishes eliminado.
 
+**HECHO (v6.13) — WRITE 6 mini-ciclo 2 (`registerCoilsBulk`):**
+
+- **Callable `registerCoilsBulk`** (`functions/src/callables/coilBulkRegistration.ts`): alta masiva server-side. Gate ADMIN/SUPERVISOR, thin-client. **Atómico POR FACTURA** (una txn por factura, dedup adentro), tolerancia a fallo parcial entre facturas. Dedup por existencia de doc (skip-factura entero, ciego a VOIDED). Recalcula pricePerKg/currentWeight/status/id.toUpperCase()/registeredBy. Guards: finish vs `coil_finishes`, TC USD [2,7] (PEN→1), fecha YYYY-MM-DD (regex + validación componentes real, rechaza 2026-13-45), dimensiones width/thickness>0. Reporte por factura `{invoice,status:created|skipped-dup|failed,count,reason}`. `audit_log` `REGISTER_COIL_BULK` (coilIds en raíz). 12 tests integración. ACTIVE en prod Y test.
+- **`parseCoilDescription`** (`src/core/coils/parseCoilDescription.ts`): parser puro cliente-side de texto libre → `{finishToken, thickness, width, flags}`. Token SEMÁNTICO (`GALV|NATURAL|AZUL|BLANCO|ROJO|VERDE|null`), NO la llave de BD. Cero fallback silencioso (no encuentra → null + flag). width literal (1219≠1220). Ambiguo (aluzinc/prepintada sin color) → null. 14 tests.
+- **`bulkUploadLogic`** (`src/core/coils/bulkUploadLogic.ts`): lógica pura UI. `validateCoilRow`, `buildInvoicesPayload`, `parseWeightToKg`, `TOKEN_TO_FINISH`. Guard rango peso **[2000-7000] kg** (atrapa mal-parseo de formato). value monetario redondeado a **2 decimales** (XLSX raw:true trae floats sucios de celdas Excel calculadas). Unidad→kg: TON→×1000, KG→passthrough, ROLLO/UNIDAD→inválida. Moneda no reconocida→inválida (no default PEN). 32 tests.
+- **UI `BulkUploadCoils.tsx`** reescrito de writeBatch directo a thin-client, en **página dedicada `/admin/coils/bulk-import`** (no modal). Preview editable por fila, dropdown finish vivo (`useFinishes`, muestra label / envía id), peso kg editable, TC editable + botón "Sugerir TC" (api `/api/tipo-cambio` como asistente, pre-llena por factura). Finish por-fila (preselección token→llave). Botón HeaderOptions navega a página (gate ADMIN/SUPERVISOR). Modal viejo extirpado de InventoryModals. Breadcrumb `bulk-import`→"Importación masiva".
+- **Config:** `NEXT_PUBLIC_USE_EMULATOR` desacopla emulador de NODE_ENV (default emulador; `"false"` → dev apunta a nube). `vitest.config testTimeout 15000` (suite creció). `scripts/local/` gitignored (scripts throwaway con credenciales).
+- Commits (develop→master): backend `31236045`, lógica pura `38fe1df6`, UI `2cac4082`, infra `79ed7be2`.
+- ⚠️ **Runtime PROD end-to-end NO ejercitado.** Validado a fondo en test-nube (doc E001-6498-01: pricePerKg 2.906779 = value×tc/weight, TON→kg 4820, originalCurrencyValue 4003.05 a 2 dec). Callable ACTIVE en prod, UI en master. La primera corrida real de prod = importación de abril (§14).
+
 **PENDIENTE / EN COLA (orden sugerido):**
 
-1. **WRITE 6 mini-ciclo 2:** `registerCoilsBulk` (reactivar BulkUpload; decidir atomicidad todo-o-nada vs fallo parcial en migración histórica).
-2. **Reversa de split (WRITE nuevo, ¿7.5?):** restaurar madre + VOIDED hijo + reversa `kardex_movements`. Operación distinta de `voidProductionFromCoils`.
-3. **Verificaciones del import masivo:** crear GRIS en `coil_finishes` (0.008) + probar import con CSV real en test (55 ítems, densityFactor derivado, length PL).
+1. **`deleteCoilDraft` (WRITE nuevo):** borrado FÍSICO de bobina SOLO si cero movimientos (sin producción/split/venta/consumo). Resuelve "importé mal, anulé, quiero re-importar" sin romper dedup (que bloquea por existencia, ciego a VOIDED — correcto). Distingue borrador inerte (borrable, libera ID) de bobina con efecto contable (solo VOIDED, histórico). Guard cero-movimientos estilo voidCoil. NO tocar dedup del bulk. Nace de necesidad real en runtime v6.13.
+2. **`PurchaseCoilFromXml` finish por-fila:** hoy usa select global por factura (L49/234/404 → mismo acabado a todas las bobinas del XML, ignora colores mixtos). Patrón muerto preexistente. Fix: mover a por-fila como BulkUpload (parseCoilDescription + dropdown por fila). Ver §11.
+3. **Reversa de split (WRITE nuevo, ¿7.5?):** restaurar madre + VOIDED hijo + reversa `kardex_movements`. Operación distinta de `voidProductionFromCoils`.
 4. **WRITE 7:** `voidProductionFromCoils` metallic+drywall (costo congelado del `production_log`).
 5. **WRITE 8:** `cutOrder` (monstruo: WAC+prorrateo, 5 funciones).
 6. **WRITE 9:** `salesService` (payload crítico precio/correlativo). Desbloquea 3 tests `salesReimport` skipped.
 7. **Candado final rules Fase 2:** cerrar `coils`/`kardex`/`audit` a `if false` colección por colección, solo cuando 0 escritores cliente queden.
 8. **Capa 2 server-side / Infraestructura:** session cookies + `proxy.ts`. Actualizar Next 16.1.7 → **16.2.6** (parchea 13 CVEs, 3 de bypass de auth). proxy.ts es UX, NO seguridad.
-9. **Resto Grupo 2 tablas (mode cursor):** Kardex, Usuarios, Compras, Producción Drywall.
-10. **Backlog cosmético:** `piecesProduced` naming; redirects `permanent:true` → `false`; `HeaderOptionsMenu` reuso en sales; ACCESORIO → Trading.
-11. **Otros:** ventas USD sin TC (FFA1-912/913/933); SUNAT BETA .p12; PDF reportes.
+9. **Saneamiento infra test↔prod:** SUNAT solo en test, Algolia solo en prod, voidCoil viejo en test, metadata codebase test rota. Deuda multi-sprint, riesgo de borrado accidental alto hasta resolver.
+10. **Resto Grupo 2 tablas (mode cursor):** Kardex, Usuarios, Compras, Producción Drywall.
+11. **Backlog cosmético:** `piecesProduced` naming; redirects `permanent:true` → `false`; `HeaderOptionsMenu` reuso en sales; ACCESORIO → Trading; barrel muerto `src/components/purchases/BulkUploadCoils.tsx`.
+12. **Otros:** ventas USD sin TC (FFA1-912/913/933); SUNAT BETA .p12; PDF reportes.
 
 ---
 
@@ -224,6 +240,10 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Reversa de split ≠ voidCoil (v6.11):** `voidCoil` = baja de ingreso (status AVAILABLE → VOIDED, sin tocar genealogía de splits). La reversa de split (restaurar madre + VOIDED hijo + reversa kardex) es un WRITE futuro separado. Mientras tanto `voidCoil` debe BLOQUEARSE si `coil.parentCoilId` existe (`failed-precondition`), nunca permitir pérdida silenciosa de masa. [DEUDA P1]
 - **Auth de callables (v6.11):** bypass por dominio de email PROHIBIDO en prod (`@ayrsteel.com` = dominio real → cualquier empleado sin claim pasaría el check de rol). Solo `@example.com` (emulador, inerte en prod) es aceptable. Rol SIEMPRE por custom claim (`request.auth.token.role`).
 - **Deploy a tests (v6.12):** Deploy a `ayrsteel-test` SIEMPRE por función específica (`--only functions:NOMBRE`), NUNCA `--only functions:default` (propone borrar funciones legacy incl. SUNAT por metadata de codebase desincronizado).
+- **Bulk atomicidad (v6.13):** `registerCoilsBulk` es atómico POR FACTURA, no todo-o-nada global. Razón: 490 coils × (read dedup + write) rebasa el tope de 500 ops/txn; todo-o-nada exigiría saga+compensación con borrado físico (viola no-borrado). La unidad contable real = la factura. Fallo parcial entre facturas tolerado (migración histórica "lo que entró, entró"). Dedup por factura = skip-factura entero (no parcial dentro de factura).
+- **Token semántico vs llave BD (v6.13):** `parseCoilDescription` emite TOKEN semántico (`GALV|NATURAL|AZUL|...`), desacoplado de la llave viva de `coil_finishes` (`GALV|ALU-NATURAL|ALU-AZUL|...`). El mapeo token→llave (`TOKEN_TO_FINISH`) vive en la UI SOLO para preseleccionar; el dropdown se puebla de `coil_finishes` VIVO (single source of truth). NO reescribir el parser para emitir llaves — la separación de capas es intencional.
+- **Guard de rango como robustez de formato (v6.13):** `parseNumValue` interpreta el punto como decimal o miles según si coexiste una coma (heurística ambigua: `"11.214"` sin coma → 11.214, PERO `"3.708,"` → 3708). Para bobinas el guard de peso [2000-7000] kg atrapa cualquier mal-parseo (un peso de 11 kg o 11 millones cae fuera → fila inválida). El guard es la robustez real, no confiar en el parseo. Guard en UI (validate), NO en callable (bobina legítima atípica no debe hard-blockearse; callable mantiene weight>0).
+- **Emulador opt-out (v6.13):** `clientApp.ts` usa `NEXT_PUBLIC_USE_EMULATOR !== "false" && (NODE_ENV dev|test)`. Default = emulador (preserva todos los flujos). `"false"` en `.env.local` → `npm run dev` apunta a TEST-nube (para runtime local contra callable real). `test:emu` (emulators:exec) setea sus propios HOST, ignora la var. Scripts node puros NO cargan dotenv → van a nube vía serviceAccountKey directo.
 
 ---
 
@@ -234,11 +254,21 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Línea ACCESORIO → Trading:** migración transversal.
 - **`HeaderOptionsMenu`:** sales/page.tsx tenía menú inline del que se extrajo; podría reusar el componente nuevo (evitar duplicación).
 
+### Deudas destapadas en v6.13 (WRITE 6 mc2)
+
+- **Fecha `T12:00:00Z` (mediodía UTC) en single + bulk:** ambos concatenan `T12:00:00` a la fecha YYYY-MM-DD y la persisten como Timestamp. Funciona para Perú (UTC-5 → 07:00 sigue siendo el día correcto), pero es frágil ante lectura en otras zonas / agrupación por día. Artefacto heredado, no decisión consciente. Compartido single+bulk.
+- **`registerCoil` single SIN guards de fecha ni dimensiones:** el bulk (v6.13) valida fecha (regex+componentes) y width/thickness>0; el single NO. Bug latente: fecha basura o dimensión 0/null enviada al single → crash Firestore Timestamp o doc con dimensión inválida. Portar los guards del bulk al single.
+- **`migrateFinishDensityFactors` + scripts backfill esperan naming MUERTO:** `finishService.ts` (`migrateFinishDensityFactors`), `scripts/backfillCoilFinish.ts`, `scripts/check_finishes.ts` usan `GALVANIZADO`/`NATURAL` (español completo). La BD VIVA usa `GALV`/`ALU-NATURAL`. Correr esas migraciones hoy crearía finishes basura o fallaría. Auditar y corregir/enterrar.
+- **`PurchaseCoilFromXml` finish global** (ver §9 pendiente #2).
+- **Barrel muerto** `src/components/purchases/BulkUploadCoils.tsx` (re-export no montado por nadie).
+- **ADMIN de test = `demo@cliente.com`** (uid `1e3aV7XEmvdLjMally7g1zQJ6Fu1`, claim `{role:ADMIN}` real). Naming engañoso (email "cliente" con rol ADMIN), no bug.
+
 ---
 
 ## 11. Convenciones
 
 ### densityFactor por acabado (referencia, fuente seedFinishes eliminada)
+
 GALVANIZADO (drywall) 0.00785; ALUZINC/NATURAL/AZUL/BLANCO/ROJO/VERDE (metallic) 0.008.
 Runtime: lookup desde `coil_finishes`, throw si falta.
 
@@ -250,6 +280,9 @@ Runtime: lookup desde `coil_finishes`, throw si falta.
 - Stock negativo permitido (warning, no bloqueo).
 - **Reversa siempre al costo congelado** de la transacción, nunca al WAC actual.
 - **Datos mal formados → fallo ruidoso** (throw / badge visible), nunca fallback silencioso.
+- **Rango de peso de bobina [2000-7000] kg** (guard UI en bulk, v6.13): fuera de rango → fila inválida (atrapa mal-parseo de formato numérico). Es guard de validación, no hard-block de backend (bobina atípica legítima posible).
+- **Value monetario → 2 decimales** (v6.13): XLSX `raw:true` extrae floats de precisión larga de celdas Excel calculadas; redondear en `buildInvoicesPayload` (`.toFixed(2)`). La verdad contable es el VALOR TOTAL facturado, no el flotante crudo.
+- **Unidad→kg (bulk, v6.13):** TONELADA→×1000, KILOGRAMO→passthrough, ROLLO/UNIDAD/desconocido→null (fila inválida, usuario ingresa kg a mano). NUNCA adivinar factor de conversión.
 - **Tests:** `fileParallelism: false` (los de integración comparten emulador; en paralelo colisionan). Correr serializado para verde real (463/463).
 - **Build de Vercel = build SIN credenciales** (serviceAccountKey gitignored). Scripts de migración EXCLUIDOS del build Next (tsconfig exclude) — importan serviceAccountKey que no existe en Vercel. Verificar build renombrando la credencial localmente.
 - **Git:** push directo a `develop`. Push dispara Vercel. Credenciales (serviceAccountKey*, .env*) y \*.log en .gitignore.
@@ -260,6 +293,23 @@ Runtime: lookup desde `coil_finishes`, throw si falta.
 ---
 
 ## 13. Migraciones y Backups de Datos
+
 - **Migración de Coils (v6.10 - PROD):** Se migraron 41/41 bobinas en producción para asegurar que tengan `finish = "GALV"` y `densityFactor = 0.00785`. Idempotencia probada y runtime verificado (cálculo de peso ↔ ML).
-  - Acabados `coil_finishes` en PROD completo: `GALV` (0.00785), `ALU-NATURAL` (0.00785) y 5 colores `ALU-*` (0.008).
+  - **Acabados `coil_finishes` VIVOS (test = prod, confirmado leyendo Firestore directo, v6.13):** `GALV` (0.00785), `ALU-NATURAL` (0.00785), `ALU-AZUL`/`ALU-BLANCO`/`ALU-ROJO`/`ALU-VERDE`/`ALU-GRIS` (0.008 cada uno). `ALU-GRIS` SÍ existe. Test y prod NO divergen en finishes. Estas son las LLAVES reales — cualquier código que use `GALVANIZADO`/`NATURAL`/`AZUL` (sin prefijo ALU-) está roto (ver deuda §11).
   - **Backups:** Dado que `gcloud CLI` NO está instalado en el entorno, los backups de Firestore se realizan mediante un script JSON local (`scripts/coils_backup_*.json`, gitignored), lo cual es suficiente para volúmenes pequeños como 41 documentos. El backup local es restaurable ante fallos.
+
+---
+
+## 14. Importación real de abril a PROD (PENDIENTE — operación, no código)
+
+El bulk (`registerCoilsBulk` + UI) está listo y validado en test-nube. La importación real del itemizado de abril a PROD es una **operación de curación**, NO un clic, y NO se ha ejecutado. Es también la primera corrida runtime prod end-to-end del bulk.
+
+**Realidades del CSV real de abril (itemizado completo, ~220 filas):**
+
+- Solo ~60 filas son bobinas (el resto = consumibles/servicios/ruido). Usuario debe **pre-filtrar a coil-only** antes de subir (diseño B). "FLEJADO DE BOBINA" es servicio, no bobina (falso positivo de "BOB").
+- **Filas F001/TREAM PERU:** descripción sin color explícito → `parseCoilDescription` devuelve finish null → fila inválida hasta que el usuario ELIJA el acabado a mano en el dropdown. ~40 filas así.
+- **Filas E001/MARELIAC:** limpias (color NATURAL explícito, TONELADA), se importan directo. Verificadas en test (pricePerKg cuadra).
+- **Filas F013/F006/JAVISAC en UNIDAD:** son **líneas de factura agrupadas** (CANTIDAD tipo "31.202" = peso total en toneladas de VARIAS bobinas en una línea, no una bobina). El bulk las marca inválidas (UNIDAD no resuelve kg) — CORRECTO, no adivina. Requieren desglose manual (una fila por bobina física con su kg) o tratamiento aparte. El bulk es 1-fila-1-bobina; estas no encajan.
+- **Filas SOL (PEN):** existen (ej E001-739), TC=1, value en soles.
+
+**Recomendación:** hacer la importación real como sesión operativa dedicada, con calma, curando finishes fila por fila y decidiendo qué hacer con las líneas UNIDAD agrupadas. NO es cierre de código. Idealmente hacer un backup de `coils` prod antes (script JSON local).
