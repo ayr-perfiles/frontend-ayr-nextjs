@@ -1,3 +1,5 @@
+import { CoilStatus } from "./coilPricing";
+
 export function validateScrapRequest(
   scrapWeightKg: number,
   reason: string,
@@ -33,4 +35,12 @@ export function determineCoilStatusAfterScrap(
   existingStatus: string,
 ): string {
   return newWeight <= 0 ? "PROCESSED" : existingStatus;
+}
+
+const REVERSAL_EPSILON = 0.01;
+export function determineCoilStatusAfterReversal(
+  newWeight: number,
+  initialWeight: number
+): CoilStatus {
+  return newWeight >= initialWeight - REVERSAL_EPSILON ? "AVAILABLE" : "IN_PROGRESS";
 }

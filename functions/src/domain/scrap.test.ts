@@ -1,6 +1,6 @@
 import { expect, test, describe } from "vitest";
 import { validateScrapRequest as validateClient } from "../../../src/core/coils/domain/scrap";
-import { validateScrapRequest as validateBackend } from "./scrap";
+import { validateScrapRequest as validateBackend, determineCoilStatusAfterReversal } from "./scrap";
 
 describe("Parity Test: validateScrapRequest", () => {
   const cases = [
@@ -67,5 +67,20 @@ describe("Parity Test: validateScrapRequest", () => {
       expect(runClient).not.toThrow();
       expect(runBackend).not.toThrow();
     }
+  });
+});
+
+describe("determineCoilStatusAfterReversal", () => {
+  // Mismo EPSILON=0.01 que el cliente (voidProductionFromCoils)
+  const cases = [
+    { newWeight: 1000, initial: 1000, expected: "AVAILABLE", name: "borde exacto" },
+    { newWeight: 999.995, initial: 1000, expected: "AVAILABLE", name: "dentro de ε" },
+    { newWeight: 800, initial: 1000, expected: "IN_PROGRESS", name: "consumo parcial" },
+    { newWeight: 200, initial: 1000, expected: "IN_PROGRESS", name: "salida de PROCESSED" },
+    { newWeight: 1000.5, initial: 1000, expected: "AVAILABLE", name: "sobre-peso no rompe" },
+  ];
+
+  test.each(cases)("$name: newWeight=$newWeight, initial=$initial -> $expected", ({ newWeight, initial, expected }) => {
+    expect(determineCoilStatusAfterReversal(newWeight, initial)).toBe(expected);
   });
 });
