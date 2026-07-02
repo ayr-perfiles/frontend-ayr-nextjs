@@ -32,6 +32,10 @@ import { Coil, CutOrder } from "@/types";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { useCoilYield } from "@/modules/metallic-roofing/hooks/useCoilYield";
 import { useCoilScraps } from "@/core/coils/hooks/useCoilScraps";
+import { voidCoilScrap } from "@/core/coils/services/coilService";
+import { useAuth } from "@/context/AuthContext";
+import { useConfirm } from "@/context/ConfirmContext";
+import toast from "react-hot-toast";
 import Link from "next/link";
 
 interface CoilDetailsModalProps {
@@ -64,15 +68,40 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
   const originalCurrencyValue = coil.metadata?.originalCurrencyValue || 0;
   const isVoided = coil.status === "VOIDED";
 
+  const { role } = useAuth();
+  const confirm = useConfirm();
+
   // --- TABS Y HOOKS DE DATOS ---
   const [activeTab, setActiveTab] = useState<"general" | "cortes" | "mermas">("general");
-  const { scraps, loading: scrapsLoading, error: scrapsError } = useCoilScraps(
+  const { scraps, loading: scrapsLoading, error: scrapsError, refresh: refreshScraps } = useCoilScraps(
     activeTab === "mermas" ? coil.id : undefined
   );
 
   // --- NUEVA LÓGICA DE ORDEN DE CORTE ---
   const [linkedOrder, setLinkedOrder] = useState<CutOrder | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(true);
+
+  const handleVoidScrap = async (scrapLogId: string) => {
+    if (
+      await confirm({
+        title: "Anular merma",
+        message: `Esto revierte la merma y restaura el peso a la bobina. Acción de ADMIN.`,
+        variant: "danger",
+        confirmLabel: "Anular",
+        requireInput: { label: 'Escribe "ANULAR"', matchValue: "ANULAR" },
+      })
+    ) {
+      toast
+        .promise(voidCoilScrap(scrapLogId), {
+          loading: "Anulando merma...",
+          success: "Merma anulada correctamente.",
+          error: (err: any) => err.message,
+        })
+        .then(() => {
+          refreshScraps();
+        });
+    }
+  };
 
   useEffect(() => {
     const fetchLinkedOrder = async () => {
@@ -622,6 +651,9 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
                       <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Motivo</th>
                       <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider text-right">Peso</th>
                       <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider text-right">Costo (S/)</th>
+                      {role === "ADMIN" && (
+                        <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider text-right">Acciones</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -652,6 +684,18 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
                             {Number(scrap.scrapCostPEN).toFixed(2)}
                           </span>
                         </td>
+                        {role === "ADMIN" && (
+                          <td className="p-3 text-right">
+                            {!scrap.isVoided && (
+                              <button
+                                onClick={() => handleVoidScrap(scrap.id)}
+                                className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded transition"
+                              >
+                                Anular merma
+                              </button>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
