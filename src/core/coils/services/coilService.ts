@@ -354,3 +354,16 @@ export const cancelCoilPlan = async (coilId: string, _userEmail: string) => {
     throw new Error("Error de red o de servidor al cancelar el plan.");
   }
 };
+
+export const voidCoilScrap = async (scrapLogId: string) => {
+  const callable = httpsCallable<{ scrapLogId: string }, { success: boolean }>(
+    functions,
+    "voidCoilScrap"
+  );
+  try {
+    const response = await callable({ scrapLogId });
+    return response.data;
+  } catch (error: any) {
+    throw new Error(error?.message || "Error al anular la merma.");
+  }
+};

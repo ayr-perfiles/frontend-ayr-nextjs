@@ -14,26 +14,24 @@
 
 ## 🔴 ARRANCAR PRÓXIMA SESIÓN — opciones (decidir al inicio)
 
-1. **Frente B UI de mermas** (cierra ciclo operativo: lista + botón anular + cubrir gap P4 con usuario no-admin en runtime). Reco ALTA.
-2. **Fix KardexTab normalización** (type→signo/color). Chico, cierra deuda visual que afecta SCRAP/AJUSTE/SCRAP_REVERSAL (type ≠ "IN" sale rojo).
-3. **Importación REAL de abril a PROD** (operación de curación §14, sesión dedicada, backup coils prod primero, pre-filtrar CSV, finishes a mano, líneas UNIDAD manual).
-4. **`PurchaseCoilFromXml` finish por-fila** (deuda preexistente).
-5. **Drenar writes** 7/8/9.
-6. **Saneamiento infra test↔prod** (SUNAT solo test, Algolia solo prod, metadata codebase test rota).
+1. **Fix KardexTab normalización** (type→signo/color). Chico, cierra deuda visual que afecta SCRAP/AJUSTE/SCRAP_REVERSAL (type ≠ "IN" sale rojo). Reco ALTA.
+2. **Importación REAL de abril a PROD** (operación de curación §14, sesión dedicada, backup coils prod primero, pre-filtrar CSV, finishes a mano, líneas UNIDAD manual).
+3. **`PurchaseCoilFromXml` finish por-fila** (deuda preexistente).
+4. **Drenar writes** 7/8/9.
+5. **Saneamiento infra test↔prod** (SUNAT solo test, Algolia solo prod, metadata codebase test rota).
 
 - **MANTENER:** las reglas de oro (runtime lo corre el usuario; números crudos no conclusiones; npm run build local antes de merge; deploy por función específica leyendo el plan; PASO 0 read-only; un frente a la vez; backend en prod antes que master).
 - **Recordatorio de disciplina:** contra PROD, revisar uid del ADMIN + guard de proyecto ANTES de correr el script.
 
 ## Deudas vivas (detalle en CLAUDE.md §11)
 
-- **Frente B UI de mermas PENDIENTE.**
-- **Gap runtime P4:** guard ADMIN-only NO probado en runtime.
 - **DEUDA KardexTab binario IN/OUT.**
 - **Fecha T12:00:00Z (mediodía UTC)** en single + bulk. Funciona Perú, frágil timezones.
 - **registerCoil single SIN guards de fecha ni dimensiones** (el bulk sí). Bug latente. Portar guards.
 - **migrateFinishDensityFactors + scripts backfill esperan naming MUERTO** (GALVANIZADO/NATURAL vs vivo GALV/ALU-NATURAL).
 - **Barrel muerto** src/components/purchases/BulkUploadCoils.tsx (re-export no montado).
 - **ADMIN de test = demo@cliente.com** (uid 1e3aV7XEmvdLjMally7g1zQJ6Fu1, claim ADMIN real). Naming engañoso.
+- **OPERATOR de test = operator@cliente.com** (uid e2you9u7IPX9CA6qIe2x9U4DjqD3, claim OPERATOR real). Usuario no-admin PERMANENTE de QA en test. No borrar.
 
 ## Llaves coil_finishes VIVAS (test = prod, NO divergen)
 
