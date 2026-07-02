@@ -1,8 +1,9 @@
-# CLAUDE.md — AYR Steel ERP (v6.15)
+# CLAUDE.md — AYR Steel ERP (v6.16)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + integración serializada verde | Functions v2 operativa.
-> **v6.15:** voidCoilScrap (callable) CERRADO EN PROD. Reversa de merma mal registrada: restaura peso al costo congelado, marca scrap_log VOIDED, kardex compensatorio SCRAP_REVERSAL, audit VOID_COIL_SCRAP. Filtro de reporte de merma (scrap VOIDED no cuenta en totalMermaSoles). Helper backend determineCoilStatusAfterReversal. UI de mermas PENDIENTE (frente B).
+> **v6.16:** Frente B UI de mermas CERRADO. Tab Mermas (lista read-only, hook useCoilScraps) + botón 'Anular merma' (voidCoilScrap, requireInput ANULAR, gate role==='ADMIN') en CoilDetailsModal. Runtime test verde: happy (TESTVOID-A reversa, kardex SCRAP_REVERSAL 200/2.5/balance1000), guard P1b ejercido en UI (movimiento posterior rechazado), P4 cerrado (403 PERMISSION_DENIED con idToken REST de operator@cliente.com). Gap P4 CERRADO.
+> **v6.15:** voidCoilScrap (callable) CERRADO EN PROD. Reversa de merma mal registrada: restaura peso al costo congelado, marca scrap_log VOIDED, kardex compensatorio SCRAP_REVERSAL, audit VOID_COIL_SCRAP. Filtro de reporte de merma (scrap VOIDED no cuenta en totalMermaSoles). Helper backend determineCoilStatusAfterReversal. UI de mermas CERRADA (Frente B).
 > **v6.14:** deleteCoilDraft (callable + UI) CERRADO EN PROD. Borrado físico de bobina inerte solo si VOIDED y cero movimientos. Fix tsconfig functions-sunat (npm run build local restaurado).
 > **v6.13:** WRITE 6 mini-ciclo 2 (`registerCoilsBulk`) desplegado en prod Y test. BulkUpload reescrito thin-client en página dedicada `/admin/coils/bulk-import`. Callable ACTIVE en prod; UI desplegada en master. ⚠️ Runtime PROD end-to-end NO ejercitado aún (validado en test-nube; primera corrida prod real = importación de abril, pendiente como operación). Ver §14.
 > **v6.12:** WRITE 6 mini-ciclo 1 (registerCoil) y guardarraíl P1-bis desplegados en prod. Paginación y kit de tablas (v6.9) operativos. Reglas auth Capa 1 y custom claims vigentes.
@@ -104,6 +105,7 @@ Modelo **A2 desacoplado**: producción y ventas independientes. Anular venta NO 
 - Helper `determineCoilStatusAfterReversal(newWeight, initialWeight)` en `functions/src/domain/scrap.ts`: newWeight >= initialWeight - 0.01 → AVAILABLE, else IN_PROGRESS. EPSILON 0.01 paridad con cliente voidProductionFromCoils. Coexiste con determineCoilStatusAfterScrap (PROCESSED en peso 0). Reversa nunca da PROCESSED. Test paridad 5 casos.
 - Reporte: `calculateTotalMermaSoles(scrapDocs)` función pura en `reportFunctions.ts` filtra IN-MEMORY status==="VOIDED" (no cuenta). Retrocompat: históricos SIN status → CUENTAN. NUNCA where("status","!=","VOIDED"). Consumidor de suma de merma ÚNICO en repo (verificado grep scrapCostPEN).
 - Runtime prod ACTIVE ayrsteel-2026 (deploy por nombre CREATE puro). Test-nube validado (invoke_void_scrap_test.cjs): A happy (800→1000, AVAILABLE, VOIDED, kardex 200/2.5/1000, audit), B/C/D failed-precondition. Commits: backend 3bc70a40, reporte 16eff2db, merge 85387553.
+- **NOTA UI:** UI de mermas (Frente B) CERRADA en v6.16 con pestaña "Mermas" y botón "Anular merma" en CoilDetailsModal. Ya no está pendiente.
 
 ---
 
@@ -285,9 +287,9 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 
 ### Deudas destapadas en v6.15 (voidCoilScrap)
 
-- **Frente B UI de mermas PENDIENTE:** no existe vista que liste mermas de una bobina; scrap invisible fuera de reportes; voidCoilScrap solo se invoca por script. Falta pestaña/lista "Mermas" en detalle de bobina + botón ADMIN "Anular merma". Hueco operativo resuelto en BACKEND, no en operador.
-- **Gap runtime P4:** guard ADMIN-only NO probado en runtime (falta usuario no-admin en test). Cubierto por test integración 7, no por runtime. Cubrir en frente B.
-- **DEUDA KardexTab binario IN/OUT (preexistente, agravada):** `src/components/reports/tabs/KardexTab.tsx` renderiza cualquier type ≠ "IN" como rojo/SALIDA. SCRAP_REVERSAL (entrada +) se verá rojo/salida. Ya afecta SCRAP/AJUSTE. Reporte NO lee kardex → datos correctos, solo tabla visual miente. Fix = frente aparte (mapa type→signo/color).
+- **Frente B UI de mermas CERRADO (v6.16):** Tab "Mermas" y botón "Anular merma" listos.
+- **Gap runtime P4 CERRADO (v6.16):** Comprobado guard ADMIN-only con operator@cliente.com 403 PERMISSION_DENIED.
+- **DEUDA KardexTab binario IN/OUT (preexistente, agravada):** SIGUE VIVA. `src/components/reports/tabs/KardexTab.tsx` renderiza cualquier type ≠ "IN" como rojo/SALIDA. SCRAP_REVERSAL (entrada +) se verá rojo/salida. Ya afecta SCRAP/AJUSTE. Reporte NO lee kardex → datos correctos, solo tabla visual miente. Fix = frente aparte (mapa type→signo/color).
 - **registerCoilScrap guarda scrap_log SIN campo status:** (undefined=activo, "VOIDED"=anulado). Por eso filtro reporte es in-memory retrocompat. Intencional.
 
 ### Deudas destapadas en v6.13 (WRITE 6 mc2)
