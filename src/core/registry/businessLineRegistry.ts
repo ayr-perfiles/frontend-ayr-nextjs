@@ -11,8 +11,8 @@ import { servicesModule } from '@/modules/services';
  */
 export const businessLines: BusinessLineModule[] = [
   drywallModule,
-  roofingModule,
   metallicRoofingModule,
+  roofingModule,
   tradingModule,
   servicesModule,
 ];
