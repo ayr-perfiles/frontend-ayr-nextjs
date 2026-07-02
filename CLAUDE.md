@@ -1,7 +1,8 @@
-# CLAUDE.md — AYR Steel ERP (v6.16)
+# CLAUDE.md — AYR Steel ERP (v6.17)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + integración serializada verde | Functions v2 operativa.
+> **v6.17:** KardexTab huérfano BORRADO. Util central getKardexMovementDisplay (mapa type→{signo,color,label} NO binario: IN/ENTRADA +verde, OUT/SALIDA -rojo, SCRAP -ámbar 'MERMA', SCRAP_REVERSAL +verde 'REVERSA MERMA', desconocido→gris fallback ruidoso+warn) consumido por KardexTable + export CSV. Tab 'Movimientos' en CoilDetailsModal (kardex_movements where sku==coilId, reusa useKardex+KardexTable mode cursor, índice (sku,date) ya existía). Swap orden sidebar Coberturas UPVC/Aluzinc. HALLAZGO: /admin/kardex es PRODUCT/DRYWALL-only (selector solo colección products); kardex_movements es ledger ÚNICO por sku; kardex de bobina antes 'materia oscura', ahora visible vía tab Movimientos.
 > **v6.16:** Frente B UI de mermas CERRADO. Tab Mermas (lista read-only, hook useCoilScraps) + botón 'Anular merma' (voidCoilScrap, requireInput ANULAR, gate role==='ADMIN') en CoilDetailsModal. Runtime test verde: happy (TESTVOID-A reversa, kardex SCRAP_REVERSAL 200/2.5/balance1000), guard P1b ejercido en UI (movimiento posterior rechazado), P4 cerrado (403 PERMISSION_DENIED con idToken REST de operator@cliente.com). Gap P4 CERRADO.
 > **v6.15:** voidCoilScrap (callable) CERRADO EN PROD. Reversa de merma mal registrada: restaura peso al costo congelado, marca scrap_log VOIDED, kardex compensatorio SCRAP_REVERSAL, audit VOID_COIL_SCRAP. Filtro de reporte de merma (scrap VOIDED no cuenta en totalMermaSoles). Helper backend determineCoilStatusAfterReversal. UI de mermas CERRADA (Frente B).
 > **v6.14:** deleteCoilDraft (callable + UI) CERRADO EN PROD. Borrado físico de bobina inerte solo si VOIDED y cero movimientos. Fix tsconfig functions-sunat (npm run build local restaurado).
@@ -289,7 +290,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 
 - **Frente B UI de mermas CERRADO (v6.16):** Tab "Mermas" y botón "Anular merma" listos.
 - **Gap runtime P4 CERRADO (v6.16):** Comprobado guard ADMIN-only con operator@cliente.com 403 PERMISSION_DENIED.
-- **DEUDA KardexTab binario IN/OUT (preexistente, agravada):** SIGUE VIVA. `src/components/reports/tabs/KardexTab.tsx` renderiza cualquier type ≠ "IN" como rojo/SALIDA. SCRAP_REVERSAL (entrada +) se verá rojo/salida. Ya afecta SCRAP/AJUSTE. Reporte NO lee kardex → datos correctos, solo tabla visual miente. Fix = frente aparte (mapa type→signo/color).
+- **DEUDA KardexTab binario IN/OUT CERRADA (v6.17):** Se creó `getKardexMovementDisplay` y se eliminó el huérfano KardexTab. La tabla KardexTable usa los metadatos correctos (IN/ENTRADA/SCRAP_REVERSAL/OUT/SALIDA/SCRAP/AJUSTE).
 - **registerCoilScrap guarda scrap_log SIN campo status:** (undefined=activo, "VOIDED"=anulado). Por eso filtro reporte es in-memory retrocompat. Intencional.
 
 ### Deudas destapadas en v6.13 (WRITE 6 mc2)
