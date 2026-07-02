@@ -399,5 +399,5 @@ export { registerCoilScrap } from "./callables/scrap";
 export { registerCoilSplit } from "./callables/split";
 export { registerCoil } from "./callables/coilRegistration";
 
-export { voidCoil, updateCoil, cancelCoilPlan } from "./callables/coilManagement";
+export { voidCoil, updateCoil, cancelCoilPlan, deleteCoilDraft } from "./callables/coilManagement";
 export { registerCoilsBulk } from "./callables/coilBulkRegistration";

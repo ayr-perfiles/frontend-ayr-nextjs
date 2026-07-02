@@ -236,3 +236,115 @@ export const cancelCoilPlan = onCall(async (request) => {
     return { success: true };
   });
 });
+
+export const deleteCoilDraft = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Usuario no autenticado");
+  }
+
+  const email = request.auth.token.email || "unknown";
+  const role = request.auth.token.role;
+  
+  if (role !== "ADMIN") {
+    throw new HttpsError("permission-denied", "Solo un administrador puede eliminar bobinas.");
+  }
+
+  const { coilId } = request.data;
+  if (!coilId || typeof coilId !== "string") {
+    throw new HttpsError("invalid-argument", "El coilId es obligatorio");
+  }
+
+  const db = admin.firestore();
+
+  // 1. Guardarraíles fuera de la transacción (queries previas)
+  
+  // a. Hijos de split
+  const liveChildren = await db.collection("coils")
+    .where("parentCoilId", "==", coilId)
+    .limit(1)
+    .get();
+  if (!liveChildren.empty) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Esta bobina tiene hijos de split"
+    );
+  }
+
+  // b. Producción
+  const productionLogs = await db.collection("production_logs")
+    .where("parentCoilIds", "array-contains", coilId)
+    .limit(1)
+    .get();
+  if (!productionLogs.empty) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Esta bobina tiene producción registrada"
+    );
+  }
+
+  // c. Merma (scrap)
+  const scrapLogs = await db.collection("scrap_logs")
+    .where("coilId", "==", coilId)
+    .limit(1)
+    .get();
+  if (!scrapLogs.empty) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Esta bobina tiene merma (scrap) registrada"
+    );
+  }
+
+  // d. Kardex (venta/uso)
+  const kardexLogs = await db.collection("kardex_movements")
+    .where("sku", "==", coilId)
+    .limit(1)
+    .get();
+  if (!kardexLogs.empty) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Esta bobina tiene movimientos de kardex (venta/uso)"
+    );
+  }
+
+  // 2. Transacción para releer status y parentCoilId, y borrar físicamente
+  return await db.runTransaction(async (transaction) => {
+    const coilRef = db.collection("coils").doc(coilId);
+    const coilSnap = await transaction.get(coilRef);
+
+    if (!coilSnap.exists) {
+      throw new HttpsError("not-found", "La bobina no existe.");
+    }
+
+    const coilData = coilSnap.data()!;
+
+    if (coilData.status !== "VOIDED") {
+      throw new HttpsError(
+        "failed-precondition",
+        "Solo se puede eliminar una bobina anulada (VOIDED). Anúlala primero."
+      );
+    }
+
+    if (coilData.parentCoilId) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Esta bobina es hija de un split; usa la reversa de split."
+      );
+    }
+
+    // 3. Borrado Físico y Auditoría
+    const now = FieldValue.serverTimestamp();
+    
+    transaction.delete(coilRef);
+
+    const auditRef = db.collection("audit_logs").doc();
+    transaction.set(auditRef, {
+      action: "DELETE_COIL_DRAFT",
+      entityId: coilId,
+      userEmail: email,
+      details: `Se eliminó físicamente la bobina borrador inerte: ${coilId}`,
+      timestamp: now,
+    });
+
+    return { success: true };
+  });
+});
