@@ -31,6 +31,7 @@ import { db } from "@/lib/firebase/clientApp";
 import { Coil, CutOrder } from "@/types";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { useCoilYield } from "@/modules/metallic-roofing/hooks/useCoilYield";
+import { useCoilScraps } from "@/core/coils/hooks/useCoilScraps";
 import Link from "next/link";
 
 interface CoilDetailsModalProps {
@@ -62,6 +63,12 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
   const exchangeRate = coil.metadata?.exchangeRate || 1;
   const originalCurrencyValue = coil.metadata?.originalCurrencyValue || 0;
   const isVoided = coil.status === "VOIDED";
+
+  // --- TABS Y HOOKS DE DATOS ---
+  const [activeTab, setActiveTab] = useState<"general" | "cortes" | "mermas">("general");
+  const { scraps, loading: scrapsLoading, error: scrapsError } = useCoilScraps(
+    activeTab === "mermas" ? coil.id : undefined
+  );
 
   // --- NUEVA LÓGICA DE ORDEN DE CORTE ---
   const [linkedOrder, setLinkedOrder] = useState<CutOrder | null>(null);
@@ -154,8 +161,44 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-        {/* ALERTA DE CONVERSIÓN DE MONEDA (Solo si es USD) */}
-        {isConverted && (
+        {/* TABS NAVEGACIÓN */}
+        <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+          <button
+            onClick={() => setActiveTab("general")}
+            className={`px-4 py-2 text-sm font-black tracking-widest uppercase transition-colors rounded-t-lg ${
+              activeTab === "general"
+                ? "text-blue-600 bg-blue-50/50 border-b-2 border-blue-600"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            }`}
+          >
+            General
+          </button>
+          <button
+            onClick={() => setActiveTab("cortes")}
+            className={`px-4 py-2 text-sm font-black tracking-widest uppercase transition-colors rounded-t-lg ${
+              activeTab === "cortes"
+                ? "text-blue-600 bg-blue-50/50 border-b-2 border-blue-600"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            }`}
+          >
+            Cortes
+          </button>
+          <button
+            onClick={() => setActiveTab("mermas")}
+            className={`px-4 py-2 text-sm font-black tracking-widest uppercase transition-colors rounded-t-lg ${
+              activeTab === "mermas"
+                ? "text-blue-600 bg-blue-50/50 border-b-2 border-blue-600"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            }`}
+          >
+            Mermas
+          </button>
+        </div>
+
+        {activeTab === "general" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* ALERTA DE CONVERSIÓN DE MONEDA (Solo si es USD) */}
+            {isConverted && (
           <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-3">
             <ArrowRightLeft
               className="text-blue-500 mt-0.5 shrink-0"
@@ -386,10 +429,13 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
             </div>
           </div>
         </div>
+          </div>
+        )}
 
-        {/* 4. CORTE TERCERIZADO (NUEVA SECCIÓN) */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-          <header className="flex items-center gap-2 pb-2 border-b border-slate-100">
+        {/* 4. CORTE TERCERIZADO (TAB CORTES) */}
+        {activeTab === "cortes" && (
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 animate-in fade-in duration-300">
+            <header className="flex items-center gap-2 pb-2 border-b border-slate-100">
             <Scissors size={16} className="text-purple-500" />
             <h3 className="text-xs font-black text-slate-600 uppercase tracking-wider">
               Corte Tercerizado
@@ -547,6 +593,73 @@ export function CoilDetailsModal({ coil, onClose }: CoilDetailsModalProps) {
             </div>
           )}
         </div>
+        )}
+
+        {/* 5. MERMAS (TAB MERMAS) */}
+        {activeTab === "mermas" && (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            {scrapsError && (
+              <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-red-700 font-bold text-sm">
+                {scrapsError}
+              </div>
+            )}
+            {scrapsLoading ? (
+              <div className="py-8 flex flex-col items-center justify-center gap-2 text-slate-400">
+                <Loader2 size={24} className="animate-spin" />
+                <p className="text-xs font-bold uppercase tracking-widest">Cargando mermas...</p>
+              </div>
+            ) : scraps.length === 0 ? (
+              <div className="bg-slate-50 border border-slate-200 border-dashed p-8 rounded-xl text-center">
+                <p className="text-slate-500 font-bold">Sin mermas registradas</p>
+                <p className="text-xs text-slate-400 mt-2 font-medium">Esta bobina no tiene historial de mermas.</p>
+              </div>
+            ) : (
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Fecha</th>
+                      <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Motivo</th>
+                      <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider text-right">Peso</th>
+                      <th className="p-3 text-[10px] font-black text-slate-500 uppercase tracking-wider text-right">Costo (S/)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {scraps.map((scrap) => (
+                      <tr key={scrap.id} className={`hover:bg-slate-50 transition ${scrap.isVoided ? "opacity-60 bg-slate-50" : ""}`}>
+                        <td className="p-3">
+                          <span className={`text-xs font-medium ${scrap.isVoided ? "line-through text-slate-400" : "text-slate-700"}`}>
+                            {formatDate(scrap.timestamp)}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-medium ${scrap.isVoided ? "line-through text-slate-400" : "text-slate-700"}`}>
+                              {scrap.reason}
+                            </span>
+                            {scrap.isVoided && (
+                              <span className="bg-red-100 text-red-600 text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">Anulada</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-3 text-right">
+                          <span className={`text-sm font-black ${scrap.isVoided ? "line-through text-slate-400" : "text-red-600"}`}>
+                            {scrap.scrapWeightKg} kg
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <span className={`text-sm font-black ${scrap.isVoided ? "line-through text-slate-400" : "text-slate-700"}`}>
+                            {Number(scrap.scrapCostPEN).toFixed(2)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
