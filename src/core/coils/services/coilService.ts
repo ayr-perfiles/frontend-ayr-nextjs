@@ -293,6 +293,35 @@ export const deleteCoilDraft = async (coilId: string) => {
   }
 };
 
+export const reverseCoilSplit = async (childId: string) => {
+  const callable = httpsCallable<{ childId: string }, { success: boolean, newMotherWeight: number, newMotherWidth: number, newMotherStatus: string }>(
+    functions,
+    "reverseCoilSplit"
+  );
+  try {
+    const response = await callable({ childId });
+    return response.data;
+  } catch (error: any) {
+    if (error?.code) {
+      switch (error.code) {
+        case "unauthenticated":
+          throw new Error("Debes iniciar sesión para revertir splits.");
+        case "permission-denied":
+          throw new Error("Solo un administrador puede revertir splits.");
+        case "not-found":
+          throw new Error("La bobina especificada no existe.");
+        case "failed-precondition":
+          throw new Error(error.message || "No se puede revertir el split.");
+        case "invalid-argument":
+          throw new Error(error.message || "Datos inválidos.");
+        default:
+          throw new Error(error.message || "Error al revertir split.");
+      }
+    }
+    throw new Error("Error interno del servidor.");
+  }
+};
+
 export const updateCoil = async (
   coilId: string,
   updates: CoilUpdates,

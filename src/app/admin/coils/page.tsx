@@ -21,6 +21,7 @@ import {
   updateCoil,
   cancelCoilPlan,
   deleteCoilDraft,
+  reverseCoilSplit,
 } from "@/core/coils/services/coilService";
 import { fetchAvailableCoilsForExport } from "@/core/coils/services/coilService";
 import { useAuth } from "@/context/AuthContext";
@@ -281,6 +282,26 @@ export default function CoilsPage() {
     }
   };
 
+  const handleReverseSplit = async (childId: string) => {
+    if (
+      await confirm({
+        title: "Revertir split",
+        message: `Esto ANULA la bobina hija ${childId} y restaura peso+ancho a la madre. Acción de ADMIN.`,
+        variant: "danger",
+        confirmLabel: "Revertir",
+        requireInput: { label: 'Escribe "REVERTIR"', matchValue: "REVERTIR" },
+      })
+    ) {
+      toast
+        .promise(reverseCoilSplit(childId), {
+          loading: "Revirtiendo split...",
+          success: "Split revertido con éxito.",
+          error: (err: any) => err.message,
+        })
+        .then(() => refresh());
+    }
+  };
+
   const handleCancelPlan = async (coilId: string) => {
     if (
       await confirm({
@@ -461,6 +482,7 @@ export default function CoilsPage() {
           onEdit={handleOpenEdit}
           onVoid={handleVoidCoil}
           onDeleteDraft={onDeleteDraft}
+          onReverseSplit={handleReverseSplit}
           onCancelPlan={handleCancelPlan}
           onSendToCut={(coil) => {
             setSelectedIds([coil.id]);
