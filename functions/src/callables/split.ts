@@ -3,6 +3,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
 import { validateAndCalculateSplit } from "../domain/coilPricing";
+import { determineCoilStatusAfterReversal } from "../domain/scrap";
 
 export const registerCoilSplit = onCall(async (request) => {
   if (!request.auth) {
@@ -178,5 +179,165 @@ export const registerCoilSplit = onCall(async (request) => {
     });
 
     return result;
+  });
+});
+
+export const reverseCoilSplit = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Usuario no autenticado");
+  }
+
+  const role = request.auth.token.role;
+  const email = request.auth.token.email || "unknown";
+
+  if (role !== "ADMIN") {
+    throw new HttpsError("permission-denied", "Solo un administrador puede revertir splits de bobina.");
+  }
+
+  const { childId } = request.data;
+  if (!childId || typeof childId !== "string" || childId.trim() === "") {
+    throw new HttpsError("invalid-argument", "El childId es obligatorio");
+  }
+
+  const db = admin.firestore();
+
+  const childRef = db.collection("coils").doc(childId);
+  const childSnap = await childRef.get();
+
+  if (!childSnap.exists) {
+    throw new HttpsError("not-found", `La bobina hija ${childId} no existe`);
+  }
+
+  const child = childSnap.data()!;
+
+  // Guard 4: idempotente
+  if (child.status === "VOIDED") {
+    throw new HttpsError("failed-precondition", "La bobina hija ya está anulada.");
+  }
+
+  // Guard 5: debe ser hija de split
+  const motherId: string = child.parentCoilId;
+  if (!motherId) {
+    throw new HttpsError("invalid-argument", "Esta bobina no es hija de un split (sin parentCoilId).");
+  }
+
+  // Guard 6: madre existe y no está anulada
+  const motherRef = db.collection("coils").doc(motherId);
+  const motherSnap = await motherRef.get();
+
+  if (!motherSnap.exists) {
+    throw new HttpsError("failed-precondition", `La bobina madre ${motherId} no existe; anulación bloqueada.`);
+  }
+  if (motherSnap.data()!.status === "VOIDED") {
+    throw new HttpsError("failed-precondition", "La bobina madre está anulada; no se puede revertir el split.");
+  }
+
+  // Guard 7a: sin producción activa desde la hija
+  const productionLogs = await db.collection("production_logs")
+    .where("parentCoilIds", "array-contains", childId)
+    .where("status", "==", "ACTIVE")
+    .get();
+  if (!productionLogs.empty) {
+    throw new HttpsError("failed-precondition", "La bobina hija tiene producción activa; no se puede revertir el split.");
+  }
+
+  // Guard 7b: sin splits anidados activos desde la hija
+  const nestedSplits = await db.collection("coils")
+    .where("parentCoilId", "==", childId)
+    .where("status", "!=", "VOIDED")
+    .get();
+  if (!nestedSplits.empty) {
+    throw new HttpsError("failed-precondition", "La bobina hija tiene splits anidados activos; reviértelos primero.");
+  }
+
+  // Guard 7c: sin merma en la hija
+  const scrapLogs = await db.collection("scrap_logs")
+    .where("coilId", "==", childId)
+    .limit(1)
+    .get();
+  if (!scrapLogs.empty) {
+    throw new HttpsError("failed-precondition", "La bobina hija tiene merma registrada; no se puede revertir el split.");
+  }
+
+  // Guard 7d: hija prístina (peso actual == peso inicial)
+  const childCurrentWeight: number = child.currentWeight;
+  const childInitialWeight: number = child.initialWeight;
+  if (Math.abs(childCurrentWeight - childInitialWeight) > 0.01) {
+    throw new HttpsError(
+      "failed-precondition",
+      `La bobina hija no es prístina: peso actual ${childCurrentWeight} kg ≠ inicial ${childInitialWeight} kg.`
+    );
+  }
+
+  const childWeight = childCurrentWeight;
+  const costPerKgCongelado: number = child.pricePerKg;
+
+  return await db.runTransaction(async (transaction) => {
+    const txChildSnap = await transaction.get(childRef);
+    const txMotherSnap = await transaction.get(motherRef);
+
+    if (!txChildSnap.exists) throw new HttpsError("not-found", `La bobina hija ${childId} no existe.`);
+    if (!txMotherSnap.exists) throw new HttpsError("not-found", `La bobina madre ${motherId} no existe.`);
+
+    const txMother = txMotherSnap.data()!;
+    const txChild = txChildSnap.data()!;
+
+    const newMotherWeight = Number((txMother.currentWeight + childWeight).toFixed(4));
+    const newMotherWidth = txMother.masterWidth + txChild.masterWidth;
+    const newMotherStatus = determineCoilStatusAfterReversal(newMotherWeight, txMother.initialWeight);
+
+    const now = FieldValue.serverTimestamp();
+
+    transaction.update(motherRef, {
+      currentWeight: newMotherWeight,
+      masterWidth: newMotherWidth,
+      status: newMotherStatus,
+      updatedAt: now,
+    });
+
+    transaction.update(childRef, {
+      status: "VOIDED",
+      currentWeight: 0,
+      updatedAt: now,
+    });
+
+    const kardexMotherRef = db.collection("kardex_movements").doc();
+    transaction.set(kardexMotherRef, {
+      sku: motherId,
+      date: now,
+      type: "IN",
+      quantity: 1,
+      weightKg: childWeight,
+      costPerKg: costPerKgCongelado,
+      balance: newMotherWeight,
+      reference: childId,
+      description: "Reversa de split",
+      user: email,
+    });
+
+    const kardexChildRef = db.collection("kardex_movements").doc();
+    transaction.set(kardexChildRef, {
+      sku: childId,
+      date: now,
+      type: "OUT",
+      quantity: 1,
+      weightKg: childWeight,
+      costPerKg: costPerKgCongelado,
+      balance: 0,
+      reference: motherId,
+      description: "Reversa de split: salida a cero",
+      user: email,
+    });
+
+    const auditRef = db.collection("audit_logs").doc();
+    transaction.set(auditRef, {
+      action: "REVERSE_COIL_SPLIT",
+      entityId: childId,
+      userEmail: email,
+      details: `Reversa de split: ${childId} → ${motherId}. Peso restaurado: ${childWeight} kg. Ancho restaurado: +${txChild.masterWidth} mm.`,
+      timestamp: now,
+    });
+
+    return { success: true, newMotherWeight, newMotherWidth, newMotherStatus };
   });
 });

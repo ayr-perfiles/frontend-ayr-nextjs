@@ -396,7 +396,7 @@ export const healthCheck = onCall(async () => {
 // ════════════════════════════════════════════════════════════
 
 export { registerCoilScrap, voidCoilScrap } from "./callables/scrap";
-export { registerCoilSplit } from "./callables/split";
+export { registerCoilSplit, reverseCoilSplit } from "./callables/split";
 export { registerCoil } from "./callables/coilRegistration";
 
 export { voidCoil, updateCoil, cancelCoilPlan, deleteCoilDraft } from "./callables/coilManagement";
