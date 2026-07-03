@@ -22,6 +22,7 @@ interface InventoryTableProps {
   onVoid: (coilId: string) => void;
   onCancelPlan: (coilId: string) => void;
   onDeleteDraft?: (coilId: string) => void;
+  onReverseSplit?: (childId: string) => void;
   onSendToCut?: (coil: Coil) => void;
   onSplit?: (coil: Coil) => void;
   onViewDetails: (coil: Coil) => void;
@@ -136,6 +137,7 @@ export default function InventoryTable({
   onVoid,
   onCancelPlan,
   onDeleteDraft,
+  onReverseSplit,
   onSendToCut,
   onSplit,
   onViewDetails,
@@ -363,6 +365,16 @@ export default function InventoryTable({
         }
 
         if (role === "ADMIN" && coil.status === "AVAILABLE") {
+          if (coil.parentCoilId) {
+            actions.push({
+              id: "reverseSplit",
+              label: "Revertir split",
+              icon: <RotateCcw size={16} />,
+              variant: "danger",
+              section: "danger",
+              onClick: () => onReverseSplit?.(coil.id),
+            });
+          }
           actions.push(
             {
               id: "sendToCut",
