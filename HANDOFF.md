@@ -16,7 +16,6 @@
 
 1. **Fix KardexTab normalización** (type→signo/color). Chico, cierra deuda visual que afecta SCRAP/AJUSTE/SCRAP_REVERSAL (type ≠ "IN" sale rojo). Reco ALTA.
 2. **Importación REAL de abril a PROD** (operación de curación §14, sesión dedicada, backup coils prod primero, pre-filtrar CSV, finishes a mano, líneas UNIDAD manual).
-3. **`PurchaseCoilFromXml` finish por-fila** (deuda preexistente).
 4. **Drenar writes** 7/8/9.
 5. **Saneamiento infra test↔prod** (SUNAT solo test, Algolia solo prod, metadata codebase test rota).
 
