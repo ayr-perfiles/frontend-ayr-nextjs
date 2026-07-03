@@ -1,7 +1,8 @@
-# CLAUDE.md — AYR Steel ERP (v6.17)
+# CLAUDE.md — AYR Steel ERP (v6.18)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + integración serializada verde | Functions v2 operativa.
+> **v6.18:** PurchaseCoilFromXml finish POR-FILA (colores mixtos). Borrado el defaultFinish global; cada fila XML preselecciona finish vía parseCoilDescription(originalDesc)→TOKEN_TO_FINISH; dropdown vivo useFinishes (coil_finishes single source); guard por-fila en submit (cada bobina exige finish). Dimensiones intactas (regex original, no tocado). Runtime test verde: 1 XML → 4 finishes distintos (GALV/ALU-ROJO/ALU-NATURAL/ALU-AZUL), densidad por lookup de finish, pricePerKg cuadra. registerCoil backend ya soportaba mixto.
 > **v6.17:** KardexTab huérfano BORRADO. Util central getKardexMovementDisplay (mapa type→{signo,color,label} NO binario: IN/ENTRADA +verde, OUT/SALIDA -rojo, SCRAP -ámbar 'MERMA', SCRAP_REVERSAL +verde 'REVERSA MERMA', desconocido→gris fallback ruidoso+warn) consumido por KardexTable + export CSV. Tab 'Movimientos' en CoilDetailsModal (kardex_movements where sku==coilId, reusa useKardex+KardexTable mode cursor, índice (sku,date) ya existía). Swap orden sidebar Coberturas UPVC/Aluzinc. HALLAZGO: /admin/kardex es PRODUCT/DRYWALL-only (selector solo colección products); kardex_movements es ledger ÚNICO por sku; kardex de bobina antes 'materia oscura', ahora visible vía tab Movimientos.
 > **v6.16:** Frente B UI de mermas CERRADO. Tab Mermas (lista read-only, hook useCoilScraps) + botón 'Anular merma' (voidCoilScrap, requireInput ANULAR, gate role==='ADMIN') en CoilDetailsModal. Runtime test verde: happy (TESTVOID-A reversa, kardex SCRAP_REVERSAL 200/2.5/balance1000), guard P1b ejercido en UI (movimiento posterior rechazado), P4 cerrado (403 PERMISSION_DENIED con idToken REST de operator@cliente.com). Gap P4 CERRADO.
 > **v6.15:** voidCoilScrap (callable) CERRADO EN PROD. Reversa de merma mal registrada: restaura peso al costo congelado, marca scrap_log VOIDED, kardex compensatorio SCRAP_REVERSAL, audit VOID_COIL_SCRAP. Filtro de reporte de merma (scrap VOIDED no cuenta en totalMermaSoles). Helper backend determineCoilStatusAfterReversal. UI de mermas CERRADA (Frente B).
@@ -246,7 +247,6 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 
 **PENDIENTE / EN COLA (orden sugerido):**
 
-1. **`PurchaseCoilFromXml` finish por-fila:** hoy usa select global por factura (L49/234/404 → mismo acabado a todas las bobinas del XML, ignora colores mixtos). Patrón muerto preexistente. Fix: mover a por-fila como BulkUpload (parseCoilDescription + dropdown por fila). Ver §11.
 3. **Reversa de split (WRITE nuevo, ¿7.5?):** restaurar madre + VOIDED hijo + reversa `kardex_movements`. Operación distinta de `voidProductionFromCoils`.
 4. **WRITE 7:** `voidProductionFromCoils` metallic+drywall (costo congelado del `production_log`).
 5. **WRITE 8:** `cutOrder` (monstruo: WAC+prorrateo, 5 funciones).
@@ -298,8 +298,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Fix tsconfig functions-sunat (CERRADA v6.14):** .vercelignore excluía functions+functions-sunat pero el exclude del tsconfig raíz solo tenía functions → npm run build local roto (rojo que Vercel no sufría). RESUELTO en 858126df: añadido functions-sunat al exclude. npm run build local = señal válida otra vez.
 - **Fecha `T12:00:00Z` (mediodía UTC) en single + bulk:** ambos concatenan `T12:00:00` a la fecha YYYY-MM-DD y la persisten como Timestamp. Funciona para Perú (UTC-5 → 07:00 sigue siendo el día correcto), pero es frágil ante lectura en otras zonas / agrupación por día. Artefacto heredado, no decisión consciente. Compartido single+bulk.
 - **`registerCoil` single SIN guards de fecha ni dimensiones:** el bulk (v6.13) valida fecha (regex+componentes) y width/thickness>0; el single NO. Bug latente: fecha basura o dimensión 0/null enviada al single → crash Firestore Timestamp o doc con dimensión inválida. Portar los guards del bulk al single.
-- **`migrateFinishDensityFactors` + scripts backfill esperan naming MUERTO:** `finishService.ts` (`migrateFinishDensityFactors`), `scripts/backfillCoilFinish.ts`, `scripts/check_finishes.ts` usan `GALVANIZADO`/`NATURAL` (español completo). La BD VIVA usa `GALV`/`ALU-NATURAL`. Correr esas migraciones hoy crearía finishes basura o fallaría. Auditar y corregir/enterrar.
-- **`PurchaseCoilFromXml` finish global** (ver §9 pendiente #1).
+- **`migrateFinishDensityFactors` + scripts backfill esperan naming MUERTO (CERRADA v6.18):** Scripts obsoletos eliminados.
 - **Barrel muerto** `src/components/purchases/BulkUploadCoils.tsx` (re-export no montado por nadie).
 - **ADMIN de test = `demo@cliente.com`** (uid `1e3aV7XEmvdLjMally7g1zQJ6Fu1`, claim `{role:ADMIN}` real). Naming engañoso (email "cliente" con rol ADMIN), no bug.
 

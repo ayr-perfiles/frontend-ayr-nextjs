@@ -19,6 +19,8 @@ import { writeBatch, doc, serverTimestamp, getDoc } from "firebase/firestore";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
+import { parseCoilDescription } from "@/core/coils/parseCoilDescription";
+import { TOKEN_TO_FINISH } from "@/core/coils/bulkUploadLogic";
 import { httpsCallable } from "firebase/functions";
 
 interface CoilEntry {
@@ -27,6 +29,7 @@ interface CoilEntry {
   weight: number | "";
   width: number | "";
   thickness: number | "";
+  finish: string;
   value: number | "";
   originalDesc?: string;
 }
@@ -46,7 +49,6 @@ export function PurchaseCoilFromXml() {
   const [currency, setCurrency] = useState<"PEN" | "USD">("PEN");
   const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [fetchingRate, setFetchingRate] = useState(false);
-  const [defaultFinish, setDefaultFinish] = useState("");
 
   // --- ESTADOS DETALLE (BOBINAS) ---
   const [coils, setCoils] = useState<CoilEntry[]>([]);
@@ -130,12 +132,16 @@ export function PurchaseCoilFromXml() {
         const widthMatch = description.match(/1[0-2]\d{2}/);
         if (widthMatch) width = parseFloat(widthMatch[0]);
 
+        const parsedDesc = parseCoilDescription(description);
+        const mappedFinish = parsedDesc.finishToken ? (TOKEN_TO_FINISH[parsedDesc.finishToken] ?? "") : "";
+
         parsedCoils.push({
           uid: Date.now().toString() + index,
           coilId: `${invNumber}-${index + 1}`,
           weight: Math.round(weightInKg),
           width: width,
           thickness: thickness,
+          finish: mappedFinish,
           value: totalValue,
           originalDesc: description,
         });
@@ -189,6 +195,7 @@ export function PurchaseCoilFromXml() {
         weight: "",
         width: 1200,
         thickness: 0.45,
+        finish: "",
         value: "",
       },
     ]);
@@ -209,10 +216,6 @@ export function PurchaseCoilFromXml() {
       toast.error("Faltan datos de factura o bobinas.");
       return;
     }
-    if (!defaultFinish) {
-      toast.error("Por favor, selecciona un acabado por defecto para la factura.");
-      return;
-    }
 
     for (let i = 0; i < coils.length; i++) {
       const c = coils[i];
@@ -231,7 +234,7 @@ export function PurchaseCoilFromXml() {
         weight: Number(coil.weight),
         width: Number(coil.width),
         thickness: Number(coil.thickness),
-        finish: defaultFinish,
+        finish: coil.finish,
         value: Number(coil.value),
       }));
 
@@ -395,22 +398,6 @@ export function PurchaseCoilFromXml() {
                   onChange={(e) => setExchangeRate(Number(e.target.value))}
                 />
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-blue-600 mb-1 uppercase flex items-center gap-1">
-                  <Layers size={10} /> Acabado / Material *
-                </label>
-                <select
-                  required
-                  value={defaultFinish}
-                  onChange={(e) => setDefaultFinish(e.target.value)}
-                  className="w-full bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-sm font-bold text-blue-900 outline-none"
-                >
-                  <option value="">Seleccionar...</option>
-                  {finishes.map((f) => (
-                    <option key={f.id} value={f.id}>{f.label}</option>
-                  ))}
-                </select>
-              </div>
             </div>
           </div>
 
@@ -430,10 +417,11 @@ export function PurchaseCoilFromXml() {
 
             <div className="space-y-3">
               <div className="hidden md:grid grid-cols-12 gap-4 px-4 py-3 bg-slate-50 rounded-lg text-[11px] font-black text-slate-500 uppercase">
-                <div className="col-span-3">N° Serie / ID *</div>
+                <div className="col-span-2">N° Serie / ID *</div>
+                <div className="col-span-2">Acabado *</div>
                 <div className="col-span-2">Peso (kg) *</div>
                 <div className="col-span-2">Ancho (mm) *</div>
-                <div className="col-span-2">Espesor *</div>
+                <div className="col-span-1">Espesor *</div>
                 <div className="col-span-2">Valor ({currency}) *</div>
                 <div className="col-span-1 text-center">Acción</div>
               </div>
@@ -443,7 +431,7 @@ export function PurchaseCoilFromXml() {
                   key={coil.uid}
                   className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 bg-white border border-slate-100 rounded-lg relative hover:border-blue-200 transition"
                 >
-                  <div className="md:col-span-3">
+                  <div className="md:col-span-2">
                     <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1">
                       N° Serie *
                     </label>
@@ -468,6 +456,22 @@ export function PurchaseCoilFromXml() {
                         XML: {coil.originalDesc}
                       </p>
                     )}
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1">
+                      Acabado *
+                    </label>
+                    <select
+                      required
+                      value={coil.finish}
+                      onChange={(e) => updateCoil(coil.uid, "finish", e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500"
+                    >
+                      <option value="">Seleccionar...</option>
+                      {finishes.map((f) => (
+                        <option key={f.id} value={f.id}>{f.label || f.id}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="md:col-span-2">
                     <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1">
@@ -498,7 +502,7 @@ export function PurchaseCoilFromXml() {
                       }
                     />
                   </div>
-                  <div className="md:col-span-2">
+                  <div className="md:col-span-1">
                     <label className="md:hidden block text-[11px] font-bold text-slate-400 mb-1">
                       Espesor (mm) *
                     </label>
