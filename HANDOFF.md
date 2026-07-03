@@ -1,16 +1,16 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.15).
+> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.19).
 > Preferencias: Prompts Claude Code por defecto. Caveman mode. PASO 0 read-only en cada prompt.
 > Preguntar ante duda de negocio. NUNCA cerrar en verde sin RUNTIME (lo corre el USUARIO, no Claude).
 > npm run build LOCAL antes de merge a master. Un frente a la vez, confirmar cierre antes de seguir.
 > backend en prod antes que master.
 
-## ✅ Cerrado esta sesión — `voidCoilScrap` (v6.15)
+## ✅ Cerrado esta sesión — `reverseCoilSplit` (v6.19)
 
-- **CERRADO ESTA SESIÓN:** `voidCoilScrap` (callable + reporte) EN PROD, runtime test verde. Helper `determineCoilStatusAfterReversal`. Filtro `totalMermaSoles`. `develop`=`master` synced (merge `85387553`).
-- **ESTADO:** `voidCoilScrap` resuelve en backend el reverso de mermas mal registradas.
-- ⚠️ **ATENCIÓN:** El push de master PENDIENTE de Giancarlo (el merge 85387553 está local, pero falta `git push origin master`).
+- **CERRADO ESTA SESIÓN:** `reverseCoilSplit` (callable + ui) EN PROD, runtime test verde. PurchaseCoilFromXml finish POR-FILA. `develop` listos para merge.
+- **ESTADO:** `reverseCoilSplit` resuelve en backend el reverso de bobinas hijas.
+- ⚠️ **ATENCIÓN:** El push de master PENDIENTE de Giancarlo.
 
 ## 🔴 ARRANCAR PRÓXIMA SESIÓN — opciones (decidir al inicio)
 
@@ -29,10 +29,10 @@
 - **kardex bobina 'Cantidad' siempre +1/-1:** Magnitud real = weightKg, no mostrada en la UI (mejora opcional en KardexTable compartido).
 - **Fecha T12:00:00Z (mediodía UTC)** en single + bulk. Funciona Perú, frágil timezones.
 - **registerCoil single SIN guards de fecha ni dimensiones** (el bulk sí). Bug latente. Portar guards.
-- **migrateFinishDensityFactors + scripts backfill esperan naming MUERTO** (GALVANIZADO/NATURAL vs vivo GALV/ALU-NATURAL).
 - **Barrel muerto** src/components/purchases/BulkUploadCoils.tsx (re-export no montado).
 - **ADMIN de test = demo@cliente.com** (uid 1e3aV7XEmvdLjMally7g1zQJ6Fu1, claim ADMIN real). Naming engañoso.
 - **OPERATOR de test = operator@cliente.com** (uid e2you9u7IPX9CA6qIe2x9U4DjqD3, claim OPERATOR real). Usuario no-admin PERMANENTE de QA en test. No borrar.
+- **Nota deuda divergencia test↔prod:** Índices divergentes, `coils(parentCoilId,status)` faltaba en test. Parte de saneamiento infra.
 
 ## Llaves coil_finishes VIVAS (test = prod, NO divergen)
 
@@ -43,7 +43,7 @@ El dropdown se puebla de coil_finishes VIVO (single source of truth).
 ## 🔴 DEUDA DE INFRAESTRUCTURA — divergencia test↔prod (sin resolver)
 
 - SUNAT (comunicarBaja, emitirComprobante, validarCpeSunat, importSireRce, parsePurchaseXml, confirmPurchaseStaging, consultarRuc/Dni) SOLO en ayrsteel-test, NO en prod.
-- Algolia (ext-firestore-algolia-search-\*) SOLO en prod, NO en test.
+- Algolia (ext-firestore-algolia-search-*) SOLO en prod, NO en test.
 - Metadata codebase roto en test: deploy --only functions:default propone BORRAR las 9 legacy/SUNAT.
 - ⚠️ REGLA: deploy a test SIEMPRE por función específica (--only functions:NOMBRE --project ayrsteel-test). NUNCA --only functions:default. NUNCA --force.
 - Sanear esto = deuda multi-sprint; riesgo de borrado accidental alto.
@@ -54,7 +54,7 @@ El dropdown se puebla de coil_finishes VIVO (single source of truth).
 - `invoke_bulk_test.cjs` — invoca registerCoilsBulk en test-nube.
 - `read_finishes.cjs` — lee coil_finishes de un proyecto.
 - `cleanup_test_coils.cjs` — BORRADO FÍSICO de coils de prueba en TEST por prefijo. NO existe variante prod.
-- ⚠️ Scripts node NO cargan dotenv → van a nube directo vía serviceAccountKey. serviceAccountKey\*.json gitignored.
+- ⚠️ Scripts node NO cargan dotenv → van a nube directo vía serviceAccountKey. serviceAccountKey*.json gitignored.
 
 ## Convenciones clave (resto en CLAUDE.md)
 
@@ -69,4 +69,4 @@ tdd (deleteCoilDraft red-green), diagnose (si runtime prod falla), grill-me, han
 
 ## Arranque
 
-Decidir entre las opciones. Subir CLAUDE.md v6.15 + este HANDOFF.
+Decidir entre las opciones. Subir CLAUDE.md v6.19 + este HANDOFF.
