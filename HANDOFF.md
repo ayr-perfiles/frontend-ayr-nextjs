@@ -1,16 +1,20 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.19).
+> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.20).
 > Preferencias: Prompts Claude Code por defecto. Caveman mode. PASO 0 read-only en cada prompt.
 > Preguntar ante duda de negocio. NUNCA cerrar en verde sin RUNTIME (lo corre el USUARIO, no Claude).
 > npm run build LOCAL antes de merge a master. Un frente a la vez, confirmar cierre antes de seguir.
 > backend en prod antes que master.
 
-## ✅ Cerrado esta sesión — `reverseCoilSplit` (v6.19)
+## ✅ Cerrado esta sesión — TC 3.75 fallback muerto + relabel kardex (v6.20)
 
-- **CERRADO ESTA SESIÓN:** `reverseCoilSplit` (callable + ui) EN PROD, runtime test verde. PurchaseCoilFromXml finish POR-FILA. `develop` listos para merge.
-- **ESTADO:** `reverseCoilSplit` resuelve en backend el reverso de bobinas hijas.
+- **CERRADO ESTA SESIÓN:** fallback TC 3.75 MUERTO (`/api/tipo-cambio` en fallback ya no emite `venta`/`compra` numérico; PurchaseCoilFromXml + BulkUpload dejan TC vacío + warning + submit guard USD compartido `isValidUsdExchangeRate` [2,7]).
+- **CERRADO ESTA SESIÓN:** `/admin/kardex` mal rotulado como global → relabel "Kardex de Productos (Drywall)" + sidebar "Kardex productos" + breadcrumb, sin mover el item de nav ni tocar la query.
 - ⚠️ **ATENCIÓN:** El push de master PENDIENTE de Giancarlo.
+
+## ✅ Cerrado sesión previa — `reverseCoilSplit` (v6.19)
+
+- `reverseCoilSplit` (callable + ui) EN PROD, runtime test verde. PurchaseCoilFromXml finish POR-FILA.
 
 ## 🔴 ARRANCAR PRÓXIMA SESIÓN — opciones (decidir al inicio)
 
@@ -24,7 +28,11 @@
 
 ## Deudas vivas (detalle en CLAUDE.md §11)
 
-- **/admin/kardex rotulado como global:** Es product-scoped (solo lee products de drywall). Decisión pendiente: rotular/mover bajo Drywall o hacer selector global (products+coils).
+- **CERRADA v6.20 — /admin/kardex rotulado como global:** relabel honesto "Kardex de Productos (Drywall)" hecho (sidebar+header+breadcrumb). Selector global (products+coils) evaluado y descartado por ahora: 6 colecciones a mergear (no solo 2), selector actual es `<select>` plano sin búsqueda, y el caso de uso bobina ya está resuelto vía tab Movimientos (v6.17).
+- **BACKLOG (diferido, no bug):** BulkUpload auto-suggest-on-load del TC (fetch automático por invoiceDate, paridad con PurchaseCoilFromXml) en vez de requerir click manual "Sugerir TC". Mejora opcional, no cierre de deuda.
+- **BACKLOG (diferido):** mover el item "Kardex" de la sección "Administración" al `LineGroup` Drywall en el sidebar. Hacerlo en commit AISLADO (hay 2 fuentes de nav ligeramente desincronizadas — `sidebar.tsx` vs `navItems.ts` — evitar bundlear con otros cambios, riesgo de churn de nav ya visto en incidentes previos).
+- **RESIDUAL MENOR v6.20:** runtime UI del fallback TC (PurchaseCoilFromXml: campo vacío + warning + submit bloqueado) NO se ojeó en browser (requiere login test-nube que Claude no tiene). Verificado sí: endpoint por curl (fallback sin número) + 32 unit tests + tsc + build. Guardas son aditivas y de bajo riesgo.
+- **Nota:** el TC "3.5" visto antes en pruebas de BulkUpload era dato del Excel de prueba (columna "MONEDA TIPO DE CAMBIO"), NUNCA un default hardcodeado en código — confirmado por grep, no había nada que arreglar ahí.
 - **strips_movements render de AJUSTE:** Revisar si tiene mismo bug binario que tenía el kardex (frente aparte).
 - **kardex bobina 'Cantidad' siempre +1/-1:** Magnitud real = weightKg, no mostrada en la UI (mejora opcional en KardexTable compartido).
 - **Fecha T12:00:00Z (mediodía UTC)** en single + bulk. Funciona Perú, frágil timezones.
@@ -69,4 +77,4 @@ tdd (deleteCoilDraft red-green), diagnose (si runtime prod falla), grill-me, han
 
 ## Arranque
 
-Decidir entre las opciones. Subir CLAUDE.md v6.19 + este HANDOFF.
+Decidir entre las opciones. Subir CLAUDE.md v6.20 + este HANDOFF.
