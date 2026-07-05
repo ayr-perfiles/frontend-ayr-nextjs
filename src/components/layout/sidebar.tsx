@@ -462,7 +462,7 @@ export default function Sidebar({
           <Group icon="Settings" title="Administración" collapsed={collapsed}>
             <NavItem
               icon="History"
-              label="Kardex"
+              label="Kardex productos"
               href="/admin/kardex"
               active={pathname === "/admin/kardex"}
               collapsed={collapsed}
