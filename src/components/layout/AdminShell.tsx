@@ -116,7 +116,7 @@ function HeaderComponent({
     catalog: "Catálogo",
     purchases: "Compras",
     crm: "CRM",
-    kardex: "Kardex",
+    kardex: "Kardex productos",
     users: "Usuarios",
     audit: "Auditoría",
     settings: "Configuración",

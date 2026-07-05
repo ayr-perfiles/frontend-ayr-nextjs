@@ -45,11 +45,9 @@ export async function GET(request: Request) {
       fecha: date,
     });
   } catch (error: any) {
-    console.error(`⚠️ Salvavidas activado para ${date}:`, error.message);
-    // Fallback de emergencia
+    console.error(`⚠️ TC real no disponible para ${date}:`, error.message);
+    // Sin fallback numérico: el frontend debe pedir el TC manual, nunca asumir 3.75.
     return NextResponse.json({
-      venta: 3.75,
-      compra: 3.7,
       fallback: true,
       error: error.message,
     });

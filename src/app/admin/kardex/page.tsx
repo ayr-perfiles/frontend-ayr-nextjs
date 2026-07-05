@@ -69,10 +69,10 @@ export default function KardexPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <History className="text-blue-600" /> Kardex de Inventario
+            <History className="text-blue-600" /> Kardex de Productos (Drywall)
           </h1>
           <p className="text-slate-500 font-medium mt-1">
-            Audita las entradas y salidas históricas manteniendo el saldo real.
+            Audita las entradas y salidas históricas del catálogo Drywall, manteniendo el saldo real.
           </p>
         </div>
         {selectedSku && (
