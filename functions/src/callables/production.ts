@@ -5,6 +5,7 @@ import { calcProductionFromCoils } from "../domain/coilProduction";
 import { CoilProductionInput, TargetSkuInfo } from "../types/production";
 import { assertCoilFinishCompatible } from "../domain/finishCompat";
 import { metallicRoofingStockStrategy } from "../domain/strategies/metallicRoofingStockStrategy";
+import { determineCoilStatusAfterReversal } from "../domain/scrap";
 
 export const produceFromCoils = onCall(async (request) => {
   if (!request.auth) {
@@ -255,5 +256,171 @@ export const produceFromCoils = onCall(async (request) => {
     });
 
     return responsePayload;
+  });
+});
+
+export const voidProductionFromCoils = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Usuario no autenticado");
+  }
+
+  const role = request.auth.token.role;
+  const email = request.auth.token.email || "unknown";
+
+  if (role !== "ADMIN") {
+    throw new HttpsError("permission-denied", "Solo un administrador puede anular una producción.");
+  }
+
+  const { logId } = request.data;
+  if (!logId || typeof logId !== "string" || logId.trim() === "") {
+    throw new HttpsError("invalid-argument", "El logId es obligatorio");
+  }
+
+  const db = admin.firestore();
+
+  const logRef = db.collection("production_logs").doc(logId);
+  const logSnap = await logRef.get();
+
+  if (!logSnap.exists) {
+    throw new HttpsError("not-found", "El registro de producción no existe.");
+  }
+
+  const log = logSnap.data()!;
+
+  if (log.status === "VOIDED") {
+    throw new HttpsError("failed-precondition", "El registro de producción ya fue anulado.");
+  }
+
+  if (log.line !== "metallic-roofing") {
+    throw new HttpsError("invalid-argument", "Esta función solo aplica a la línea metallic-roofing.");
+  }
+
+  if (!log.perCoilBreakdown || !Array.isArray(log.perCoilBreakdown) || log.perCoilBreakdown.length === 0) {
+    throw new HttpsError(
+      "failed-precondition",
+      "El registro de producción no tiene desglose de bobinas (perCoilBreakdown) válido. No se puede anular de forma precisa.",
+    );
+  }
+
+  const logTimestamp = log.timestamp;
+  if (!logTimestamp) {
+    throw new HttpsError("failed-precondition", "No se puede verificar el orden de movimientos; anulación bloqueada por seguridad.");
+  }
+
+  // GUARD POSTERIOR: venta completada del PT posterior a esta producción → bloquea (fuera de txn, query simple)
+  const laterSales = await db.collection("sales")
+    .where("skus", "array-contains", log.sku)
+    .where("status", "==", "COMPLETED")
+    .get();
+
+  for (const doc of laterSales.docs) {
+    const saleData = doc.data();
+    if (!saleData.timestamp) {
+      throw new HttpsError("failed-precondition", "No se puede verificar el orden de movimientos; anulación bloqueada por seguridad.");
+    }
+    if (saleData.timestamp.toMillis() > logTimestamp.toMillis()) {
+      throw new HttpsError("failed-precondition", "El producto tiene ventas posteriores; no se puede anular la producción.");
+    }
+  }
+
+  return await db.runTransaction(async (tx) => {
+    // 1. LECTURAS
+    const coilRefs = log.perCoilBreakdown.map((b: any) => db.collection("coils").doc(b.coilId));
+    const stockRef = db.collection("metallic_roofing_stock").doc(log.sku);
+
+    const [stockSnap, ...coilSnaps] = await Promise.all([
+      tx.get(stockRef),
+      ...coilRefs.map((ref: admin.firestore.DocumentReference) => tx.get(ref)),
+    ]);
+
+    for (let i = 0; i < coilSnaps.length; i++) {
+      if (!coilSnaps[i].exists) {
+        throw new HttpsError("not-found", `La bobina '${log.perCoilBreakdown[i].coilId}' referenciada no existe.`);
+      }
+    }
+
+    if (!stockSnap.exists) {
+      throw new HttpsError("not-found", `El stock del producto '${log.sku}' no existe.`);
+    }
+
+    const now = FieldValue.serverTimestamp();
+
+    // 2. ESCRITURAS
+
+    // a) LOG
+    tx.update(logRef, {
+      status: "VOIDED",
+      voidedAt: now,
+      voidedBy: email,
+    });
+
+    // b) BOBINAS + kardex (costo congelado)
+    for (let i = 0; i < log.perCoilBreakdown.length; i++) {
+      const breakdown = log.perCoilBreakdown[i];
+      const coilRef = coilRefs[i];
+      const coil = coilSnaps[i].data()!;
+
+      const newWeight = Number((coil.currentWeight + breakdown.weightConsumedKg).toFixed(4));
+      const newStatus = determineCoilStatusAfterReversal(newWeight, coil.initialWeight);
+      const costPerKgCongelado = breakdown.costPEN / breakdown.weightConsumedKg;
+
+      tx.update(coilRef, {
+        currentWeight: newWeight,
+        status: newStatus,
+        updatedAt: now,
+      });
+
+      tx.set(db.collection("kardex_movements").doc(), {
+        sku: coil.id,
+        date: now,
+        type: "IN",
+        quantity: 1,
+        weightKg: breakdown.weightConsumedKg,
+        costPerKg: costPerKgCongelado,
+        balance: newWeight,
+        reference: logId,
+        description: `Devolución MP por anulación de producción ${logId}`,
+        user: email,
+      });
+    }
+
+    // c) PRODUCTO TERMINADO (metallic_roofing_stock)
+    const stockData = stockSnap.data()!;
+    const currentQty = (stockData.quantity as number) || 0;
+    const currentTotalValue = (stockData.totalValue as number) || 0;
+
+    const nuevaQuantity = currentQty - log.piecesProduced;
+    const costoCorrida = log.perCoilBreakdown.reduce((acc: number, b: any) => acc + b.costPEN, 0);
+    const nuevoTotalValue = currentTotalValue - costoCorrida;
+    const nuevoAvgCost = nuevaQuantity > 0 ? nuevoTotalValue / nuevaQuantity : 0;
+
+    tx.update(stockRef, {
+      quantity: nuevaQuantity,
+      totalValue: Number(nuevoTotalValue.toFixed(2)),
+      avgCost: Number(nuevoAvgCost.toFixed(6)),
+      lastUpdate: now,
+    });
+
+    tx.set(db.collection("metallic_roofing_stock_movements").doc(), {
+      sku: log.sku,
+      type: "SALIDA",
+      quantity: log.piecesProduced,
+      costPerUnit: log.costPerPiece,
+      reason: `Anulación de producción ${logId}`,
+      businessLine: "metallic-roofing",
+      createdBy: email,
+      createdAt: now,
+    });
+
+    // d) AUDIT
+    tx.set(db.collection("audit_logs").doc(), {
+      action: "VOID_PRODUCTION_FROM_COILS",
+      entityId: logId,
+      userEmail: email,
+      details: `Anulación de ${log.piecesProduced} u de ${log.sku}. Devolución de MP a ${log.perCoilBreakdown.length} bobina(s).`,
+      timestamp: now,
+    });
+
+    return { success: true };
   });
 });

@@ -255,7 +255,8 @@ export interface AuditLog {
     | "CANCEL_CUTTING_PLAN"
     | "SPLIT_COIL"
     | "PRODUCE_FROM_COILS"
-    | "REGISTER_SCRAP";
+    | "REGISTER_SCRAP"
+    | "VOID_PRODUCTION_FROM_COILS";
   entityId: string;
   userEmail: string;
   details: string;
