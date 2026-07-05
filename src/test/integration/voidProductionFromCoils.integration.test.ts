@@ -288,13 +288,94 @@ describe('voidProductionFromCoils — Anulación de Aluzinc (Integration)', () =
     expect(log.status).toBe("ACTIVE"); // sin cambio
   });
 
-  it('7. AUTH: caller SUPERVISOR → permission-denied, sin cambios', async () => {
+  it('7. REGRESIÓN: venta ex-cotización con timestamp VIEJO pero approvedAt POSTERIOR → failed-precondition', async () => {
     const adminDb = admin.firestore();
+    const logTimestampMs = Date.now();
+
     await seedScenario(adminDb, {
       logId: "PROD-7",
       sku: "COB-ALU-7",
-      coils: [{ id: "BOB-H", initialWeight: 1000, currentWeight: 700, pricePerKg: 3.5 }],
-      breakdown: [{ coilId: "BOB-H", mlFromCoil: 300, weightConsumedKg: 300, costPEN: 1050 }],
+      coils: [{ id: "BOB-I", initialWeight: 1000, currentWeight: 700, pricePerKg: 3.5 }],
+      breakdown: [{ coilId: "BOB-I", mlFromCoil: 300, weightConsumedKg: 300, costPEN: 1050 }],
+      piecesProduced: 300,
+      stockQuantity: 300,
+      stockTotalValue: 1050,
+      logTimestampMs,
+    });
+
+    // Venta nacida de una cotización creada ANTES de la producción (timestamp viejo, heredado de la
+    // cotización vía spread ...quoteData), pero aprobada/consumida DESPUÉS (approvedAt posterior al log).
+    // Sin el fix, el guard comparaba solo `timestamp` y NO bloqueaba esto — falso negativo.
+    await adminDb.collection("sales").doc("SALE-EXQUOTE").set({
+      customerName: "Cliente Ex-Cotización",
+      items: [{ sku: "COB-ALU-7", quantity: 100, unitPrice: 10, unitValue: 8, baseCost: 3.5, unitWeight: 1 }],
+      skus: ["COB-ALU-7"],
+      businessLines: ["metallic-roofing"],
+      totalAmount: 1000,
+      totalCost: 350,
+      status: "COMPLETED",
+      sellerId: "seller1",
+      timestamp: admin.firestore.Timestamp.fromMillis(logTimestampMs - 60_000), // ANTERIOR al log (cotización vieja)
+      approvedAt: admin.firestore.Timestamp.fromMillis(logTimestampMs + 60_000), // POSTERIOR al log (consumo real)
+      originQuoteId: "C-000001",
+    });
+
+    await expect(
+      voidProductionFromCoils.run({ data: { logId: "PROD-7" }, auth: getAdminAuth() } as any)
+    ).rejects.toMatchObject({ code: "failed-precondition" });
+
+    const coil = (await adminDb.collection("coils").doc("BOB-I").get()).data()!;
+    expect(coil.currentWeight).toBe(700); // sin cambio
+
+    const log = (await adminDb.collection("production_logs").doc("PROD-7").get()).data()!;
+    expect(log.status).toBe("ACTIVE"); // sin cambio
+  });
+
+  it('8. venta COMPLETED anterior real (timestamp y approvedAt antes del log) → NO bloquea, anula normal', async () => {
+    const adminDb = admin.firestore();
+    const logTimestampMs = Date.now();
+
+    await seedScenario(adminDb, {
+      logId: "PROD-8",
+      sku: "COB-ALU-8",
+      coils: [{ id: "BOB-J", initialWeight: 1000, currentWeight: 700, pricePerKg: 3.5 }],
+      breakdown: [{ coilId: "BOB-J", mlFromCoil: 300, weightConsumedKg: 300, costPEN: 1050 }],
+      piecesProduced: 300,
+      stockQuantity: 300,
+      stockTotalValue: 1050,
+      logTimestampMs,
+    });
+
+    // Venta directa anterior a esta producción (de un lote previo del mismo sku) — no debe bloquear.
+    await adminDb.collection("sales").doc("SALE-PREVIA").set({
+      customerName: "Cliente Previo",
+      items: [{ sku: "COB-ALU-8", quantity: 50, unitPrice: 10, unitValue: 8, baseCost: 3.5, unitWeight: 1 }],
+      skus: ["COB-ALU-8"],
+      businessLines: ["metallic-roofing"],
+      totalAmount: 500,
+      totalCost: 175,
+      status: "COMPLETED",
+      sellerId: "seller1",
+      timestamp: admin.firestore.Timestamp.fromMillis(logTimestampMs - 60_000),
+    });
+
+    const result = await voidProductionFromCoils.run({ data: { logId: "PROD-8" }, auth: getAdminAuth() } as any);
+    expect(result.success).toBe(true);
+
+    const coil = (await adminDb.collection("coils").doc("BOB-J").get()).data()!;
+    expect(coil.currentWeight).toBe(1000); // se anuló normalmente
+
+    const log = (await adminDb.collection("production_logs").doc("PROD-8").get()).data()!;
+    expect(log.status).toBe("VOIDED");
+  });
+
+  it('9. AUTH: caller SUPERVISOR → permission-denied, sin cambios', async () => {
+    const adminDb = admin.firestore();
+    await seedScenario(adminDb, {
+      logId: "PROD-9",
+      sku: "COB-ALU-9",
+      coils: [{ id: "BOB-K", initialWeight: 1000, currentWeight: 700, pricePerKg: 3.5 }],
+      breakdown: [{ coilId: "BOB-K", mlFromCoil: 300, weightConsumedKg: 300, costPEN: 1050 }],
       piecesProduced: 300,
       stockQuantity: 300,
       stockTotalValue: 1050,
@@ -302,12 +383,12 @@ describe('voidProductionFromCoils — Anulación de Aluzinc (Integration)', () =
 
     await expect(
       voidProductionFromCoils.run({
-        data: { logId: "PROD-7" },
+        data: { logId: "PROD-9" },
         auth: { token: { role: "SUPERVISOR", email: "sup@test.com" }, uid: "sup" },
       } as any)
     ).rejects.toMatchObject({ code: "permission-denied" });
 
-    const coil = (await adminDb.collection("coils").doc("BOB-H").get()).data()!;
+    const coil = (await adminDb.collection("coils").doc("BOB-K").get()).data()!;
     expect(coil.currentWeight).toBe(700); // sin cambio
   });
 });

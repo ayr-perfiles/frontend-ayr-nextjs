@@ -315,10 +315,13 @@ export const voidProductionFromCoils = onCall(async (request) => {
 
   for (const doc of laterSales.docs) {
     const saleData = doc.data();
-    if (!saleData.timestamp) {
+    // approvedAt = momento real de consumo en ventas ex-cotización (timestamp ahí es el de creación de la cotización, obsoleto).
+    // timestamp = momento real de consumo en ventas directas (nunca tienen approvedAt).
+    const comparableTimestamp = saleData.approvedAt ?? saleData.timestamp;
+    if (!comparableTimestamp) {
       throw new HttpsError("failed-precondition", "No se puede verificar el orden de movimientos; anulación bloqueada por seguridad.");
     }
-    if (saleData.timestamp.toMillis() > logTimestamp.toMillis()) {
+    if (comparableTimestamp.toMillis() > logTimestamp.toMillis()) {
       throw new HttpsError("failed-precondition", "El producto tiene ventas posteriores; no se puede anular la producción.");
     }
   }
