@@ -15,7 +15,7 @@ import { voidProductionFromCoils } from "@/modules/metallic-roofing/services/pro
 import { useMetallicProductionLogs } from "@/modules/metallic-roofing/hooks/useMetallicProductionLogs";
 
 export function MetallicProductionHistory() {
-  const { user, role } = useAuth();
+  const { role } = useAuth();
   const confirm = useConfirm();
   const { logs, loading, refresh } = useMetallicProductionLogs();
 
@@ -65,7 +65,7 @@ export function MetallicProductionHistory() {
       })
     ) {
       try {
-        await voidProductionFromCoils(logId, user?.email || "Admin");
+        await voidProductionFromCoils(logId);
         toast.success("Producción anulada exitosamente.");
         refresh();
       } catch (error: unknown) {

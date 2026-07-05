@@ -11,13 +11,11 @@ import {
   seedFinish,
   seedStock,
 } from './firestore-helpers';
-import { produceFromCoils, voidProductionFromCoils } from '@/modules/metallic-roofing/services/productionService';
+import { produceFromCoils } from '@/modules/metallic-roofing/services/productionService';
 import { db } from '@/lib/firebase/clientApp';
 import { doc, getDoc, getDocs, collection } from 'firebase/firestore';
 
 vi.unmock('@/lib/firebase/clientApp');
-
-const OPERATOR = 'op@ayrsteel.com';
 
 // ── Helpers de seed ────────────────────────────────────────────────────────────
 
@@ -319,96 +317,6 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     // Stock también sin cambios
     const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'COB045ALU'));
     expect(stockSnap.data()!.quantity).toBe(0);
-  });
-});
-
-describe('voidProductionFromCoils — Anulación de Aluzinc (Integration)', () => {
-  beforeAll(async () => {
-    await setupIntegrationTest();
-  });
-
-  afterAll(async () => {
-    await cleanupIntegrationTest(null, db);
-  });
-
-  beforeEach(async () => {
-    await clearFirestore(db);
-    await seedAluzincFinish();
-  });
-
-  it('anula correctamente un caso multi-bobina (COBERTURA_ML)', async () => {
-    // Setup initial data
-    const coilIdA = await seedAluzincCoil({ id: 'BOB-VOID-A', initialWeight: 1000, currentWeight: 1000, pricePerKg: 3.5 });
-    const coilIdB = await seedAluzincCoil({ id: 'BOB-VOID-B', initialWeight: 800, currentWeight: 800, pricePerKg: 4.2 });
-
-    await seedStock(db, 'metallic_roofing_stock', 'COB045ALU', {
-      sku: 'COB045ALU',
-      productName: 'COBERTURA ALUZINC',
-      quantity: 10,
-      avgCost: 50,
-      totalValue: 500,
-    });
-
-    // Producir
-    const prodResult = await produceFromCoils({
-      targetSku: 'COB045ALU',
-        requestId: "req-" + Math.random().toString(),
-      productKind: 'COBERTURA_ML',
-      lengthM: null,
-      coilInputs: [
-        { coilId: coilIdA, declared: 50 },
-        { coilId: coilIdB, declared: 80 },
-      ],
-      
-          });
-
-    expect(prodResult.success).toBe(true);
-
-    // Obtener log
-    const logsSnap = await getDocs(collection(db, 'production_logs'));
-    expect(logsSnap.docs).toHaveLength(1);
-    const logId = logsSnap.docs[0].id;
-
-    // Anular
-    const voidResult = await voidProductionFromCoils(logId, OPERATOR);
-    expect(voidResult.success).toBe(true);
-
-    // VERIFICACIONES
-    // 1. Bobinas recuperaron su peso exacto
-    const snapA = await getDoc(doc(db, 'coils', coilIdA));
-    const snapB = await getDoc(doc(db, 'coils', coilIdB));
-    expect(snapA.data()!.currentWeight).toBe(1000);
-    expect(snapA.data()!.status).toBe('AVAILABLE');
-    expect(snapB.data()!.currentWeight).toBe(800);
-    expect(snapB.data()!.status).toBe('AVAILABLE');
-
-    // 2. Stock recuperó cantidad y recalcula WAC
-    const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'COB045ALU'));
-    expect(stockSnap.data()!.quantity).toBe(10);
-    expect(stockSnap.data()!.totalValue).toBeCloseTo(500, 2);
-    expect(stockSnap.data()!.avgCost).toBeCloseTo(50, 2);
-
-    // 3. Log está VOIDED
-    const logSnap = await getDoc(doc(db, 'production_logs', logId));
-    expect(logSnap.data()!.status).toBe('VOIDED');
-    expect(logSnap.data()!.voidedBy).toBe(OPERATOR);
-
-    // 4. Kardex tiene IN
-    const kardexSnap = await getDocs(collection(db, 'kardex_movements'));
-    const movements = kardexSnap.docs.map((d) => d.data());
-    const ins = movements.filter((m) => m.type === 'IN');
-    expect(ins).toHaveLength(2); // 2 bobinas
-    expect(ins[0].reference).toBe(logId);
-
-    // 5. Stock movements tiene SALIDA
-    const stockMovementsSnap = await getDocs(collection(db, 'metallic_roofing_stock_movements'));
-    const stockMovements = stockMovementsSnap.docs.map((d) => d.data());
-    const salidas = stockMovements.filter((m) => m.type === 'SALIDA');
-    expect(salidas).toHaveLength(1);
-    expect(salidas[0].referenceId).toBe(logId);
-
-    // 6. Idempotencia
-    await expect(voidProductionFromCoils(logId, OPERATOR)).rejects.toThrow(/ya fue anulado/i);
   });
 });
 

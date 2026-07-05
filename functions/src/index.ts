@@ -1,5 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
-export { produceFromCoils } from "./callables/production";
+export { produceFromCoils, voidProductionFromCoils } from "./callables/production";
 export { produceFromStrip } from "./callables/drywallProduction";
 /**
  * Cloud Functions para AYR Steel ERP

@@ -1,16 +1,22 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.20).
+> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.21).
 > Preferencias: Prompts Claude Code por defecto. Caveman mode. PASO 0 read-only en cada prompt.
 > Preguntar ante duda de negocio. NUNCA cerrar en verde sin RUNTIME (lo corre el USUARIO, no Claude).
 > npm run build LOCAL antes de merge a master. Un frente a la vez, confirmar cierre antes de seguir.
 > backend en prod antes que master.
 
-## ✅ Cerrado esta sesión — TC 3.75 fallback muerto + relabel kardex (v6.20)
+## ✅ Cerrado esta sesión — WRITE 7 metallic: `voidProductionFromCoils` callable (v6.21)
 
-- **CERRADO ESTA SESIÓN:** fallback TC 3.75 MUERTO (`/api/tipo-cambio` en fallback ya no emite `venta`/`compra` numérico; PurchaseCoilFromXml + BulkUpload dejan TC vacío + warning + submit guard USD compartido `isValidUsdExchangeRate` [2,7]).
-- **CERRADO ESTA SESIÓN:** `/admin/kardex` mal rotulado como global → relabel "Kardex de Productos (Drywall)" + sidebar "Kardex productos" + breadcrumb, sin mover el item de nav ni tocar la query.
+- **CERRADO ESTA SESIÓN:** `voidProductionFromCoils` (metallic-roofing) migrado de client-side `runTransaction` a Callable backend ADMIN-only, molde voidCoilScrap/reverseCoilSplit. Runtime prod verde (costo congelado 4/5 probado ≠ pricePerKg mutado a 9.99).
+- **CERRADO ESTA SESIÓN:** GUARD POSTERIOR nuevo — bloquea si el PT tiene venta `COMPLETED` posterior a la producción, usando `approvedAt ?? timestamp` (fix de un false-negative real en ventas ex-cotización, encontrado y corregido en la misma sesión antes de deployar a prod).
+- **CERRADO ESTA SESIÓN:** UI `MetallicProductionHistory` migrada a thin-client; función client-side vieja BORRADA (con su test obsoleto).
 - ⚠️ **ATENCIÓN:** El push de master PENDIENTE de Giancarlo.
+
+## ✅ Cerrado sesión previa — TC 3.75 fallback muerto + relabel kardex (v6.20)
+
+- fallback TC 3.75 MUERTO (`/api/tipo-cambio` en fallback ya no emite `venta`/`compra` numérico; PurchaseCoilFromXml + BulkUpload dejan TC vacío + warning + submit guard USD compartido `isValidUsdExchangeRate` [2,7]).
+- `/admin/kardex` mal rotulado como global → relabel "Kardex de Productos (Drywall)" + sidebar "Kardex productos" + breadcrumb.
 
 ## ✅ Cerrado sesión previa — `reverseCoilSplit` (v6.19)
 
@@ -20,7 +26,8 @@
 
 1. **Fix KardexTab normalización** (type→signo/color). Chico, cierra deuda visual que afecta SCRAP/AJUSTE/SCRAP_REVERSAL (type ≠ "IN" sale rojo). Reco ALTA.
 2. **Importación REAL de abril a PROD** (operación de curación §14, sesión dedicada, backup coils prod primero, pre-filtrar CSV, finishes a mano, líneas UNIDAD manual).
-4. **Drenar writes** 7/8/9.
+3. **WRITE 7 drywall:** `revertProductionLog` (drywall) → migrar a Callable. Distinto de metallic: usa `parentCoilId`/`strips_stock` (no `perCoilBreakdown`), y su algoritmo de costo es WAC-lookback (busca el `costPerPiece` del log ACTIVO anterior), NO costo congelado del propio log — **decisión pendiente:** ¿se preserva ese comportamiento legacy o se alinea al modelo de costo congelado usado en metallic/scrap/split? Necesita también el guard posterior (venta completada del sku tras la producción), igual que metallic.
+4. **Drenar writes** 8/9.
 5. **Saneamiento infra test↔prod** (SUNAT solo test, Algolia solo prod, metadata codebase test rota).
 
 - **MANTENER:** las reglas de oro (runtime lo corre el usuario; números crudos no conclusiones; npm run build local antes de merge; deploy por función específica leyendo el plan; PASO 0 read-only; un frente a la vez; backend en prod antes que master).
@@ -28,6 +35,8 @@
 
 ## Deudas vivas (detalle en CLAUDE.md §11)
 
+- **Rules FASE 2 de `production_logs`/`coils`/`metallic_roofing_stock` NO cerradas:** aunque metallic ya tiene su Function (`voidProductionFromCoils` + `produceFromCoils`), drywall (`revertProductionLog` client-side) todavía escribe directo a esas mismas colecciones — no se puede cerrar `if false` hasta migrar WRITE 7 drywall también.
+- **BACKLOG cleanup:** coils `TESTPROD-VOID-A/B-*` y `production_logs`/`metallic_roofing_stock` `TESTPROD-VOID-PT-*` quedaron en PROD de los runtimes de validación de esta sesión (no se borraron, por diseño — kardex/audit son append-only). Limpiar cuando haya una variante prod de `cleanup_test_coils.cjs` o a mano.
 - **CERRADA v6.20 — /admin/kardex rotulado como global:** relabel honesto "Kardex de Productos (Drywall)" hecho (sidebar+header+breadcrumb). Selector global (products+coils) evaluado y descartado por ahora: 6 colecciones a mergear (no solo 2), selector actual es `<select>` plano sin búsqueda, y el caso de uso bobina ya está resuelto vía tab Movimientos (v6.17).
 - **BACKLOG (diferido, no bug):** BulkUpload auto-suggest-on-load del TC (fetch automático por invoiceDate, paridad con PurchaseCoilFromXml) en vez de requerir click manual "Sugerir TC". Mejora opcional, no cierre de deuda.
 - **BACKLOG (diferido):** mover el item "Kardex" de la sección "Administración" al `LineGroup` Drywall en el sidebar. Hacerlo en commit AISLADO (hay 2 fuentes de nav ligeramente desincronizadas — `sidebar.tsx` vs `navItems.ts` — evitar bundlear con otros cambios, riesgo de churn de nav ya visto en incidentes previos).
@@ -60,6 +69,7 @@ El dropdown se puebla de coil_finishes VIVO (single source of truth).
 
 - `invoke_void_scrap_test.cjs` — invoca voidCoilScrap en test-nube.
 - `invoke_bulk_test.cjs` — invoca registerCoilsBulk en test-nube.
+- `invoke_void_production_test.cjs` / `invoke_void_production_PROD.cjs` — invoca voidProductionFromCoils (metallic) en test-nube / prod. Prueba costo congelado mutando pricePerKg post-producción.
 - `read_finishes.cjs` — lee coil_finishes de un proyecto.
 - `cleanup_test_coils.cjs` — BORRADO FÍSICO de coils de prueba en TEST por prefijo. NO existe variante prod.
 - ⚠️ Scripts node NO cargan dotenv → van a nube directo vía serviceAccountKey. serviceAccountKey*.json gitignored.
@@ -77,4 +87,4 @@ tdd (deleteCoilDraft red-green), diagnose (si runtime prod falla), grill-me, han
 
 ## Arranque
 
-Decidir entre las opciones. Subir CLAUDE.md v6.20 + este HANDOFF.
+Decidir entre las opciones. Subir CLAUDE.md v6.21 + este HANDOFF.
