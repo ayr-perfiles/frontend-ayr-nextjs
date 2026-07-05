@@ -20,7 +20,7 @@ import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { parseCoilDescription } from "@/core/coils/parseCoilDescription";
-import { TOKEN_TO_FINISH } from "@/core/coils/bulkUploadLogic";
+import { TOKEN_TO_FINISH, isValidUsdExchangeRate } from "@/core/coils/bulkUploadLogic";
 import { httpsCallable } from "firebase/functions";
 
 interface CoilEntry {
@@ -47,7 +47,7 @@ export function PurchaseCoilFromXml() {
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
   const [currency, setCurrency] = useState<"PEN" | "USD">("PEN");
-  const [exchangeRate, setExchangeRate] = useState<number>(1);
+  const [exchangeRate, setExchangeRate] = useState<number | "">(1);
   const [fetchingRate, setFetchingRate] = useState(false);
 
   // --- ESTADOS DETALLE (BOBINAS) ---
@@ -167,14 +167,17 @@ export function PurchaseCoilFromXml() {
     if (currency === "USD" && invoiceDate) {
       const fetchRate = async () => {
         setFetchingRate(true);
+        setExchangeRate("");
         try {
           const res = await fetch(`/api/tipo-cambio?fecha=${invoiceDate}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.venta) setExchangeRate(data.venta);
+          const data = await res.json();
+          if (data.venta && !data.fallback) {
+            setExchangeRate(data.venta);
+          } else {
+            toast.error("TC real no disponible, ingresá el del día de la factura.");
           }
         } catch {
-          toast.error("Error al obtener TC.");
+          toast.error("Error al obtener TC. Ingresá el del día de la factura.");
         } finally {
           setFetchingRate(false);
         }
@@ -227,6 +230,11 @@ export function PurchaseCoilFromXml() {
       }
     }
 
+    if (currency === "USD" && !isValidUsdExchangeRate(exchangeRate)) {
+      toast.error("Ingresá el tipo de cambio real del día de la factura.");
+      return;
+    }
+
     setLoading(true);
     try {
       const payloadCoils = coils.map((coil) => ({
@@ -245,7 +253,7 @@ export function PurchaseCoilFromXml() {
         invoiceNumber: invoiceNumber || null,
         invoiceDate: invoiceDate,
         currency: currency,
-        exchangeRate: currency === "USD" ? exchangeRate : 1,
+        exchangeRate: currency === "USD" ? Number(exchangeRate) : 1,
         isManualEntry: false,
       };
 
@@ -393,10 +401,21 @@ export function PurchaseCoilFromXml() {
                   type="number"
                   step="0.001"
                   disabled={currency === "PEN"}
-                  className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-sm font-bold disabled:bg-slate-100 outline-none"
+                  className={`w-full border rounded-lg p-2.5 text-sm font-bold disabled:bg-slate-100 outline-none ${
+                    currency === "USD" && !isValidUsdExchangeRate(exchangeRate)
+                      ? "bg-red-50 border-red-300"
+                      : "bg-white border-slate-200"
+                  }`}
                   value={exchangeRate}
-                  onChange={(e) => setExchangeRate(Number(e.target.value))}
+                  onChange={(e) =>
+                    setExchangeRate(e.target.value === "" ? "" : Number(e.target.value))
+                  }
                 />
+                {currency === "USD" && !isValidUsdExchangeRate(exchangeRate) && !fetchingRate && (
+                  <p className="text-[10px] font-bold text-red-600 mt-1">
+                    TC real no disponible, ingresá el del día de la factura.
+                  </p>
+                )}
               </div>
             </div>
           </div>

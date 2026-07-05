@@ -97,6 +97,17 @@ export function normalizeCurrency(raw: string): 'USD' | 'PEN' | null {
 export const WEIGHT_MIN_KG = 2000;
 export const WEIGHT_MAX_KG = 7000;
 
+export const EXCHANGE_RATE_MIN = 2;
+export const EXCHANGE_RATE_MAX = 7;
+
+// TC USD válido = numérico dentro de [2,7]. Rechaza vacío, NaN, y cualquier
+// fallback silencioso (ej. 3.75 fijo) que no venga de una fuente real verificada por el usuario.
+export function isValidUsdExchangeRate(rate: number | string | null | undefined): boolean {
+  if (rate === null || rate === undefined || rate === "") return false;
+  const n = typeof rate === "number" ? rate : parseNumValue(rate);
+  return !isNaN(n) && n >= EXCHANGE_RATE_MIN && n <= EXCHANGE_RATE_MAX;
+}
+
 export function parseWeightToKg(weightRaw: string, unitRaw: string): number | null {
   if (!unitRaw) return null;
   const u = unitRaw.toUpperCase().trim();
@@ -157,11 +168,8 @@ export function validateCoilRow(row: CoilRow, liveFinishKeys: string[]): CoilRow
   } else if (cur === 'USD') {
     if (!row.exchangeRateRaw || row.exchangeRateRaw.trim() === '') {
       errors.push('Tipo de cambio vacío para USD');
-    } else {
-      const rate = parseNumValue(row.exchangeRateRaw);
-      if (isNaN(rate) || rate < 2 || rate > 7) {
-        errors.push('Tipo de cambio fuera de rango [2,7]');
-      }
+    } else if (!isValidUsdExchangeRate(row.exchangeRateRaw)) {
+      errors.push(`Tipo de cambio fuera de rango [${EXCHANGE_RATE_MIN},${EXCHANGE_RATE_MAX}]`);
     }
   }
 

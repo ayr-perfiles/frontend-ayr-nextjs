@@ -24,7 +24,8 @@ import {
   buildInvoicesPayload,
   CoilRow,
   normalizeFecha,
-  parseWeightToKg
+  parseWeightToKg,
+  isValidUsdExchangeRate
 } from "@/core/coils/bulkUploadLogic";
 
 interface InvoiceResult {
@@ -131,13 +132,9 @@ export function BulkUploadCoils() {
     try {
       const res = await fetch(`/api/tipo-cambio?fecha=${fechaNorm}`);
       const data = await res.json();
-      if (data && data.venta) {
-        if (data.fallback) {
-          toast.success("TC sugerido es fallback (3.75), verifica.", { id: toastId });
-        } else {
-          toast.success(`TC obtenido: ${data.venta}`, { id: toastId });
-        }
-        
+      if (data && data.venta && !data.fallback && isValidUsdExchangeRate(data.venta)) {
+        toast.success(`TC obtenido: ${data.venta}`, { id: toastId });
+
         // Apply to all rows in the same invoice
         const newRows = [...rows];
         newRows.forEach((r, i) => {
@@ -147,7 +144,10 @@ export function BulkUploadCoils() {
         });
         setRows(newRows);
       } else {
-        toast.error(data.error || "No se encontró TC", { id: toastId });
+        toast.error(
+          data.error || "TC real no disponible, ingresá el del día de la factura.",
+          { id: toastId },
+        );
       }
     } catch (err: any) {
       toast.error("Error de red consultando TC", { id: toastId });
