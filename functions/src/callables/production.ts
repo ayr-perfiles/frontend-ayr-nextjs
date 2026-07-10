@@ -388,7 +388,7 @@ export const voidProductionFromCoils = onCall(async (request) => {
       });
 
       tx.set(db.collection("kardex_movements").doc(), {
-        sku: coil.id,
+        sku: coilRef.id,
         date: now,
         type: "IN",
         quantity: 1,
