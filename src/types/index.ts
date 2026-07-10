@@ -237,6 +237,9 @@ export interface ProductionLog {
     mlFromCoil: number;
     weightConsumedKg: number;
     costPEN: number;
+    /** Solo COBERTURA_ML: desglose cantidad×longitud que originó mlFromCoil (trazabilidad). */
+    piecesCount?: number;
+    pieceLengthM?: number;
   }[];
 }
 

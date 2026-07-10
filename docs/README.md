@@ -1,56 +1,89 @@
 # Documentación del Proyecto AYR Steel ERP
 
-Bienvenido al índice de la documentación del proyecto. Toda la arquitectura, el dominio y las decisiones técnicas relevantes están centralizadas aquí. 
+> Última actualización del índice: 2026-07-07 · commit `71250ae6`
+> Fuente de verdad TÉCNICA viva: **`CLAUDE.md` (raíz, v6.21)** + el código. Los docs de esta carpeta se validan contra el código, no al revés.
 
-Esta carpeta contiene el conocimiento del negocio y los estándares que permiten que este ERP sea modular, seguro y escalable.
+Bienvenido al índice de la documentación del proyecto. Cada entrada lleva su **estado**:
 
----
-
-## 📂 Índice de Documentación
-
-### 1. Decisiones Arquitectónicas (ADRs)
-Los Registros de Decisiones Arquitectónicas (ADRs) explican el *por qué* detrás de las decisiones técnicas clave.
-
-- [ADR-001: Monorepo Modularizado](adr/ADR-001-monorepo-modularizado.md) - Por qué usamos Next.js App Router con arquitectura modular (core vs modules).
-- [ADR-002: Backend en Firebase (Firestore + Auth)](adr/ADR-002-firebase-firestore.md) - Por qué se prefirió Firebase sobre una BD SQL tradicional.
-- [ADR-003: Implementación de RBAC con Custom Claims](adr/ADR-003-rbac-con-custom-claims.md) - Por qué migramos la seguridad de Firestore hacia tokens JWT de Firebase Auth.
-- [ADR-004: Multi-línea en módulo de ventas (Strategy Pattern)](adr/ADR-004-multilinea-strategy-pattern.md) - Por qué usamos el Patrón Strategy para manejar inventarios cruzados.
-- [ADR-005: Emisión electrónica SUNAT directa (sin PSE/OSE)](adr/ADR-005-emision-sunat-directa.md) - Emisión directa a SUNAT sin intermediarios PSE/OSE; reutiliza proyecto de referencia en Cloud Functions v2.
-- [ADR-006: Secretos en Secret Manager](adr/ADR-006-secretos-secret-manager.md) - Credenciales sensibles (`.p12`, SOL, tokens) en Secret Manager con binding mínimo; nunca en Firestore.
-- [ADR-007: Consultas RUC/DNI vía decolecta.com](adr/ADR-007-decolecta-ruc-dni.md) - Migración del proveedor de consultas de identidad desde apis.net.pe a decolecta.com.
-- [ADR-008: Notas de Crédito/Débito en importación de ventas](adr/ADR-008-notas-credito-import.md) - Manejo de NC/ND con `ncStockAction` (`RETURNS_STOCK` / `MONEY_ONLY` / `UNDECIDED`).
-- [Template para ADRs](adr/TEMPLATE.md)
-
-### 2. Dominio y Líneas de Negocio
-Aquí se documenta cómo se modelan las diferentes ramas de venta y producción de la empresa.
-
-- **Guías de Implementación:**
-  - [Template / Guía para Nueva Línea de Negocio](04-dominio/lineas-negocio/template.md) - Los pasos exactos para integrar un nuevo módulo.
-- **Líneas Activas:**
-  - [Roofing (PVC)](04-dominio/lineas-negocio/roofing.md) - Contexto de productos termoacústicos, stock y SKU.
-
-### 3. Matemáticas y Fórmulas
-Para evitar _magic numbers_ y concentrar la lógica pura, documentamos todas las fórmulas:
-
-- [Fórmulas de Costeo PVC](05-formulas/costeo-pvc.md) - Promedio ponderado y manejo de SKU.
-
-### 4. Seguridad
-Documentación relativa al modelo de seguridad y control de acceso.
-
-- [Reglas de Firestore Explicadas](09-seguridad/firestore-rules-explicadas.md) - El detalle sobre cómo y por qué operan nuestras restricciones sobre Firestore.
-
-### 5. Procesos (Scrum / Ágil)
-Metodologías de trabajo de equipo:
-
-- [Template de User Story](01-scrum/user-story-template.md) - Formato estándar para nuevas funcionalidades.
+- **Vigente** — verificado contra el código recientemente.
+- **Superseded** — la decisión/estructura cambió; se conserva por historia con banner.
+- **Congelado** — snapshot de un sprint pasado (Sprint 3-8 / CLAUDE.md v6.4, mayo 2026); útil como historia, NO como referencia del estado actual.
+- **Deprecado** — no usar.
 
 ---
 
-## 🏗️ Relación con `CLAUDE.md` / `GEMINI.md`
+## 📂 Índice por carpeta
 
-Este directorio complementa a `CLAUDE.md` (ubicado en la raíz), que es la **fuente de verdad** del proyecto.
+### `02-glosario/` — Lenguaje ubicuo 🆕
+| Doc | Estado | Qué cubre |
+|---|---|---|
+| [glosario.md](02-glosario/glosario.md) | Vigente | Términos de negocio ES ↔ código/colección (bobina, fleje, merma, WAC, costo congelado, ProductKind, TC, ...) |
 
-- Usa `CLAUDE.md` para **reglas no negociables**, **stack técnico**, el roadmap de sprints y el resumen rápido indispensable.
-- Usa esta carpeta (`docs/`) para **contexto profundo**, **historial de decisiones (ADRs)** y detalles largos sobre **reglas de negocio**.
+### `03-arquitectura/` — Patrones transversales 🆕
+| Doc | Estado | Qué cubre |
+|---|---|---|
+| [patrones-y-convenciones.md](03-arquitectura/patrones-y-convenciones.md) | Vigente | Strategy, thin-client/fat-backend, paridad SYNC-MARKER, runTransaction/append-only, auth claim-only, fallo ruidoso — con las EXCEPCIONES reales por archivo:línea |
 
-> **Nota:** `GEMINI.md` (en la raíz y subcarpetas) está **deprecado** en favor de `CLAUDE.md`. No ha sido eliminado para preservar el historial, pero no debe usarse como referencia activa.
+### `05-formulas/` — Matemáticas y fórmulas (expandido 2026-07)
+| Doc | Estado | Qué cubre |
+|---|---|---|
+| [README.md](05-formulas/README.md) | Vigente | Índice de ~45 fórmulas + convenciones de fichas + drift conocido |
+| [modelo-de-costeo.md](05-formulas/modelo-de-costeo.md) | Vigente | Los 3 principios (costo congelado en reversas / WAC actual en ingresos / densidad única por acabado) + mapa fórmula→principio + peso↔ML↔UND |
+| [costeo-coils.md](05-formulas/costeo-coils.md) | Vigente | pricePerKg, split, conformado, reversas (void*/reverse*), EPSILON 0.01, guards TC/peso |
+| [costeo-drywall.md](05-formulas/costeo-drywall.md) | Vigente | WAC drywall (⚠️ ×3 copias), corte/leftover ≤40mm, flejes, reversa client-side (WRITE 7 pendiente) |
+| [ventas-igv.md](05-formulas/ventas-igv.md) | Vigente | suggestedPrice real, deuda IGV_RATE ×6, writeSaleReversal, WAC compras (LINE_CONFIG 2/5) |
+| [costeo-pvc.md](05-formulas/costeo-pvc.md) | Vigente (corregido 2026-07-07) | CPP roofing — corregidas 2 secciones que citaban archivos/fórmulas inexistentes |
+| [_TEMPLATE.md](05-formulas/_TEMPLATE.md) | Vigente | Ficha estándar para nuevas fórmulas |
+
+### `adr/` — Decisiones arquitectónicas
+| ADR | Estado | Decisión |
+|---|---|---|
+| [ADR-001](adr/ADR-001-monorepo-modularizado.md) | Vigente | Monorepo modularizado (Next.js App Router) |
+| [ADR-002](adr/ADR-002-firebase-firestore.md) | Vigente | Firebase/Firestore como backend |
+| [ADR-003](adr/ADR-003-rbac-con-custom-claims.md) | Vigente | RBAC con custom claims JWT |
+| [ADR-004](adr/ADR-004-multilinea-strategy-pattern.md) | ⚠️ Superseded (detalle) | Strategy multilínea — decisión vigente, interfaz documentada histórica (banner en el doc) |
+| [ADR-005](adr/ADR-005-emision-sunat-directa.md) | ⚠️ Desalineado | Emisión SUNAT directa — OJO: SUNAT hoy solo está desplegado en `ayrsteel-test`, NO en prod (deuda infra, ver HANDOFF) |
+| [ADR-006](adr/ADR-006-secretos-secret-manager.md) | Vigente | Secretos en Secret Manager |
+| [ADR-007](adr/ADR-007-decolecta-ruc-dni.md) | Vigente | RUC/DNI vía decolecta.com |
+| [ADR-008](adr/ADR-008-notas-credito-import.md) | Vigente | NC/ND con `ncStockAction` |
+| [ADR-009](adr/ADR-009-costo-congelado-reversas.md) 🆕 | Vigente | Costo CONGELADO en toda reversa (nunca WAC actual) |
+| [ADR-010](adr/ADR-010-guard-posterior-venta-completada.md) 🆕 | Vigente | Guard posterior de venta COMPLETED en anulación de producción (`approvedAt ?? timestamp`) |
+| [ADR-011](adr/ADR-011-atomicidad-por-factura-bulk.md) 🆕 | Vigente | Atomicidad POR FACTURA en `registerCoilsBulk` |
+| [TEMPLATE](adr/TEMPLATE.md) | Vigente | Plantilla |
+
+### `04-dominio/` — Líneas de negocio
+| Doc | Estado | Qué cubre |
+|---|---|---|
+| [lineas-negocio/roofing.md](04-dominio/lineas-negocio/roofing.md) | ⚠️ Congelado (Sprint 3) | Dominio Roofing PVC — dice "En desarrollo"; la línea está ✅ completa desde hace varios sprints (CLAUDE.md §1) |
+| [lineas-negocio/template.md](04-dominio/lineas-negocio/template.md) | Congelado | Guía para nueva línea (Sprint 2) |
+
+### `09-seguridad/`
+| Doc | Estado | Qué cubre |
+|---|---|---|
+| [firestore-rules-explicadas.md](09-seguridad/firestore-rules-explicadas.md) | ⚠️ Congelado (Sprint 1) | Rules explicadas — el estado REAL de rules (claim-only, scrap_logs candada, FASE 2 abierta) está en CLAUDE.md §8 |
+
+### `01-scrum/`
+| Doc | Estado |
+|---|---|
+| [user-story-template.md](01-scrum/user-story-template.md) | Vigente (plantilla) |
+
+### `report/` — Informe académico UPC
+| Doc | Estado |
+|---|---|
+| [REPORT.md](report/REPORT.md) / [PROGRESS.md](report/PROGRESS.md) | ⚠️ Congelado (CLAUDE.md v6.4 / Sprint 8, 2026-05-31) — audiencia académica, NO referencia técnica |
+
+### Raíz del repo
+| Doc | Estado |
+|---|---|
+| `CLAUDE.md` | **Vigente — fuente de verdad técnica (v6.21)** |
+| `HANDOFF.md` | Vigente (handoff de sesión) |
+| `ROADMAP.md` | ⚠️ Congelado (plan histórico Sprints 0-4, mayo 2025) — no describe el estado actual |
+| `GEMINI.md` (raíz y subcarpetas) | Deprecado (preservado por historia; ver `_archive/`) |
+
+---
+
+## 🏗️ Relación con `CLAUDE.md`
+
+- Usa `CLAUDE.md` para **reglas no negociables**, estado del sprint, roadmap vivo y el resumen indispensable.
+- Usa esta carpeta para **contexto profundo**: fórmulas verificadas (`05-formulas/`), glosario (`02-glosario/`), patrones con sus excepciones reales (`03-arquitectura/`), historial de decisiones (`adr/`).
+- Ante conflicto entre un doc y el código: **gana el código**; reportá el drift y corregí el doc (no al revés).

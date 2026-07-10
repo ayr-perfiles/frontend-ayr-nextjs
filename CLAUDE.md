@@ -304,6 +304,14 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Barrel muerto** `src/components/purchases/BulkUploadCoils.tsx` (re-export no montado por nadie).
 - **ADMIN de test = `demo@cliente.com`** (uid `1e3aV7XEmvdLjMally7g1zQJ6Fu1`, claim `{role:ADMIN}` real). Naming engañoso (email "cliente" con rol ADMIN), no bug.
 
+### Deudas destapadas en el audit de documentación (2026-07-07, detalle en docs/05-formulas/ y docs/03-arquitectura/)
+
+- **5+ implementaciones independientes de WAC sin helper compartido** (produceFromCoils inline, drywallProduction ×3 copias, stockAdjustmentService ×3, purchases, cutOrder por peso). Documentadas; unificar es refactor, no doc-fix.
+- **IGV_RATE 0.18 redeclarado ×6+** (5 locales + `IGV_RATE_PERU` muerta + literal `1.18` en reportFunctions + functions-sunat); `settings.igvRate` casi no se lee. Ver `ventas-igv.md` F-V2.
+- **`LINE_CONFIG` de compras cubre 2/5 líneas** (`src/core/purchases/service.ts:19`): compras de metallic/drywall/services lanzan error; mapa paralelo e incompleto vs getStockStrategy.
+- **`metallicRoofingStockStrategy` backend muerta** (`functions/src/domain/strategies/`): `writeSaleDecrement/Reversal` sin consumidor (espera WRITE 9); numéricamente igual a la copia cliente pero SIN SYNC-MARKER ni test de paridad → drift silencioso posible.
+- **Constantes muertas en `src/domain/steel/constants.ts`**: `IGV_RATE_PERU`, `SCRAP_WEIGHT_FACTOR_KG_MM`, `MIN_MARGIN_PERCENT`, `LOW_STOCK_THRESHOLD_*`, `MIN/MAX_STRIP_WIDTH_MM` — cero consumidores.
+
 ---
 
 ## 11. Convenciones
@@ -354,3 +362,9 @@ El bulk (`registerCoilsBulk` + UI) está listo y validado en test-nube. La impor
 - **Filas SOL (PEN):** existen (ej E001-739), TC=1, value en soles.
 
 **Recomendación:** hacer la importación real como sesión operativa dedicada, con calma, curando finishes fila por fila y decidiendo qué hacer con las líneas UNIDAD agrupadas. NO es cierre de código. Idealmente hacer un backup de `coils` prod antes (script JSON local).
+
+---
+
+## 15. Fórmulas y modelo de costeo
+
+**Ver `docs/05-formulas/` (índice en su README).** Fichas verificadas contra código (archivo:línea + snippet + congelado/WAC + consumidores): `modelo-de-costeo.md` (los 3 principios: costo congelado en reversas / WAC actual en ingresos / densidad única por acabado), `costeo-coils.md`, `costeo-drywall.md`, `ventas-igv.md`, `costeo-pvc.md`. Glosario ES↔código en `docs/02-glosario/`; patrones con excepciones reales en `docs/03-arquitectura/`. ADRs de costeo: ADR-009 (costo congelado), ADR-010 (guard posterior), ADR-011 (bulk por-factura). Nueva fórmula → ficha con `docs/05-formulas/_TEMPLATE.md`.

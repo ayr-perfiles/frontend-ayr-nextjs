@@ -1,6 +1,8 @@
 # ADR-004: Multi-línea en módulo de ventas (Strategy Pattern)
 
-**Estado:** Aceptada  
+> ⚠️ **SUPERSEDED en su detalle de implementación (2026-07):** la DECISIÓN (Strategy Pattern por línea) sigue vigente, pero la interfaz documentada abajo es histórica. La interfaz VIVA es `StockStrategy` de **6 métodos** (`getStockRef`, `extractQuantity`, `extractAvgCost`, `writeSaleDecrement`, `writeSaleReversal`, `writeProductionIncrement`) con **5 líneas registradas** (drywall, roofing, metallic-roofing, trading, services NO-OP), todas en **un solo archivo**: `src/core/sales/strategies/index.ts:42-54` (factory en `:576`). No usar los snippets de este ADR como referencia de código. Estado real de excepciones al patrón: `docs/03-arquitectura/patrones-y-convenciones.md` §1.
+
+**Estado:** Aceptada (decisión) / Superseded (detalle de interfaz — ver banner)  
 **Fecha:** 2026-05-15  
 **Decisores:** Equipo AYR Steel  
 **Sprint:** 3
