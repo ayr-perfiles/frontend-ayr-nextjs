@@ -9,6 +9,8 @@ import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { listProducts } from "@/modules/metallic-roofing/services/catalogService";
 import { produceFromCoils } from "@/modules/metallic-roofing/services/productionService";
 import { calcProductionFromCoils } from "@/modules/metallic-roofing/domain/coilProduction";
+import { isThicknessWithinTolerance } from "@/modules/metallic-roofing/domain/thicknessMatch";
+import { parsePositiveNumberInput, computeCoverageDeclaredMl } from "@/modules/metallic-roofing/domain/coverageProductionInput";
 import type { MetallicProduct } from "@/modules/metallic-roofing/types";
 import type { Coil } from "@/types";
 import type { CoilFinish } from "@/core/coils/services/finishService";
@@ -28,7 +30,12 @@ import Link from "next/link";
 interface CoilRow {
   rowId: string;
   coilId: string;
+  /** PLANCHA_UND: piezas tipeadas directo. COBERTURA_ML: DERIVADO de cantidad×longitud, no editable a mano. */
   declared: string;
+  /** Solo COBERTURA_ML: piezas. */
+  cantidad: string;
+  /** Solo COBERTURA_ML: longitud por pieza (m). Prellenado con selectedProduct.length si existe. */
+  longitud: string;
   coilData: Coil | null;
   finish: CoilFinish | null;
   reportedWeight: string;
@@ -36,11 +43,13 @@ interface CoilRow {
   isLoading: boolean;
 }
 
-function newRow(): CoilRow {
+function newRow(defaultLongitud: number | null = null): CoilRow {
   return {
     rowId: Math.random().toString(36).slice(2),
     coilId: "",
     declared: "",
+    cantidad: "",
+    longitud: defaultLongitud != null ? String(defaultLongitud) : "",
     coilData: null,
     finish: null,
     reportedWeight: "",
@@ -104,9 +113,10 @@ function MetallicProductionForm() {
         const qSnap = await getDocs(query(collection(db, "coils"), where("status", "in", ["AVAILABLE", "IN_PROGRESS"])));
         const validFinishIds = finishes.filter(f => f.lines.includes('metallic-roofing')).map(f => f.id);
         
-        const coils = qSnap.docs.map(d => ({ id: d.id, ...d.data() } as Coil)).filter(c => 
+        const coils = qSnap.docs.map(d => ({ id: d.id, ...d.data() } as Coil)).filter(c =>
           c.currentWeight > 0 &&
-          c.thickness === selectedProduct.thickness &&
+          c.thickness != null &&
+          isThicknessWithinTolerance(c.thickness, selectedProduct.thickness) &&
           c.finish === requiredFinish &&
           c.finish && validFinishIds.includes(c.finish)
         );
@@ -175,6 +185,21 @@ function MetallicProductionForm() {
     setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, ...patch } : r)));
   };
 
+  /** Solo COBERTURA_ML: al cambiar cantidad o longitud, recalcula `declared` (ML). Vacío/inválido → declared="" (bloquea submit, no autocompleta con 0). */
+  const updateCoverageInputs = (rowId: string, patch: { cantidad?: string; longitud?: string }) => {
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.rowId !== rowId) return r;
+        const next = { ...r, ...patch };
+        const ml = computeCoverageDeclaredMl(
+          parsePositiveNumberInput(next.cantidad),
+          parsePositiveNumberInput(next.longitud),
+        );
+        return { ...next, declared: ml !== null ? String(ml) : "" };
+      }),
+    );
+  };
+
   const removeRow = (rowId: string) => {
     setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.rowId !== rowId) : prev));
   };
@@ -218,15 +243,23 @@ function MetallicProductionForm() {
     }
 
     try {
+      const isCobertura = selectedProduct.family !== "PLANCHA";
       const result = await produceFromCoils({
         targetSku: selectedSku,
-        productKind: selectedProduct.family === "PLANCHA" ? "PLANCHA_UND" : "COBERTURA_ML",
+        productKind: isCobertura ? "COBERTURA_ML" : "PLANCHA_UND",
         lengthM: selectedProduct.length ?? null,
-        coilInputs: rows.map((r) => ({ 
-          coilId: r.coilId.trim(), 
-          declared: Number(r.declared),
-          reportedWeightKg: r.reportedWeight ? Number(r.reportedWeight) : undefined,
-        })),
+        coilInputs: rows.map((r) => {
+          const cantidadNum = parsePositiveNumberInput(r.cantidad);
+          const longitudNum = parsePositiveNumberInput(r.longitud);
+          return {
+            coilId: r.coilId.trim(),
+            declared: Number(r.declared),
+            reportedWeightKg: r.reportedWeight ? Number(r.reportedWeight) : undefined,
+            ...(isCobertura && cantidadNum !== null && longitudNum !== null
+              ? { piecesCount: cantidadNum, pieceLengthM: longitudNum }
+              : {}),
+          };
+        }),
         requestId: requestIdRef.current,
       });
 
@@ -288,8 +321,10 @@ function MetallicProductionForm() {
             className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-blue-400 bg-white"
             value={selectedSku}
             onChange={(e) => {
-              setSelectedSku(e.target.value);
-              setRows([newRow()]);
+              const sku = e.target.value;
+              setSelectedSku(sku);
+              const product = products.find((p) => p.sku === sku);
+              setRows([newRow(product?.length ?? null)]);
             }}
             required
           >
@@ -345,6 +380,8 @@ function MetallicProductionForm() {
                 eligibleCoils={eligibleCoils}
                 loadingCoils={loadingCoils}
                 onDeclaredChange={(declared) => updateRow(row.rowId, { declared })}
+                onCantidadChange={(cantidad) => updateCoverageInputs(row.rowId, { cantidad })}
+                onLongitudChange={(longitud) => updateCoverageInputs(row.rowId, { longitud })}
                 onReportedWeightChange={(reportedWeight) => updateRow(row.rowId, { reportedWeight })}
                 onRemove={() => removeRow(row.rowId)}
                 canRemove={rows.length > 1}
@@ -355,7 +392,7 @@ function MetallicProductionForm() {
 
           <button
             type="button"
-            onClick={() => setRows((prev) => [...prev, newRow()])}
+            onClick={() => setRows((prev) => [...prev, newRow(selectedProduct.length ?? null)])}
             className="flex items-center gap-2 text-sm font-black text-blue-600 hover:text-blue-800 transition py-1"
           >
             <Plus size={16} /> Agregar Bobina
@@ -436,6 +473,8 @@ function CoilRowCard({
   unitLabel,
   onCoilSelect,
   onDeclaredChange,
+  onCantidadChange,
+  onLongitudChange,
   onReportedWeightChange,
   onRemove,
   canRemove,
@@ -448,6 +487,8 @@ function CoilRowCard({
   unitLabel: string;
   onCoilSelect: (coilId: string) => void;
   onDeclaredChange: (v: string) => void;
+  onCantidadChange: (v: string) => void;
+  onLongitudChange: (v: string) => void;
   onReportedWeightChange: (v: string) => void;
   onRemove: () => void;
   canRemove: boolean;
@@ -455,6 +496,7 @@ function CoilRowCard({
   eligibleCoils: Coil[];
   loadingCoils: boolean;
 }) {
+  const isCobertura = selectedProduct.family !== "PLANCHA";
 
   const preview = (() => {
     if (!row.coilData || !row.finish?.densityFactor || !Number(row.declared)) return null;
@@ -495,7 +537,7 @@ function CoilRowCard({
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div className={`grid grid-cols-2 ${isCobertura ? "md:grid-cols-4" : "md:grid-cols-3"} gap-3`}>
         <div>
           <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">
             ID Bobina *
@@ -517,27 +559,60 @@ function CoilRowCard({
               <option value="">— Seleccionar bobina —</option>
               {eligibleCoils.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.id} ({c.currentWeight.toLocaleString("es-PE", { maximumFractionDigits: 2 })} kg disp.)
+                  {c.id} ({c.currentWeight.toLocaleString("es-PE", { maximumFractionDigits: 2 })} kg disp. · {c.thickness} mm · {c.finish})
                 </option>
               ))}
             </select>
           )}
         </div>
 
-        <div>
-          <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">
-            {unitLabel} Declarados *
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            min="0.01"
-            className="w-full border border-slate-200 rounded-lg p-2.5 text-sm font-bold outline-none focus:border-blue-400 bg-white"
-            placeholder={`0 ${unitLabel}`}
-            value={row.declared}
-            onChange={(e) => onDeclaredChange(e.target.value)}
-          />
-        </div>
+        {isCobertura ? (
+          <>
+            <div>
+              <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">
+                Cantidad (piezas) *
+              </label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                className="w-full border border-slate-200 rounded-lg p-2.5 text-sm font-bold outline-none focus:border-blue-400 bg-white"
+                placeholder="0"
+                value={row.cantidad}
+                onChange={(e) => onCantidadChange(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">
+                Longitud (m/pieza) *
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                className="w-full border border-slate-200 rounded-lg p-2.5 text-sm font-bold outline-none focus:border-blue-400 bg-white"
+                placeholder="0.00"
+                value={row.longitud}
+                onChange={(e) => onLongitudChange(e.target.value)}
+              />
+            </div>
+          </>
+        ) : (
+          <div>
+            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">
+              {unitLabel} Declarados *
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              className="w-full border border-slate-200 rounded-lg p-2.5 text-sm font-bold outline-none focus:border-blue-400 bg-white"
+              placeholder={`0 ${unitLabel}`}
+              value={row.declared}
+              onChange={(e) => onDeclaredChange(e.target.value)}
+            />
+          </div>
+        )}
 
         <div>
           <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">
@@ -554,6 +629,18 @@ function CoilRowCard({
           />
         </div>
       </div>
+
+      {isCobertura && (row.cantidad || row.longitud) && (
+        <p className="text-[11px] font-bold text-slate-500">
+          {row.declared ? (
+            <>ML calculado: <span className="text-slate-700">{Number(row.declared).toLocaleString("es-PE", { maximumFractionDigits: 2 })} ML</span></>
+          ) : (
+            <span className="text-amber-600 flex items-center gap-1">
+              <AlertTriangle size={11} /> Completá cantidad y longitud (ambas &gt; 0) para calcular el ML.
+            </span>
+          )}
+        </p>
+      )}
 
       {/* Estado de carga */}
       {row.isLoading && (

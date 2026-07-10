@@ -210,6 +210,20 @@ export const produceFromCoils = onCall(async (request) => {
     );
 
     // c) Production logs
+    // Enriquecimiento ADITIVO opcional (piecesCount/pieceLengthM): NO participa en calcProductionFromCoils
+    // (dominio puro sin cambios, paridad intacta). Solo trazabilidad del desglose cantidad×longitud para COBERTURA_ML.
+    const enrichedBreakdown = result.perCoilBreakdown.map((b, i) => {
+      const input = coilInputs[i];
+      const extra: { piecesCount?: number; pieceLengthM?: number } = {};
+      if (typeof input?.piecesCount === "number" && input.piecesCount > 0) {
+        extra.piecesCount = input.piecesCount;
+      }
+      if (typeof input?.pieceLengthM === "number" && input.pieceLengthM > 0) {
+        extra.pieceLengthM = input.pieceLengthM;
+      }
+      return { ...b, ...extra };
+    });
+
     const productionLogRef = db.collection("production_logs").doc();
     tx.set(productionLogRef, {
       sku: targetSku,
@@ -228,7 +242,7 @@ export const produceFromCoils = onCall(async (request) => {
       mlProduced: result.totalMl,
       averageCostAfter: newAvgCost,
       coilDensityFactor: resolvedCoilInputs[0]?.coilDensityFactor ?? null,
-      perCoilBreakdown: result.perCoilBreakdown,
+      perCoilBreakdown: enrichedBreakdown,
     });
 
     // d) Audit logs

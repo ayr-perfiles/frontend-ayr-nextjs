@@ -11,6 +11,9 @@ export interface ProduceFromCoilsParams {
     /** ML declarados (COBERTURA_ML) | piezas declaradas (PLANCHA_UND). */
     declared: number;
     reportedWeightKg?: number;
+    /** Solo COBERTURA_ML: desglose cantidad×longitud que originó `declared`. Trazabilidad, no participa en el costeo. */
+    piecesCount?: number;
+    pieceLengthM?: number;
   }>;
   requestId: string;
 }

@@ -1,6 +1,11 @@
 # Fórmulas de Costeo — Línea Roofing (PVC)
 
-> **Módulo:** `src/modules/roofing/services/stockService.ts`  
+> Estado: Vigente (corregido 2026-07-07; original Sprint 3, Mayo 2026)
+> Última verificación: 2026-07-07 · commit `71250ae6`
+> Fuente de verdad: el CÓDIGO. Este doc se valida contra él, no al revés.
+> Relacionado: CLAUDE.md v6.21 §15 · `modelo-de-costeo.md` Principio 2 · `ventas-igv.md` F-V5
+>
+> **Módulo:** `src/modules/roofing/services/stockAdjustmentService.ts` (⚠️ corregido — el `stockService.ts` que citaba la versión original de este doc NUNCA existió con ese nombre)
 > **Sprint:** 3 (Mayo 2026)
 
 ---
@@ -19,19 +24,26 @@ newAvgCost = (currentQty × currentAvgCost + incomingQty × unitCost)
 
 ### Implementación
 
+⚠️ **Corrección 2026-07-07:** no existe una función `calcNewAvgCost` ni un archivo `stockService.ts`. La fórmula vive **inline** en `adjustStock`, y está **duplicada a mano en 3 módulos** (deuda conocida, sin helper compartido — ver CLAUDE.md §11 Backlog):
+
+- `src/modules/roofing/services/stockAdjustmentService.ts:83-91` (fórmula en :90)
+- `src/modules/metallic-roofing/services/stockAdjustmentService.ts:70-78` (fórmula en :77)
+- `src/modules/trading/services/stockAdjustmentService.ts:69-77` (fórmula en :76)
+
 ```typescript
-// src/modules/roofing/services/stockService.ts
-function calcNewAvgCost(
-  currentQty: number,
-  currentAvgCost: number,
-  incomingQty: number,
-  unitCost: number,
-): number {
-  const totalQty = currentQty + incomingQty;
-  if (totalQty === 0) return unitCost;
-  return (currentQty * currentAvgCost + incomingQty * unitCost) / totalQty;
+// src/modules/roofing/services/stockAdjustmentService.ts:83-91 (código real)
+// Weighted average cost — only recalculate on ENTRY with a positive cost
+let newAvgCost = currentAvgCost;
+const unitCost = input.unitCost ?? 0;
+if (input.type === 'ENTRY' && unitCost > 0) {
+  const existingValue = currentQty > 0 ? currentQty * currentAvgCost : 0;
+  const incomingValue = input.quantity * unitCost;
+  const totalQtyAfter = (currentQty > 0 ? currentQty : 0) + input.quantity;
+  newAvgCost = Number(((existingValue + incomingValue) / totalQtyAfter).toFixed(4));
 }
 ```
+
+Nota: a diferencia del pseudocódigo original de este doc, la implementación real **excluye el stock negativo del denominador** (`currentQty > 0 ? ... : 0`) y redondea a 4 decimales. El write path de ventas/producción usa además `writeSaleReversal`/`writeProductionIncrement` en `src/core/sales/strategies/index.ts` (ver `ventas-igv.md` F-V3).
 
 ### Casos especiales
 
@@ -84,25 +96,38 @@ const totalValue = parseFloat((newQty * newAvgCost).toFixed(2));
 
 ## 3. Precio de Venta Sugerido
 
-El precio sugerido se calcula a partir del costo promedio aplicando un margen comercial y el IGV peruano.
+⚠️ **Corrección 2026-07-07:** la fórmula que documentaba este doc (`avgCost × (1 + MARGIN_FACTOR) × (1 + IGV_RATE)`, markup sobre COSTO) **es incorrecta** — nunca fue la implementada. Los archivos `modules/roofing/config/pricing.ts` y `domain/pricing/constants.ts` que citaba **no existen**. La fórmula real es **markup sobre PRECIO** con margen dinámico:
 
 ```
-suggestedPrice = avgCost × (1 + MARGIN_FACTOR) × (1 + IGV_RATE)
+valueWithoutIGV = cost / (1 − marginPercent/100)
+suggestedPrice  = valueWithoutIGV × (1 + IGV_RATE)
 ```
 
-| Constante      | Valor  | Ubicación                           |
-|----------------|--------|-------------------------------------|
-| `MARGIN_FACTOR`| 0.30   | `modules/roofing/config/pricing.ts` |
-| `IGV_RATE`     | 0.18   | `domain/pricing/constants.ts`       |
-
-### Ejemplo
-
-```
-avgCost = S/ 54.09
-suggestedPrice = 54.09 × 1.30 × 1.18 = S/ 82.97
+```typescript
+// src/core/sales/components/ProductSelector.tsx:40-46 (código real)
+const IGV_RATE = 0.18;
+function suggestedPrice(cost: number, marginPercent: number): number {
+  if (cost <= 0) return 0;
+  const valueWithoutIGV = cost / (1 - marginPercent / 100);
+  return Number((valueWithoutIGV * (1 + IGV_RATE)).toFixed(2));
+}
 ```
 
-> El precio sugerido es solo referencial. El operador puede introducir cualquier precio en la venta.
+| Parámetro | Valor | Fuente real |
+|---|---|---|
+| `marginPercent` | **dinámico** — `settings?.minMarginPercent ?? 20` | `ProductSelector.tsx:234,344,452,583,731` |
+| `IGV_RATE` | 0.18 | local en `ProductSelector.tsx:40` (⚠️ redeclarado ×6 en el repo, ver `ventas-igv.md` F-V2) |
+
+### Ejemplo (corregido)
+
+```
+cost = S/ 54.09, margin = 30%
+suggestedPrice = 54.09 / (1 − 0.30) × 1.18 = 77.2714 × 1.18 = S/ 91.18
+```
+
+(La fórmula errónea `54.09 × 1.30 × 1.18` daba S/ 82.97 — una diferencia de S/ 8.21 por pieza.)
+
+> El precio sugerido es solo referencial. El operador puede introducir cualquier precio en la venta (piso = costo; ADMIN puede cruzarlo).
 
 ---
 
@@ -155,5 +180,5 @@ costOfGoodsSold = quantity × avgCostAtTimeOfSale
 
 - [ADR-005 — Stock negativo permitido](../adr/ADR-005-stock-negativo.md)
 - [Proceso de negocio Roofing](../04-dominio/lineas-negocio/roofing.md)
-- `src/modules/roofing/services/stockService.ts` — implementación
-- `src/domain/pricing/constants.ts` — IGV_RATE, MARGIN_FACTOR
+- `src/modules/roofing/services/stockAdjustmentService.ts` — implementación (corregido 2026-07-07; +2 copias en metallic-roofing/trading)
+- `src/core/sales/components/ProductSelector.tsx` — suggestedPrice + IGV_RATE reales (corregido 2026-07-07)
