@@ -622,6 +622,37 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "businessLines",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "totalAmount",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "totalProfit",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "totalWeight",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "sunat.estado",
           "order": "ASCENDING"
         },

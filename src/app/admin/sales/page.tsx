@@ -7,6 +7,7 @@ import {
   FileSpreadsheet,
   Download,
   ChevronDown,
+  AlertTriangle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -69,7 +70,7 @@ export default function SalesPage() {
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const { sales, loading, filteredTotal, aggregates, isAlgolia, currentPage, nextPage, prevPage, refresh } = useSales({
+  const { sales, loading, error, filteredTotal, aggregates, isAlgolia, currentPage, nextPage, prevPage, refresh } = useSales({
     pageSize, statusFilter, businessLine, searchTerm, startDate, endDate, sunatFilter,
   });
 
@@ -139,6 +140,16 @@ export default function SalesPage() {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-500" />
+          <div>
+            <h3 className="font-bold text-sm">Error al cargar datos</h3>
+            <p className="text-xs mt-1 font-medium">{error}</p>
+          </div>
+        </div>
+      )}
 
       <SalesMetrics
         totalRevenue={totalRevenue}
