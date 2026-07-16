@@ -136,6 +136,19 @@ export interface StockSummary {
 
 export type BusinessLine = 'drywall' | 'roofing' | 'metallic-roofing' | 'trading' | 'services';
 
+export interface ProductionRequest {
+  id?: string;
+  targetSku: string;
+  businessLine: BusinessLine;
+  requestedQty: number;
+  piecesCount?: number;
+  pieceLengthM?: number;
+  notes?: string;
+  requestedBy: string;
+  status: 'OPEN' | 'CANCELLED';
+  createdAt: any;
+}
+
 /**
  * Snapshot de peso congelado al momento de la venta de cobertura aluzinc.
  * Desacoplado del catálogo: si mañana cambia la metadata del SKU, las ventas

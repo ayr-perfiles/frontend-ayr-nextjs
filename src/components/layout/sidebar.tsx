@@ -398,6 +398,15 @@ export default function Sidebar({
                 collapsed={collapsed}
               />
             ))}
+          {(role === 'ADMIN' || role === 'SUPERVISOR') && (
+            <NavItem
+              icon="ClipboardList"
+              label="Solicitudes Aluzinc"
+              href="/admin/lines/metallic-roofing/production/requests"
+              active={pathname.startsWith("/admin/lines/metallic-roofing/production/requests")}
+              collapsed={collapsed}
+            />
+          )}
         </Group>
 
         {/* ABASTECIMIENTO */}
