@@ -1,4 +1,5 @@
-import { functions } from '@/lib/firebase/clientApp';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db, functions } from '@/lib/firebase/clientApp';
 import { httpsCallable } from 'firebase/functions';
 
 export interface ProduceFromCoilsParams {
@@ -88,4 +89,28 @@ export async function voidProductionFromCoils(
     }
     throw new Error('Error interno del servidor.');
   }
+}
+
+/**
+ * Obtiene los registros de producción (fulfillment) válidos (no VOIDED) asociados a una cotización.
+ */
+export async function getQuoteFulfillmentLogs(quoteId: string): Promise<any[]> {
+  const q = query(
+    collection(db, "production_logs"),
+    where("source.id", "==", quoteId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .map((d) => d.data())
+    .filter((log) => log.status !== "VOIDED");
+}
+
+/**
+ * Calcula la cantidad de piezas producidas para una línea de cotización específica (por SKU).
+ */
+export async function getProducedForQuoteLine(quoteId: string, sku: string): Promise<number> {
+  const logs = await getQuoteFulfillmentLogs(quoteId);
+  return logs
+    .filter((l) => l.sku === sku)
+    .reduce((acc, l) => acc + (l.piecesProduced || 0), 0);
 }

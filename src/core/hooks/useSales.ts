@@ -13,6 +13,7 @@ export interface SalesFilters {
   startDate: string;
   endDate: string;
   sunatFilter: string;
+  skipAggregates?: boolean;
 }
 
 type Cursor = QueryDocumentSnapshot<DocumentData> | null;
@@ -55,9 +56,10 @@ export function useSales(filters: SalesFilters) {
         prevFiltersRef.current.endDate !== filters.endDate ||
         prevFiltersRef.current.sunatFilter !== filters.sunatFilter;
 
-      // Skip aggregates if filters haven't changed AND we already have them (from a previous first-page load)
+      // Skip aggregates if requested, or if filters haven't changed AND we already have them
       // This applies to both pagination (dir="next"/"prev") and pageSize changes
-      const skipAggregates = forceRefetchAggregates ? false : 
+      const skipAggregates = filters.skipAggregates ? true : 
+        forceRefetchAggregates ? false : 
         (!filtersChanged && dir !== "first" ? true : (!filtersChanged && dir === "first" && aggregates !== null));
 
       prevFiltersRef.current = {
@@ -99,8 +101,7 @@ export function useSales(filters: SalesFilters) {
         setLoading(false);
       }
     },
-     
-    [debouncedSearch, filters.pageSize, filters.statusFilter, filters.businessLine, filters.startDate, filters.endDate, filters.sunatFilter],
+    [debouncedSearch, filters.pageSize, filters.statusFilter, filters.businessLine, filters.startDate, filters.endDate, filters.sunatFilter, filters.skipAggregates],
   );
 
   useEffect(() => {
