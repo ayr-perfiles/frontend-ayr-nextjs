@@ -16,14 +16,16 @@ import {
   Trash2,
   Loader2,
   ArrowRightLeft,
+  Factory,
 } from "lucide-react";
 import { Sale } from "@/types";
 import { useAuth } from "@/context/AuthContext";
 import { annulSale } from "@/services/salesService";
 import toast from "react-hot-toast";
 import { SunatPanel } from "./SunatPanel";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase/clientApp";
+import Link from "next/link";
 
 import { useConfirm } from "@/context/ConfirmContext";
 
@@ -317,6 +319,11 @@ export function SaleDetailsModal({
                   </span>
                 </p>
               )}
+
+              {/* FULFILLMENT: Producción contra Cotización */}
+              {sale.status === "QUOTATION" && sale.businessLines?.includes("metallic-roofing") && (
+                <ProductionFulfillment sale={sale} role={role || ""} />
+              )}
             </div>
 
             {/* SECCIÓN 3: DATOS FINANCIEROS Y ACCIONES */}
@@ -444,6 +451,102 @@ export function SaleDetailsModal({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Sub-Componente de Fulfillment ───────────────────────────────────────────
+
+function ProductionFulfillment({ sale, role }: { sale: Sale; role: string }) {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  React.useEffect(() => {
+    if (!sale.id) return;
+    const fetchFulfillment = async () => {
+      try {
+        const q = query(
+          collection(db, "production_logs"),
+          where("source.id", "==", sale.id)
+        );
+        const snap = await getDocs(q);
+        const validLogs = snap.docs
+          .map((d) => d.data())
+          .filter((log) => log.status !== "VOIDED");
+        setLogs(validLogs);
+      } catch (err) {
+        console.error("Error fetching fulfillment logs", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchFulfillment();
+  }, [sale.id]);
+
+  const metallicItems = sale.items?.filter((i) => i.businessLine === "metallic-roofing") || [];
+
+  if (metallicItems.length === 0) return null;
+
+  const canProduce = ["ADMIN", "SUPERVISOR", "OPERATOR"].includes(role);
+
+  return (
+    <div className="mt-6 border-t border-dashed border-gray-200 pt-6">
+      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+        <Factory size={16} className="text-orange-500" /> Estado de Producción
+      </h3>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <Loader2 size={14} className="animate-spin" /> Cargando producción...
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {metallicItems.map((item, idx) => {
+            const produced = logs
+              .filter((l) => l.sku === item.sku)
+              .reduce((acc, l) => acc + (l.piecesProduced || 0), 0);
+            const pending = Math.max(0, item.quantity - produced);
+            const status = pending === 0 ? "CUMPLIDA" : produced > 0 ? "EN PROGRESO" : "PENDIENTE";
+
+            return (
+              <div key={idx} className="bg-orange-50/50 p-4 rounded-xl border border-orange-100 flex flex-col sm:flex-row justify-between gap-4">
+                <div>
+                  <p className="font-black text-gray-800">{item.sku}</p>
+                  <div className="flex gap-4 mt-2 text-xs">
+                    <div>
+                      <span className="text-gray-500 font-bold uppercase tracking-wider block text-[9px]">Solicitado</span>
+                      <span className="font-bold text-gray-700">{item.quantity}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 font-bold uppercase tracking-wider block text-[9px]">Producido</span>
+                      <span className="font-bold text-blue-600">{produced}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 font-bold uppercase tracking-wider block text-[9px]">Pendiente</span>
+                      <span className="font-bold text-orange-600">{pending}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-end justify-center gap-2">
+                  <span className={`text-[10px] font-black px-2 py-1 rounded-md tracking-wider ${status === 'CUMPLIDA' ? 'bg-green-100 text-green-700' : status === 'EN PROGRESO' ? 'bg-blue-100 text-blue-700' : 'bg-orange-200 text-orange-800'}`}>
+                    {status}
+                  </span>
+                  
+                  {pending > 0 && canProduce && (
+                    <Link
+                      href={`/admin/lines/metallic-roofing/production/new?quoteId=${sale.id}&sku=${item.sku}&qty=${pending}`}
+                      className="text-[10px] bg-orange-500 hover:bg-orange-600 text-white font-black px-3 py-1.5 rounded-lg transition"
+                    >
+                      PRODUCIR
+                    </Link>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

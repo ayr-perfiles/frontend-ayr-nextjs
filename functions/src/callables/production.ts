@@ -12,7 +12,7 @@ export const produceFromCoils = onCall(async (request) => {
     throw new HttpsError("unauthenticated", "Usuario no autenticado");
   }
 
-  const { targetSku, productKind, lengthM, coilInputs, requestId } = request.data;
+  const { targetSku, productKind, lengthM, coilInputs, requestId, source } = request.data;
   const email = request.auth.token.email || "unknown";
   const uid = request.auth.uid;
   const role = request.auth.token.role;
@@ -243,6 +243,7 @@ export const produceFromCoils = onCall(async (request) => {
       averageCostAfter: newAvgCost,
       coilDensityFactor: resolvedCoilInputs[0]?.coilDensityFactor ?? null,
       perCoilBreakdown: enrichedBreakdown,
+      source: (source && source.type === 'QUOTE' && typeof source.id === 'string' && source.id.trim() !== '') ? source : null,
     });
 
     // d) Audit logs
