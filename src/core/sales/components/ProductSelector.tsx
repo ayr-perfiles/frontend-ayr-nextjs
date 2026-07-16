@@ -429,6 +429,7 @@ function MetallicTab({
 }) {
   const [selectedSku, setSelectedSku] = useState(catalog[0]?.sku ?? "");
   const [qty, setQty] = useState<number | "">("");
+  const [lengthInput, setLengthInput] = useState<number | "">("");
   const [price, setPrice] = useState<number | "">("");
 
   const { finishes } = useFinishes(true);
@@ -439,10 +440,14 @@ function MetallicTab({
 
   const stockItem = stock.find((s) => s.sku === selectedSku);
   const product = catalog.find((p) => p.sku === selectedSku);
+  const isCobertura = product?.family === "COBERTURA";
   const baseCost = stockItem?.avgCost ?? product?.avgCost ?? 0;
   const currentStock = stockItem?.quantity ?? 0;
   const alreadyInCart = cartItems.filter((i) => i.sku === selectedSku && i.businessLine === "metallic-roofing").reduce((s, i) => s + i.quantity, 0);
-  const willBeNegative = currentStock - alreadyInCart - Number(qty || 0) < 0;
+  
+  // Calculate effective quantity for stock checks
+  const effectiveQty = isCobertura ? Number(qty || 0) * Number(lengthInput || 0) : Number(qty || 0);
+  const willBeNegative = currentStock - alreadyInCart - effectiveQty < 0;
 
   useEffect(() => {
     if (!selectedSku) return;
@@ -451,13 +456,25 @@ function MetallicTab({
     const cost = s?.avgCost ?? p?.avgCost ?? 0;
     setPrice(cost > 0 ? suggestedPrice(cost, settings?.minMarginPercent ?? 20) : "");
     setQty("");
+    setLengthInput("");
   }, [selectedSku, catalog, stock, settings]);
 
   const confirm = useConfirm();
 
   async function handleAdd() {
     if (!selectedSku || !qty || !price) return;
-    const numQty = Number(qty);
+    if (isCobertura && !lengthInput) return;
+    
+    let piecesCount: number | undefined;
+    let pieceLengthM: number | undefined;
+    let numQty = Number(qty);
+    
+    if (isCobertura) {
+      piecesCount = Number(qty);
+      pieceLengthM = Number(lengthInput);
+      numQty = piecesCount * pieceLengthM;
+    }
+    
     const numPrice = Number(price);
     const unitValue = numPrice / (1 + IGV_RATE);
 
@@ -512,9 +529,11 @@ function MetallicTab({
       unitWeight: weightSnapshot?.pesoKg ? weightSnapshot.pesoKg / numQty : 0,
       isCoil: false,
       ...(weightSnapshot ? { weightSnapshot } : {}),
+      ...(isCobertura ? { piecesCount, pieceLengthM } : {}),
     });
 
     setQty("");
+    setLengthInput("");
   }
 
   return (
@@ -536,11 +555,23 @@ function MetallicTab({
             );
           })}
         </select>
-        {willBeNegative && Number(qty) > 0 && <StockWarning />}
+        {willBeNegative && effectiveQty > 0 && <StockWarning />}
       </div>
-      <QtyInput value={qty} onChange={setQty} label="Cant." />
+      {isCobertura ? (
+        <div className="flex gap-2 items-end">
+          <QtyInput value={qty} onChange={setQty} label="Cant. (pzs)" />
+          <QtyInput value={lengthInput} onChange={setLengthInput} label="Largo (m)" />
+          {Number(qty) > 0 && Number(lengthInput) > 0 && (
+            <div className="h-[56px] flex items-center px-2 text-[10px] font-black text-blue-600 bg-blue-50/50 rounded-xl border border-blue-100 whitespace-nowrap uppercase tracking-widest">
+              ML: {(Number(qty) * Number(lengthInput)).toFixed(2)}
+            </div>
+          )}
+        </div>
+      ) : (
+        <QtyInput value={qty} onChange={setQty} label="Cant." />
+      )}
       <PriceInput value={price} onChange={setPrice} baseCost={baseCost} />
-      <AddButton onClick={handleAdd} disabled={!qty || !price} color="blue" />
+      <AddButton onClick={handleAdd} disabled={!qty || !price || (isCobertura && !lengthInput)} color="blue" />
     </div>
   );
 }

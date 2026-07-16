@@ -164,6 +164,9 @@ export interface SaleItem {
   isCoil?: boolean;
   /** Solo línea metallic-roofing: snapshot de peso congelado al vender. */
   weightSnapshot?: CoverageWeightSnapshot;
+  /** Solo coberturas (metallic-roofing): captura de desglose de piezas para fulfillment futuro */
+  piecesCount?: number;
+  pieceLengthM?: number;
 
   // --- Retrocompatibilidad (Para ventas antiguas) ---
   unitCost?: number;
