@@ -12,8 +12,9 @@ import { calcProductionFromCoils } from "@/modules/metallic-roofing/domain/coilP
 import { isThicknessWithinTolerance } from "@/modules/metallic-roofing/domain/thicknessMatch";
 import { parsePositiveNumberInput, computeCoverageDeclaredMl } from "@/modules/metallic-roofing/domain/coverageProductionInput";
 import type { MetallicProduct } from "@/modules/metallic-roofing/types";
-import type { Coil } from "@/types";
+import type { Coil, Sale, SaleItem } from "@/types";
 import type { CoilFinish } from "@/core/coils/services/finishService";
+import { useSales } from "@/core/hooks/useSales";
 import {
   Factory,
   Plus,
@@ -22,7 +23,8 @@ import {
   CheckCircle2,
   Loader2,
   Layers,
-  ArrowLeft
+  ArrowLeft,
+  FileText
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Link from "next/link";
@@ -66,6 +68,22 @@ function MetallicProductionForm() {
 
   const [products, setProducts] = useState<MetallicProduct[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  
+  // Quote Selection State
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string>("");
+  const [selectedQuoteLabel, setSelectedQuoteLabel] = useState<string>("");
+  const [quoteItemPending, setQuoteItemPending] = useState<number | null>(null);
+  
+  const { sales: quotes, loading: loadingQuotes } = useSales({
+    pageSize: 100,
+    statusFilter: "QUOTATION",
+    businessLine: "metallic-roofing",
+    searchTerm: "",
+    startDate: "",
+    endDate: "",
+    sunatFilter: "",
+  });
+
   const [selectedSku, setSelectedSku] = useState("");
   const [rows, setRows] = useState<CoilRow[]>([newRow()]);
   const [submitting, setSubmitting] = useState(false);
@@ -84,11 +102,45 @@ function MetallicProductionForm() {
       .finally(() => setLoadingProducts(false));
   }, []);
 
-  // ?sku= prefiltrado
+  // ?sku= y ?quoteId= prefiltrado
   useEffect(() => {
     const sku = searchParams.get("sku");
+    const qId = searchParams.get("quoteId");
+    const qty = searchParams.get("qty");
+    
+    if (qId) {
+      setSelectedQuoteId(qId);
+      // Label should ideally be fetched, but we might not have it unless we query the quote doc. 
+      // It's ok to leave it as qId if we don't have the customer name. 
+      setSelectedQuoteLabel(qId); 
+    }
+    
     if (sku && products.find((p) => p.sku === sku)) {
       setSelectedSku(sku);
+      
+      const product = products.find((p) => p.sku === sku);
+      const isCobertura = product?.family !== "PLANCHA";
+      
+      if (qty && Number(qty) > 0) {
+        const defaultQty = Number(qty);
+        setQuoteItemPending(defaultQty);
+        
+        // Setup initial row
+        if (isCobertura) {
+          // For COBERTURA, pending is ML. We can't pre-fill pieces without pieceLength.
+          // Unless the user knows length. We'll leave `cantidad` empty and let user fill it.
+          const newR = newRow(product?.length ?? null);
+          newR.declared = String(defaultQty);
+          setRows([newR]);
+        } else {
+          // PLANCHA, pending is UND
+          const newR = newRow(product?.length ?? null);
+          newR.declared = String(defaultQty);
+          setRows([newR]);
+        }
+      } else {
+        setRows([newRow(product?.length ?? null)]);
+      }
     }
   }, [searchParams, products]);
 
@@ -261,6 +313,7 @@ function MetallicProductionForm() {
           };
         }),
         requestId: requestIdRef.current,
+        source: selectedQuoteId ? { type: "QUOTE", id: selectedQuoteId, label: selectedQuoteLabel } : null,
       });
 
       if (result.hasNegativeCoilWarning) {
@@ -304,6 +357,71 @@ function MetallicProductionForm() {
             </p>
           </div>
         </div>
+      </div>
+      
+      {/* 0. Producir contra Cotización (Opcional) */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
+        <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+          <FileText size={14} className="text-orange-500" /> Producir contra Cotización (Opcional)
+        </h2>
+        
+        {loadingQuotes ? (
+          <div className="flex items-center gap-2 text-slate-400 text-sm">
+            <Loader2 size={16} className="animate-spin" /> Cargando cotizaciones...
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <select
+              className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-blue-400 bg-white"
+              value={selectedQuoteId}
+              onChange={(e) => {
+                const qId = e.target.value;
+                setSelectedQuoteId(qId);
+                const q = quotes.find((s) => s.id === qId);
+                if (q) {
+                  setSelectedQuoteLabel(q.customerName || qId);
+                } else {
+                  setSelectedQuoteLabel("");
+                }
+                setSelectedSku("");
+                setQuoteItemPending(null);
+                setRows([newRow()]);
+              }}
+            >
+              <option value="">— Ninguna (Producción Libre) —</option>
+              {quotes.map((q) => (
+                <option key={q.id} value={q.id}>
+                  {q.id} — {q.customerName}
+                </option>
+              ))}
+            </select>
+            
+            {selectedQuoteId && (
+              <div className="p-3 bg-orange-50 rounded-xl border border-orange-100">
+                <p className="text-xs font-bold text-orange-800 mb-2">Selecciona un producto de la cotización:</p>
+                <div className="grid gap-2">
+                  {quotes.find(q => q.id === selectedQuoteId)?.items?.filter(item => item.businessLine === "metallic-roofing").map((item, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSku(item.sku);
+                        const prod = products.find((p) => p.sku === item.sku);
+                        setQuoteItemPending(item.quantity);
+                        const newR = newRow(prod?.length ?? null);
+                        newR.declared = String(item.quantity);
+                        setRows([newR]);
+                      }}
+                      className={`text-left p-3 rounded-lg border text-sm font-bold transition ${selectedSku === item.sku ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-slate-700 hover:border-orange-300 border-slate-200'}`}
+                    >
+                      {item.sku} — Cantidad Solicitada: {item.quantity} {products.find(p => p.sku === item.sku)?.family === "PLANCHA" ? "UND" : "ML"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 1. SKU Destino */}
@@ -444,6 +562,15 @@ function MetallicProductionForm() {
               <AlertTriangle size={16} className="shrink-0 mt-0.5" />
               <span className="font-bold">
                 Una o más bobinas quedarán con peso negativo. La operación se registrará igualmente.
+              </span>
+            </div>
+          )}
+
+          {quoteItemPending !== null && preview.cantidadProducida > quoteItemPending && (
+            <div className="flex items-start gap-2 text-amber-700 text-sm">
+              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+              <span className="font-bold">
+                Aviso: Estás produciendo ({preview.cantidadProducida}) más de lo solicitado en la cotización ({quoteItemPending}).
               </span>
             </div>
           )}

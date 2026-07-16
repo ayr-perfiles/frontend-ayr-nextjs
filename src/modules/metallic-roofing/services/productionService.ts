@@ -16,6 +16,7 @@ export interface ProduceFromCoilsParams {
     pieceLengthM?: number;
   }>;
   requestId: string;
+  source?: { type: 'QUOTE'; id: string; label?: string } | null;
 }
 
 export interface ProduceFromCoilsResult {
