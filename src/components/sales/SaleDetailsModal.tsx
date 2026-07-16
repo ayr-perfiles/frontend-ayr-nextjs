@@ -21,6 +21,7 @@ import {
 import { Sale } from "@/types";
 import { useAuth } from "@/context/AuthContext";
 import { annulSale } from "@/services/salesService";
+import { getQuoteFulfillmentLogs } from "@/modules/metallic-roofing/services/productionService";
 import toast from "react-hot-toast";
 import { SunatPanel } from "./SunatPanel";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
@@ -465,14 +466,7 @@ function ProductionFulfillment({ sale, role }: { sale: Sale; role: string }) {
     if (!sale.id) return;
     const fetchFulfillment = async () => {
       try {
-        const q = query(
-          collection(db, "production_logs"),
-          where("source.id", "==", sale.id)
-        );
-        const snap = await getDocs(q);
-        const validLogs = snap.docs
-          .map((d) => d.data())
-          .filter((log) => log.status !== "VOIDED");
+        const validLogs = await getQuoteFulfillmentLogs(sale.id!);
         setLogs(validLogs);
       } catch (err) {
         console.error("Error fetching fulfillment logs", err);
