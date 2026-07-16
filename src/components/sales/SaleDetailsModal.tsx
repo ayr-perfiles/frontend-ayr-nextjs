@@ -294,7 +294,13 @@ export function SaleDetailsModal({
                             {item.sku}
                           </td>
                           <td className="p-3 text-center font-medium text-gray-600">
-                            {item.quantity}
+                            {item.piecesCount && item.pieceLengthM ? (
+                              <span className="whitespace-nowrap">
+                                {item.piecesCount} pzs &times; {item.pieceLengthM} m = {item.quantity} ML
+                              </span>
+                            ) : (
+                              item.quantity
+                            )}
                           </td>
                           <td className="p-3 text-right text-gray-600">
                             {formatMoney(item.unitPrice)}
@@ -509,7 +515,11 @@ function ProductionFulfillment({ sale, role }: { sale: Sale; role: string }) {
                   <div className="flex gap-4 mt-2 text-xs">
                     <div>
                       <span className="text-gray-500 font-bold uppercase tracking-wider block text-[9px]">Solicitado</span>
-                      <span className="font-bold text-gray-700">{item.quantity}</span>
+                      <span className="font-bold text-gray-700">
+                        {item.piecesCount && item.pieceLengthM
+                          ? `${item.piecesCount} pzs \u00D7 ${item.pieceLengthM} m = ${item.quantity} ML`
+                          : item.quantity}
+                      </span>
                     </div>
                     <div>
                       <span className="text-gray-500 font-bold uppercase tracking-wider block text-[9px]">Producido</span>
