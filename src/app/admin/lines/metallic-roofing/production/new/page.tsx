@@ -293,6 +293,7 @@ function MetallicProductionForm() {
     );
 
   const canSubmit =
+    selectedQuoteId !== "" &&
     selectedSku &&
     preview &&
     rows.every((r) => r.coilData && !r.loadError && Number(r.declared) > 0) &&
@@ -374,10 +375,10 @@ function MetallicProductionForm() {
         </div>
       </div>
       
-      {/* 0. Producir contra Cotización (Opcional) */}
+      {/* 0. Producir contra Cotización (Obligatorio) */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
         <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-          <FileText size={14} className="text-orange-500" /> Producir contra Cotización (Opcional)
+          <FileText size={14} className="text-orange-500" /> Producir contra Cotización (Obligatorio)
         </h2>
         
         {loadingQuotes ? (
@@ -404,7 +405,7 @@ function MetallicProductionForm() {
                   setRows([newRow()]);
                 }}
               >
-                <option value="">— Ninguna (Producción Libre) —</option>
+                <option value="">— Seleccionar Cotización —</option>
                 {quotes.map((q) => (
                   <option key={q.id} value={q.id}>
                     {q.id} — {q.customerName}

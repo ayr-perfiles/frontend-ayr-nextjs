@@ -47,7 +47,7 @@ describe('produceFromCoils Integration Tests', () => {
         productKind: 'COBERTURA_ML',
         lengthM: null,
         coilInputs: [{ coilId: 'COIL-1', declared: 100 }],
-        requestId: 'req-1'
+        requestId: 'req-1', source: { type: 'QUOTE', id: 'Q1' }
       },
       auth: {
         uid: 'user-1',
@@ -119,7 +119,7 @@ describe('produceFromCoils Integration Tests', () => {
           { coilId: 'COIL-B', declared: 50 },
           { coilId: 'COIL-C', declared: 200 }
         ],
-        requestId: 'req-multi'
+        requestId: 'req-multi', source: { type: 'QUOTE', id: 'Q1' }
       },
       auth: { uid: 'u-1', token: { email: 'e@test.com', role: 'ADMIN' } }
     };
@@ -148,16 +148,28 @@ describe('produceFromCoils Integration Tests', () => {
   });
 
   it('3. rol: rechaza sin-rol y roles no autorizados', async () => {
-    const req = { data: { requestId: 'r' }, auth: { uid: 'u', token: { role: 'VIEWER' } } };
+    const req = { data: { requestId: 'r', source: { type: 'QUOTE', id: 'Q1' } }, auth: { uid: 'u', token: { role: 'VIEWER' } } };
     await expect(produceFromCoils.run(req as any)).rejects.toThrow('Rol no autorizado');
   });
 
   it('4. input: coilInputs vacío, invalid parameters', async () => {
     const base = { auth: { uid: 'u', token: { role: 'ADMIN' } } };
     
-    await expect(produceFromCoils.run({ ...base, data: { requestId: 'r1', productKind: 'INVALID', coilInputs: [] } } as any)).rejects.toThrow();
-    await expect(produceFromCoils.run({ ...base, data: { requestId: 'r2', productKind: 'PLANCHA_UND', lengthM: null, coilInputs: [{ coilId: 'C', declared: 10 }] } } as any)).rejects.toThrow();
-    await expect(produceFromCoils.run({ ...base, data: { requestId: 'r3', productKind: 'COBERTURA_ML', lengthM: null, coilInputs: [{ coilId: 'C', declared: -5 }] } } as any)).rejects.toThrow();
+    await expect(produceFromCoils.run({ ...base, data: { requestId: 'r1', source: { type: 'QUOTE', id: 'Q1' }, productKind: 'INVALID', coilInputs: [] } } as any)).rejects.toThrow();
+    await expect(produceFromCoils.run({ ...base, data: { requestId: 'r2', source: { type: 'QUOTE', id: 'Q1' }, productKind: 'PLANCHA_UND', lengthM: null, coilInputs: [{ coilId: 'C', declared: 10 }] } } as any)).rejects.toThrow();
+    await expect(produceFromCoils.run({ ...base, data: { requestId: 'r3', source: { type: 'QUOTE', id: 'Q1' }, productKind: 'COBERTURA_ML', lengthM: null, coilInputs: [{ coilId: 'C', declared: -5 }] } } as any)).rejects.toThrow();
+  });
+
+  it('4b. input: rechaza si falta source o source invalido', async () => {
+    const base = { auth: { uid: 'u', token: { role: 'ADMIN' } } };
+    const validData = { targetSku: 'SKU', productKind: 'COBERTURA_ML', lengthM: null, coilInputs: [{ coilId: 'C', declared: 100 }], requestId: 'req' };
+    
+    // Sin source
+    await expect(produceFromCoils.run({ ...base, data: { ...validData } } as any)).rejects.toThrow('Es obligatorio proveer una cotización');
+    // type inválido
+    await expect(produceFromCoils.run({ ...base, data: { ...validData, source: { type: 'REQUEST', id: 'R1' } } } as any)).rejects.toThrow('Es obligatorio proveer una cotización');
+    // id inválido
+    await expect(produceFromCoils.run({ ...base, data: { ...validData, source: { type: 'QUOTE', id: '   ' } } } as any)).rejects.toThrow('Es obligatorio proveer una cotización');
   });
 
   it('5. precondición todo-o-nada: aborta corrida si falla 1', async () => {
@@ -169,7 +181,7 @@ describe('produceFromCoils Integration Tests', () => {
       data: {
         targetSku: 'CALAMINA-ABORT', productKind: 'COBERTURA_ML',
         coilInputs: [ { coilId: 'COIL-A', declared: 100 }, { coilId: 'COIL-B', declared: 100 } ],
-        requestId: 'req-abort'
+        requestId: 'req-abort', source: { type: 'QUOTE', id: 'Q1' }
       },
       auth: { uid: 'u-1', token: { role: 'ADMIN' } }
     };
@@ -213,7 +225,7 @@ describe('produceFromCoils Integration Tests', () => {
       data: {
         targetSku: 'SKU', productKind: 'COBERTURA_ML',
         coilInputs: [ { coilId: 'COIL-NO-DENSITY', declared: 100 } ],
-        requestId: 'req-nodensity'
+        requestId: 'req-nodensity', source: { type: 'QUOTE', id: 'Q1' }
       },
       auth: { uid: 'u', token: { role: 'ADMIN' } }
     };
@@ -225,7 +237,7 @@ describe('produceFromCoils Integration Tests', () => {
     await db.collection('coils').doc('COIL-NEG').set({ id: 'COIL-NEG', status: 'AVAILABLE', finish: 'F-1', masterWidth: 1000, thickness: 1, pricePerKg: 3.5, currentWeight: 10, initialWeight: 10 });
 
     const request = {
-      data: { targetSku: 'SKU-NEG', productKind: 'COBERTURA_ML', coilInputs: [{ coilId: 'COIL-NEG', declared: 100 }], requestId: 'req-neg' },
+      data: { targetSku: 'SKU-NEG', productKind: 'COBERTURA_ML', coilInputs: [{ coilId: 'COIL-NEG', declared: 100 }], requestId: 'req-neg', source: { type: 'QUOTE', id: 'Q1' } },
       auth: { uid: 'u', token: { role: 'ADMIN' } }
     };
 
@@ -247,7 +259,7 @@ describe('produceFromCoils Integration Tests', () => {
     // Costo de esta corrida = 78.5 * 20 = 1570. Total value nuevo = 1000 + 1570 = 2570.
     // Cantidad nueva = 100 + 10 = 110. WAC nuevo = 2570 / 110 = 23.363636
     const request = {
-      data: { targetSku: 'SKU-WAC', productKind: 'COBERTURA_ML', coilInputs: [{ coilId: 'COIL-WAC', declared: 10 }], requestId: 'req-wac' },
+      data: { targetSku: 'SKU-WAC', productKind: 'COBERTURA_ML', coilInputs: [{ coilId: 'COIL-WAC', declared: 10 }], requestId: 'req-wac', source: { type: 'QUOTE', id: 'Q1' } },
       auth: { uid: 'u', token: { role: 'ADMIN' } }
     };
     await produceFromCoils.run(request as any);
@@ -269,7 +281,7 @@ describe('produceFromCoils Integration Tests', () => {
           { coilId: 'COIL-IDEMP-1', declared: 10 },
           { coilId: 'COIL-IDEMP-2', declared: 20 }
         ],
-        requestId: 'req-idemp'
+        requestId: 'req-idemp', source: { type: 'QUOTE', id: 'Q1' }
       },
       auth: { uid: 'u', token: { role: 'ADMIN' } }
     };
@@ -312,7 +324,7 @@ describe('produceFromCoils Integration Tests', () => {
           // Si mandamos reportedWeightKg: 80, el peso consumido será 80 kg, Costo total = 80 * 10 = 800 PEN.
           { coilId: 'COIL-REP', declared: 10, reportedWeightKg: 80 }
         ],
-        requestId: 'req-rep'
+        requestId: 'req-rep', source: { type: 'QUOTE', id: 'Q1' }
       },
       auth: { uid: 'u', token: { role: 'ADMIN' } }
     };

@@ -115,10 +115,7 @@ service cloud.firestore {
       allow create: if isStaff();
       allow update, delete: if false; // Trazabilidad append-only o functions
     }
-    match /production_requests/{reqId} {
-      allow read: if isStaff();
-      allow create, update: if isAdmin() || hasRole('SUPERVISOR');
-    }
+
 
     match /production_logs/{logId} {
       allow read: if isStaff();

@@ -21,6 +21,10 @@ export const produceFromCoils = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "El requestId es obligatorio para la idempotencia");
   }
 
+  if (!source || source.type !== 'QUOTE' || typeof source.id !== 'string' || !source.id.trim()) {
+    throw new HttpsError('invalid-argument', 'Es obligatorio proveer una cotización para producir.');
+  }
+
   const isTestUser = email.endsWith("@example.com");
   if (role !== "ADMIN" && role !== "SUPERVISOR" && role !== "OPERATOR" && !isTestUser) {
     throw new HttpsError("permission-denied", "Rol no autorizado para producir bobinas");
