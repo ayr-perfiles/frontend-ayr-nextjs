@@ -116,6 +116,7 @@ service cloud.firestore {
       allow update, delete: if false; // Trazabilidad append-only o functions
     }
 
+
     match /production_logs/{logId} {
       allow read: if isStaff();
       // FASE 2: cerrar a if false

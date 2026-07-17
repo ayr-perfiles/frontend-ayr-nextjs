@@ -136,6 +136,7 @@ export interface StockSummary {
 
 export type BusinessLine = 'drywall' | 'roofing' | 'metallic-roofing' | 'trading' | 'services';
 
+
 /**
  * Snapshot de peso congelado al momento de la venta de cobertura aluzinc.
  * Desacoplado del catálogo: si mañana cambia la metadata del SKU, las ventas
