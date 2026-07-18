@@ -25,7 +25,7 @@
 
 ## Tabla de fórmulas
 
-### Coils / Metallic Roofing → [`costeo-coils.md`](./costeo-coils.md)
+### Coils / Metallic Roofing → [`costeo-coils.md`](./costeo-coils.md) · [`costeo-metallic-reportes.md`](./costeo-metallic-reportes.md)
 
 | ID | Fórmula | Propósito (1 línea) | Código |
 |---|---|---|---|
