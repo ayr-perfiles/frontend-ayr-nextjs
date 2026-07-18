@@ -482,7 +482,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
 
             <div>
               <label
-                className={`block text-[11px] font-bold mb-1.5 uppercase ${errors.exchangeRate ? "text-red-500" : "text-slate-500"}`}
+                className={`block text-[11px] font-bold mb-1.5 uppercase ${errors.exchangeRate ? "text-red-500" : (values.currency === "USD" && values.exchangeRate <= 1) ? "text-orange-500" : "text-slate-500"}`}
               >
                 T. Cambio
               </label>
@@ -490,7 +490,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                 type="number"
                 step="0.001"
                 disabled={values.currency === "PEN"}
-                className={`w-full bg-white border rounded-lg p-2.5 text-sm font-bold disabled:bg-slate-100 outline-none focus:border-blue-500 ${errors.exchangeRate ? "border-red-300" : "border-slate-200"}`}
+                className={`w-full bg-white border rounded-lg p-2.5 text-sm font-bold disabled:bg-slate-100 outline-none focus:border-blue-500 ${errors.exchangeRate ? "border-red-300" : (values.currency === "USD" && values.exchangeRate <= 1) ? "border-orange-400 bg-orange-50" : "border-slate-200"}`}
                 value={values.exchangeRate}
                 onChange={(e) => {
                   setValues((prev) => ({
@@ -506,6 +506,11 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
               {errors.exchangeRate && (
                 <p className="text-red-500 text-xs mt-1">
                   {errors.exchangeRate}
+                </p>
+              )}
+              {values.currency === "USD" && values.exchangeRate <= 1 && !errors.exchangeRate && !fetchingRate && (
+                <p className="text-orange-600 text-xs mt-1 font-semibold leading-tight">
+                  TC real no disponible — ingresá el TC del día
                 </p>
               )}
             </div>
@@ -527,7 +532,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
           </header>
 
           <div className="space-y-3">
-            <div className="hidden lg:grid grid-cols-[minmax(0,2fr)_minmax(0,2.5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,2fr)_minmax(0,1fr)] gap-4 px-4 py-3 bg-slate-50 rounded-lg text-[11px] font-black text-slate-500 uppercase">
+            <div className="hidden lg:grid grid-cols-[minmax(0,2fr)_minmax(0,2.5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)] gap-4 px-4 py-3 bg-slate-50 rounded-lg text-[11px] font-black text-slate-500 uppercase">
               <div>N° Serie / ID *</div>
               <div>Acabado *</div>
               <div>Peso (kg) *</div>
@@ -543,7 +548,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
               return (
                 <div
                   key={coil.uid}
-                  className={`grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,2.5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,2fr)_minmax(0,1fr)] gap-4 p-4 bg-white border rounded-lg relative transition ${Object.keys(rowErr).length > 0 ? "border-red-300 bg-red-50/20" : "border-slate-100 hover:border-blue-200 hover:shadow-md"}`}
+                  className={`grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,2.5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)] gap-4 p-4 bg-white border rounded-lg relative transition ${Object.keys(rowErr).length > 0 ? "border-red-300 bg-red-50/20" : "border-slate-100 hover:border-blue-200 hover:shadow-md"}`}
                 >
                   <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
