@@ -432,7 +432,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     ...prev,
                     invoiceDate: e.target.value,
                   }));
-                  setErrors((prev) => ({ ...prev, invoiceDate: undefined }));
+                  setErrors((prev) => ({ ...prev, invoiceDate: undefined, exchangeRate: undefined }));
                 }}
               />
               {errors.invoiceDate && (
@@ -470,7 +470,8 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                   setValues((prev) => ({
                     ...prev,
                     currency: e.target.value as "PEN" | "USD",
-                  }))
+                  }));
+                  setErrors((prev) => ({ ...prev, exchangeRate: undefined }));
                 }
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500"
               >
@@ -526,14 +527,14 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
           </header>
 
           <div className="space-y-3">
-            <div className="hidden lg:grid grid-cols-12 gap-4 px-4 py-3 bg-slate-50 rounded-lg text-[11px] font-black text-slate-500 uppercase">
-              <div className="col-span-2">N° Serie / ID *</div>
-              <div className="col-span-2">Acabado *</div>
-              <div className="col-span-2">Peso (kg) *</div>
-              <div className="col-span-2">Ancho (mm) *</div>
-              <div className="col-span-1">Espesor *</div>
-              <div className="col-span-2">Valor ({values.currency}) *</div>
-              <div className="col-span-1 text-center">Acción</div>
+            <div className="hidden lg:grid grid-cols-[minmax(0,2fr)_minmax(0,2.5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,2fr)_minmax(0,1fr)] gap-4 px-4 py-3 bg-slate-50 rounded-lg text-[11px] font-black text-slate-500 uppercase">
+              <div>N° Serie / ID *</div>
+              <div>Acabado *</div>
+              <div>Peso (kg) *</div>
+              <div>Ancho (mm) *</div>
+              <div>Espesor *</div>
+              <div>Valor ({values.currency}) *</div>
+              <div className="text-center">Acción</div>
             </div>
 
             {coils.map((coil) => {
@@ -542,9 +543,9 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
               return (
                 <div
                   key={coil.uid}
-                  className={`grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 bg-white border rounded-lg relative transition ${Object.keys(rowErr).length > 0 ? "border-red-300 bg-red-50/20" : "border-slate-100 hover:border-blue-200 hover:shadow-md"}`}
+                  className={`grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,2.5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,2fr)_minmax(0,1fr)] gap-4 p-4 bg-white border rounded-lg relative transition ${Object.keys(rowErr).length > 0 ? "border-red-300 bg-red-50/20" : "border-slate-100 hover:border-blue-200 hover:shadow-md"}`}
                 >
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
                       N° Serie *
                     </label>
@@ -568,7 +569,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     )}
                   </div>
 
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
                       Acabado *
                     </label>
@@ -598,7 +599,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     )}
                   </div>
 
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
                       Peso (kg) *
                     </label>
@@ -618,7 +619,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     )}
                   </div>
 
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
                       Ancho (mm) *
                     </label>
@@ -637,7 +638,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     )}
                   </div>
 
-                  <div className="lg:col-span-1">
+                  <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
                       Espesor (mm) *
                     </label>
@@ -657,7 +658,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     )}
                   </div>
 
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
                       Valor {values.currency} *
                     </label>
@@ -697,7 +698,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     )}
                   </div>
 
-                  <div className="lg:col-span-1 flex items-end justify-center pb-1">
+                  <div className="flex items-end justify-center pb-1">
                     <button
                       type="button"
                       onClick={() => removeCoilRow(coil.uid)}

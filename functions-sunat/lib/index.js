@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.confirmPurchaseStaging = exports.parsePurchaseXml = exports.importSireRce = exports.consultarDni = exports.consultarRuc = exports.validarCpeSunat = exports.consultarEstadoBaja = exports.comunicarBaja = exports.emitirComprobante = void 0;
+exports.confirmPurchaseStaging = exports.parsePurchaseXml = exports.importSireRce = exports.validarCpeSunat = exports.consultarEstadoBaja = exports.comunicarBaja = exports.emitirComprobante = void 0;
 const v2_1 = require("firebase-functions/v2");
 const admin = __importStar(require("firebase-admin"));
 if (!admin.apps.length) {
@@ -48,11 +48,9 @@ var callables_1 = require("./sunat/callables");
 Object.defineProperty(exports, "emitirComprobante", { enumerable: true, get: function () { return callables_1.emitirComprobante; } });
 Object.defineProperty(exports, "comunicarBaja", { enumerable: true, get: function () { return callables_1.comunicarBaja; } });
 Object.defineProperty(exports, "consultarEstadoBaja", { enumerable: true, get: function () { return callables_1.consultarEstadoBaja; } });
-// INTEGRACIONES: Validación CPE y Consultas RUC/DNI
+// INTEGRACIONES: Validación CPE
 var integrations_1 = require("./callables/integrations");
 Object.defineProperty(exports, "validarCpeSunat", { enumerable: true, get: function () { return integrations_1.validarCpeSunat; } });
-Object.defineProperty(exports, "consultarRuc", { enumerable: true, get: function () { return integrations_1.consultarRuc; } });
-Object.defineProperty(exports, "consultarDni", { enumerable: true, get: function () { return integrations_1.consultarDni; } });
 // COMPRAS: Importación SIRE/RCE y XML
 var purchases_1 = require("./callables/purchases");
 Object.defineProperty(exports, "importSireRce", { enumerable: true, get: function () { return purchases_1.importSireRce; } });
