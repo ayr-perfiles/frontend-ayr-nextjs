@@ -12,7 +12,8 @@ import {
   QueryConstraint,
   Timestamp,
 } from "firebase/firestore";
-import { revertProductionLog } from "@/modules/drywall/services/productionService";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "@/lib/firebase/clientApp";
 import { useAuth } from "@/context/AuthContext";
 import { ProductionLog } from "@/types";
 import {
@@ -99,10 +100,11 @@ export function HistoryTab() {
       })
     ) {
       try {
-        await revertProductionLog(log.id, user?.email || "Admin");
+        const revertFn = httpsCallable(functions, "revertProductionLog");
+        await revertFn({ logId: log.id });
         toast.success("✅ Registro anulado y fleje restaurado.");
-      } catch (e: unknown) {
-        toast.error(`❌ Error: ${e instanceof Error ? e.message : "Error al anular."}`);
+      } catch (e: any) {
+        toast.error(`❌ Error: ${e.message || "Error al anular."}`);
       }
     }
   };

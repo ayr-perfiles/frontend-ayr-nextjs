@@ -200,3 +200,180 @@ export const produceFromStrip = onCall(async (request) => {
     return responsePayload;
   });
 });
+
+export const revertProductionLog = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Usuario no autenticado");
+  }
+  
+  const role = request.auth.token.role;
+  const email = request.auth.token.email || "unknown";
+
+  if (role !== "ADMIN") {
+    throw new HttpsError("permission-denied", "Solo un administrador puede anular una producción.");
+  }
+
+  const { logId } = request.data;
+  if (!logId || typeof logId !== "string" || logId.trim() === "") {
+    throw new HttpsError("invalid-argument", "El logId es obligatorio");
+  }
+
+  const db = admin.firestore();
+
+  const logRef = db.collection("production_logs").doc(logId);
+  const logSnap = await logRef.get();
+
+  if (!logSnap.exists) {
+    throw new HttpsError("not-found", "El registro de producción no existe.");
+  }
+
+  const logData = logSnap.data()!;
+
+  if (logData.status === "VOIDED") {
+    throw new HttpsError("failed-precondition", "El registro de producción ya fue anulado.");
+  }
+
+  if (logData.line && logData.line !== "drywall") {
+    throw new HttpsError("invalid-argument", "Esta función solo aplica a la línea drywall.");
+  }
+
+  const logTimestamp = logData.timestamp;
+  if (!logTimestamp) {
+    throw new HttpsError("failed-precondition", "No se puede verificar el orden de movimientos; anulación bloqueada por seguridad.");
+  }
+
+  // GUARD POSTERIOR: venta completada del PT posterior a esta producción → bloquea (fuera de txn, query simple)
+  const laterSales = await db.collection("sales")
+    .where("skus", "array-contains", logData.sku)
+    .where("status", "==", "COMPLETED")
+    .get();
+
+  for (const doc of laterSales.docs) {
+    const saleData = doc.data();
+    const comparableTimestamp = saleData.approvedAt ?? saleData.timestamp;
+    if (!comparableTimestamp) {
+      throw new HttpsError("failed-precondition", "No se puede verificar el orden de movimientos; anulación bloqueada por seguridad.");
+    }
+    if (comparableTimestamp.toMillis() > logTimestamp.toMillis()) {
+      throw new HttpsError("failed-precondition", "El producto tiene ventas posteriores; no se puede anular la producción.");
+    }
+  }
+
+  // WAC-LOOKBACK (FUERA DE TXN)
+  const recentLogsSnap = await db.collection("production_logs")
+    .where("sku", "==", logData.sku)
+    .where("status", "==", "ACTIVE")
+    .orderBy("timestamp", "desc")
+    .limit(2)
+    .get();
+
+  let previousValidCost: number | null = null;
+  recentLogsSnap.docs.forEach((d) => {
+    if (d.id !== logId) {
+      previousValidCost = d.data().averageCostAfter || d.data().costPerPiece || 0;
+    }
+  });
+
+  return await db.runTransaction(async (tx) => {
+    // 1. LECTURAS (DENTRO DE TXN)
+    const txLogDoc = await tx.get(logRef);
+    if (!txLogDoc.exists) throw new HttpsError("not-found", "El registro no existe.");
+    const txLogData = txLogDoc.data()!;
+
+    if (txLogData.status === "VOIDED") throw new HttpsError("failed-precondition", "Ya fue anulado.");
+
+    const stockRef = db.collection("inventory_stock").doc(txLogData.sku);
+    const prodRef = db.collection("products").doc(txLogData.sku);
+    
+    const [stockDoc, prodDoc] = await Promise.all([
+      tx.get(stockRef),
+      tx.get(prodRef)
+    ]);
+
+    let coilDoc: admin.firestore.DocumentSnapshot | null = null;
+    let coilRef: admin.firestore.DocumentReference | null = null;
+    if (txLogData.parentCoilId) {
+      coilRef = db.collection("coils").doc(txLogData.parentCoilId);
+      coilDoc = await tx.get(coilRef);
+    }
+
+    let ssSnap: admin.firestore.DocumentSnapshot | null = null;
+    let ssRef: admin.firestore.DocumentReference | null = null;
+    if (!txLogData.parentCoilId && txLogData.totalUsedWidth) {
+      ssRef = db.collection("strips_stock").doc(txLogData.totalUsedWidth.toString());
+      ssSnap = await tx.get(ssRef);
+    }
+
+    // 2. CÁLCULOS
+    let stdW = prodDoc.exists ? (prodDoc.data()!.standardWeight || 0) : 0;
+    const wSub = txLogData.reportedWeight || txLogData.piecesProduced * stdW;
+    let newQty = 0;
+
+    const now = FieldValue.serverTimestamp();
+
+    // 3. ESCRITURAS
+    if (stockDoc.exists) {
+      const sData = stockDoc.data()!;
+      newQty = sData.totalQuantity - txLogData.piecesProduced;
+      tx.update(stockRef, {
+        totalQuantity: newQty,
+        totalWeight: sData.totalWeight - wSub,
+        lastUpdate: now,
+        ...(previousValidCost !== null ? { lastCostPerPiece: previousValidCost } : (newQty === 0 ? { lastCostPerPiece: 0 } : {}))
+      });
+    }
+
+    if (coilDoc && coilDoc.exists && coilRef) {
+      const cData = coilDoc.data()!;
+      const upStrips = cData.plannedStrips?.map((s: any) => s.sku === txLogData.sku ? { ...s, pendingCount: s.pendingCount + 1 } : s);
+      const restoredW = (txLogData.totalUsedWidth || 0) * (cData.initialWeight / cData.masterWidth!);
+      tx.update(coilRef, {
+        plannedStrips: upStrips,
+        status: "IN_PROGRESS",
+        currentWeight: Math.min(cData.initialWeight, (cData.currentWeight || 0) + restoredW),
+        updatedAt: now
+      });
+    } else if (ssSnap && ssSnap.exists && ssRef) {
+      const ssData = ssSnap.data()!;
+      tx.update(ssRef, {
+        totalStrips: ssData.totalStrips + 1,
+        totalWeight: ssData.totalWeight + (ssData.totalWeight / (ssData.totalStrips || 1)),
+        lastUpdate: now
+      });
+      tx.set(db.collection("strips_movements").doc(), {
+        type: 'ENTRADA',
+        widthMm: txLogData.totalUsedWidth,
+        quantity: 1,
+        weight: (ssData.totalWeight / (ssData.totalStrips || 1)),
+        costPerKg: ssData.avgCostPerKg,
+        referenceId: logId,
+        description: `Anulación ${logId}`,
+        timestamp: now,
+        user: email
+      });
+    }
+
+    tx.set(db.collection("kardex_movements").doc(), {
+      sku: txLogData.sku,
+      date: now,
+      type: "OUT",
+      quantity: txLogData.piecesProduced,
+      balance: newQty,
+      reference: txLogData.parentCoilId || 'STRIP',
+      description: "Anulación de Producción",
+      user: email,
+    });
+
+    tx.update(logRef, { status: "VOIDED", voidedBy: email, voidedAt: now });
+    
+    tx.set(db.collection("audit_logs").doc(), {
+      action: "VOID_PRODUCTION",
+      entityId: logId,
+      userEmail: email,
+      details: `Anuló ${txLogData.piecesProduced} pzas de ${txLogData.sku}.`,
+      timestamp: now
+    });
+
+    return { success: true };
+  });
+});

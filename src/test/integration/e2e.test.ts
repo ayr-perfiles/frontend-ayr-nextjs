@@ -13,9 +13,9 @@ import {
 } from './firestore-helpers';
 import { 
   saveCuttingPlan, 
-  processSingleStrip, 
-  revertProductionLog 
+  processSingleStrip
 } from '@/modules/drywall/services/productionService';
+import { revertProductionLog as callableRevertProductionLog } from '../../../functions/src/callables/drywallProduction';
 import { getStockStrategy } from '@/core/sales/strategies';
 import { doc, getDoc, runTransaction, collection, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/clientApp';
@@ -77,7 +77,10 @@ describe('E2E Flows (Integration)', () => {
 
     // 5. Revertir Producción
     const logsSnap = await getDocs(collection(db, 'production_logs'));
-    await revertProductionLog(logsSnap.docs[0].id, 'admin@test.com');
+    await callableRevertProductionLog({
+      data: { logId: logsSnap.docs[0].id },
+      auth: { uid: 'admin-123', token: { email: 'admin@test.com', role: 'ADMIN' } }
+    } as any);
 
     const stockSnapFinal = await getDoc(doc(db, 'inventory_stock', 'P38'));
     expect(stockSnapFinal.data()?.totalQuantity).toBe(0);
