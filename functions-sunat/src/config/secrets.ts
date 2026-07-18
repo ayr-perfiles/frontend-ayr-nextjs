@@ -20,10 +20,6 @@ export const SUNAT_CONSULTA_CLIENT_SECRET = defineSecret(
   "SUNAT_CONSULTA_CLIENT_SECRET",
 );
 
-// API Token para consultas de RUC/DNI (apis.net.pe)
-// NOTA: El valor real se setea con `firebase functions:secrets:set APISNET_TOKEN`.
-// El token anterior fue rotado tras detectarse su exposición en código.
-export const APISNET_TOKEN = defineSecret("APISNET_TOKEN");
 
 // Algolia Admin Key para re-indexación manual si fuera necesario
 export const ALGOLIA_ADMIN_KEY = defineSecret("ALGOLIA_ADMIN_KEY");
@@ -38,6 +34,5 @@ export const ALL_SECRETS = [
   SUNAT_CERT_PASSWORD,
   SUNAT_CONSULTA_CLIENT_ID,
   SUNAT_CONSULTA_CLIENT_SECRET,
-  APISNET_TOKEN,
   ALGOLIA_ADMIN_KEY,
 ];

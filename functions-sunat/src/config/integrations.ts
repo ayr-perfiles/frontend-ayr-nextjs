@@ -37,9 +37,6 @@ export interface SunatConsultaConfig extends IntegrationConfig<{
   grantType: string;
 }> {}
 
-export interface ApisnetConfig extends IntegrationConfig<{
-  baseUrl: string;
-}> {}
 
 export interface AlgoliaConfig extends IntegrationConfig<{
   appId: string;
