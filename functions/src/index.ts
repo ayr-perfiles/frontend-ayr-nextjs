@@ -401,3 +401,6 @@ export { registerCoil } from "./callables/coilRegistration";
 
 export { voidCoil, updateCoil, cancelCoilPlan, deleteCoilDraft } from "./callables/coilManagement";
 export { registerCoilsBulk } from "./callables/coilBulkRegistration";
+
+// INTEGRACIONES: Consultas RUC/DNI
+export { consultarRuc, consultarDni } from "./callables/integrations";
