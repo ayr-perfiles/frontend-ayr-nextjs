@@ -466,13 +466,13 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
               </label>
               <select
                 value={values.currency}
-                onChange={(e) =>
+                onChange={(e) => {
                   setValues((prev) => ({
                     ...prev,
                     currency: e.target.value as "PEN" | "USD",
                   }));
                   setErrors((prev) => ({ ...prev, exchangeRate: undefined }));
-                }
+                }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500"
               >
                 <option value="PEN">Soles (S/)</option>
