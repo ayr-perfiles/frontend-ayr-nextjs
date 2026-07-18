@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { httpsCallable } from "firebase/functions";
-import { functions } from "@/lib/firebase";
+import { functions } from "@/lib/firebase/clientApp";
 import { useProductionLogs } from "@/modules/drywall/hooks/useProductionLogs";
 import toast from "react-hot-toast";
 
