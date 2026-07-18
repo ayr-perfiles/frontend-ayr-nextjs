@@ -283,7 +283,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 
 ## 11. Deuda Técnica Menor (Backlog)
 
-- **BACKLOG (alta, user-facing prod): RUC/DNI roto en prod.** (1) confirmar si consultarRuc/Dni está desplegada en ayrsteel-2026; (2) setear secret APISNET_TOKEN real en prod; (3) seed integrations/apisnet en prod. Entrelazado con divergencia SUNAT-solo-en-test.
+- **RUC/DNI en prod RESUELTO:** consultarRuc/Dni extraídas a codebase `functions` (default, sin secrets SOL), secret APISNET_TOKEN + doc integrations/apisnet sembrados en prod, funcionando. Pendiente menor: (1) rotar el token de decolecta (quedó expuesto en un chat); (2) ruta muerta src/app/api/consulta-doc/route.ts (deuda cosmética).
 - **Ventas históricas pre-multilínea sin `businessLines`/`items[].businessLine`** (era todo drywall) → invisibles al filtro por línea. Deuda ACEPTADA; filtro sirve para data nueva. Backfill descartado (migración de data financiera en prod, alto riesgo/bajo valor) salvo necesidad real de reportar históricos por línea.
 - **Índice sales agregado + hook endurecido:** Índice sales(businessLines CONTAINS, timestamp, totalAmount, totalProfit, totalWeight) agregado. Arregla filtro por línea + agregados. `useSales` ahora muestra error visible en `/admin/sales` en caso de fallar, en vez de tragarlo.
 - **`piecesProduced` nombre engañoso** (carga ML en coberturas). Decisión: NO renombrar (canónico compartido con Drywall).
