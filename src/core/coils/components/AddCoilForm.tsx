@@ -40,6 +40,7 @@ interface CoilEntry {
   thickness: number | "";
   finish: string;
   value: number | "";
+  isManual?: boolean;
 }
 
 type RowErrors = Partial<
@@ -76,6 +77,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     useForm<CoilInvoiceHeader>(coilInvoiceHeaderSchema, initialHeader);
 
   // --- COIL ROWS ---
+  const [baseSerie, setBaseSerie] = useState("");
   const [coils, setCoils] = useState<CoilEntry[]>([
     {
       uid: Date.now().toString(),
@@ -85,9 +87,24 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       thickness: 0.45,
       finish: "",
       value: "",
+      isManual: false,
     },
   ]);
   const [coilErrors, setCoilErrors] = useState<Record<string, RowErrors>>({});
+
+  const handleBaseSerieChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newBase = e.target.value.toUpperCase();
+    setBaseSerie(newBase);
+    setCoils((prev) =>
+      prev.map((coil, idx) => {
+        if (coil.isManual) return coil;
+        return {
+          ...coil,
+          coilId: newBase ? `${newBase}-${idx + 1}` : "",
+        };
+      })
+    );
+  };
 
   // --- FETCH EXCHANGE RATE ---
   useEffect(() => {
@@ -170,12 +187,13 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       ...coils,
       {
         uid: Date.now().toString(),
-        coilId: "",
+        coilId: baseSerie ? `${baseSerie}-${coils.length + 1}` : "",
         weight: "",
         width: 1200,
         thickness: 0.45,
         finish: "",
         value: "",
+        isManual: false,
       },
     ]);
   };
@@ -198,7 +216,14 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     field: keyof CoilEntry,
     val: CoilEntry[keyof CoilEntry],
   ) => {
-    setCoils(coils.map((c) => (c.uid === uid ? { ...c, [field]: val } : c)));
+    setCoils(
+      coils.map((c) => {
+        if (c.uid !== uid) return c;
+        const next = { ...c, [field]: val };
+        if (field === "coilId") next.isManual = true;
+        return next;
+      })
+    );
     if (coilErrors[uid]?.[field as keyof RowErrors]) {
       setCoilErrors((prev) => ({
         ...prev,
@@ -513,6 +538,19 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                   TC real no disponible — ingresá el TC del día
                 </p>
               )}
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">
+                Base de N° Serie
+              </label>
+              <input
+                type="text"
+                placeholder="Ej. F001-13071"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500"
+                value={baseSerie}
+                onChange={handleBaseSerieChange}
+              />
             </div>
           </div>
         </div>
