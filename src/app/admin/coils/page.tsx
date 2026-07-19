@@ -26,6 +26,8 @@ import {
 import { fetchAvailableCoilsForExport } from "@/core/coils/services/coilService";
 import { useAuth } from "@/context/AuthContext";
 import { useConfirm } from "@/context/ConfirmContext";
+import { useFinishes } from "@/core/coils/hooks/useFinishes";
+import { calcCoilTheoreticalML } from "@/modules/metallic-roofing/domain/yieldCalc";
 
 import { InventoryFilters } from "@/core/coils/components/InventoryFilters";
 import { EditData } from "@/core/coils/components/EditCoilModal";
@@ -54,6 +56,7 @@ export default function CoilsPage() {
 
   const [metrics, setMetrics] = useState({
     byFinish: {} as Record<string, number>,
+    byFinishML: {} as Record<string, number>,
     enTercero: 0,
     totalValuePEN: 0,
     totalAvailableKg: 0,
@@ -86,6 +89,8 @@ export default function CoilsPage() {
   const [splittingCoil, setSplittingCoil] = useState<Coil | null>(null);
   const [scrappingCoil, setScrappingCoil] = useState<Coil | null>(null);
   const [showXmlModal, setShowXmlModal] = useState(false);
+  
+  const { finishes } = useFinishes(true);
 
   // 2. Data Hook
   const {
@@ -160,6 +165,7 @@ export default function CoilsPage() {
         
         const summary = {
           byFinish: {} as Record<string, number>,
+          byFinishML: {} as Record<string, number>,
           enTercero: 0,
           totalValuePEN: 0,
           totalAvailableKg: 0,
@@ -183,6 +189,19 @@ export default function CoilsPage() {
             summary.alerts.noFinish++;
           } else {
             summary.byFinish[coil.finish] = (summary.byFinish[coil.finish] || 0) + weight;
+            
+            if (coil.status === 'AVAILABLE' || coil.status === 'IN_PROGRESS') {
+              const finishDef = finishes.find(f => f.id === coil.finish);
+              if (coil.thickness && coil.masterWidth && finishDef?.densityFactor) {
+                const ml = calcCoilTheoreticalML({
+                  weightKg: weight,
+                  thicknessMm: coil.thickness,
+                  masterWidthMm: coil.masterWidth,
+                  densityFactor: finishDef.densityFactor
+                });
+                summary.byFinishML[coil.finish] = (summary.byFinishML[coil.finish] || 0) + ml;
+              }
+            }
           }
 
           if (coil.status === 'AVAILABLE' && weight < 500) {
@@ -196,7 +215,7 @@ export default function CoilsPage() {
       }
     };
     fetchFullMetrics();
-  }, [searchTerm, statusFilter, finishFilter, currencyFilter, providerFilter, startDate, endDate, coils]);
+  }, [searchTerm, statusFilter, finishFilter, currencyFilter, providerFilter, startDate, endDate, coils, finishes]);
 
   // 5. Handlers
   const handleSelect = (id: string) => {

@@ -27,6 +27,7 @@ import {
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { functions } from "@/lib/firebase/clientApp";
 import { httpsCallable } from "firebase/functions";
+import { calcCoilTheoreticalML } from "@/modules/metallic-roofing/domain/yieldCalc";
 
 interface AddCoilFormProps {
   onOpenChange: (isOpen: boolean) => void;
@@ -655,6 +656,18 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                         updateCoil(coil.uid, "weight", e.target.value)
                       }
                     />
+                    {(() => {
+                      if (!coil.weight || !coil.width || !coil.thickness || !selectedFinish?.densityFactor) {
+                        return <p className="text-[10px] font-bold text-slate-400 mt-1">≈ — ML</p>;
+                      }
+                      const ml = calcCoilTheoreticalML({
+                        weightKg: Number(coil.weight),
+                        thicknessMm: Number(coil.thickness),
+                        masterWidthMm: Number(coil.width),
+                        densityFactor: selectedFinish.densityFactor,
+                      });
+                      return <p className="text-[10px] font-black text-blue-600 mt-1">≈ {ml.toFixed(2)} ML</p>;
+                    })()}
                     {rowErr.weight && (
                       <p className="text-red-500 text-xs mt-1">
                         {rowErr.weight}
