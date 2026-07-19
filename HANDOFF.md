@@ -1,8 +1,8 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.22).
-> Preferencias: Prompts Claude Code por defecto. Caveman mode. PASO 0 read-only en cada prompt.
-> Preguntar ante duda de negocio. NUNCA cerrar en verde sin RUNTIME (lo corre el USUARIO, no Claude).
+> Subir SIEMPRE al inicio: este HANDOFF + GEMINI.md (v6.22).
+> Preferencias: Prompts Gemini Code por defecto. Caveman mode. PASO 0 read-only en cada prompt.
+> Preguntar ante duda de negocio. NUNCA cerrar en verde sin RUNTIME (lo corre el USUARIO, no Gemini).
 > npm run build LOCAL antes de merge a master. Un frente a la vez, confirmar cierre antes de seguir.
 > backend en prod antes que master.
 
@@ -32,5 +32,5 @@
 - **MANTENER:** las reglas de oro (runtime lo corre el usuario; números crudos no conclusiones; npm run build local antes de merge; deploy por función específica leyendo el plan; PASO 0 read-only; un frente a la vez; backend en prod antes que master).
 - **Recordatorio de disciplina:** contra PROD, revisar uid del ADMIN + guard de proyecto ANTES de correr el script.
 
-## Deudas vivas (detalle en CLAUDE.md §11)
-- Detalle extendido en CLAUDE.md.
+## Deudas vivas (detalle en GEMINI.md §11)
+- Detalle extendido en GEMINI.md.
