@@ -15,9 +15,9 @@ import { produceFromStrip as callableProduceFromStrip } from '../../../functions
 import { 
   saveCuttingPlan, 
   processSingleStrip, 
-  cancelCuttingPlan,
-  revertProductionLog
+  cancelCuttingPlan
 } from '@/modules/drywall/services/productionService';
+import { revertProductionLog as callableRevertProductionLog } from '../../../functions/src/callables/drywallProduction';
 import { doc, getDoc, collection, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/clientApp';
 
@@ -103,7 +103,10 @@ describe('Drywall Production (Integration)', () => {
     const logId = logsSnap.docs[0].id;
     
     // Revertir
-    await revertProductionLog(logId, 'admin@test.com');
+    await callableRevertProductionLog({
+      data: { logId },
+      auth: { uid: 'admin-123', token: { email: 'admin@test.com', role: 'ADMIN' } }
+    } as any);
     
     // Bobina debe volver a peso inicial (o casi, por redondeos)
     const coilSnap = await getDoc(doc(db, 'coils', coilId));
@@ -118,5 +121,40 @@ describe('Drywall Production (Integration)', () => {
     // Log debe estar VOIDED
     const logSnap = await getDoc(doc(db, 'production_logs', logId));
     expect((logSnap.data() as any)?.status).toBe('VOIDED');
+  });
+
+  it('revertProductionLog: guard posterior bloquea si hay venta posterior (fail-closed)', async () => {
+    const coilId = await seedCoil(db, { 
+      id: 'BOB-GUARD', 
+      finish: 'GALVANIZADO',
+      initialWeight: 1000,
+      currentWeight: 1000,
+      masterWidth: 1200,
+      pricePerKg: 4
+    });
+    
+    await saveCuttingPlan(coilId, [{ sku: 'P38GALV', quantity: 1 }]);
+    await processSingleStrip(coilId, 'P38GALV', 10, 'op-1');
+    
+    const logsSnap = await getDocs(collection(db, 'production_logs'));
+    // Encontrar el log correspondiente a BOB-GUARD
+    const targetLogDoc = logsSnap.docs.find(d => d.data().parentCoilId === 'BOB-GUARD');
+    const logId = targetLogDoc!.id;
+    const logData = targetLogDoc!.data();
+
+    // Simular venta posterior
+    await setDoc(doc(db, 'sales', 'SALE-POSTERIOR'), {
+      skus: ['P38GALV'],
+      status: 'COMPLETED',
+      timestamp: { toMillis: () => logData.timestamp.toMillis() + 10000 } // Simulando timestamp futuro
+    });
+
+    // Intentar revertir debe fallar
+    await expect(
+      callableRevertProductionLog({
+        data: { logId },
+        auth: { uid: 'admin-123', token: { email: 'admin@test.com', role: 'ADMIN' } }
+      } as any)
+    ).rejects.toThrow(/ventas posteriores/);
   });
 });

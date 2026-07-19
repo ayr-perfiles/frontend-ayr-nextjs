@@ -33,13 +33,12 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.consultarDni = exports.consultarRuc = exports.validarCpeSunat = void 0;
+exports.validarCpeSunat = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
 const secrets_1 = require("../config/secrets");
 const sunatConsultaService_1 = require("../sunat/sunatConsultaService");
-const apisnet_1 = require("../services/apisnet");
 /**
  * Callable para validar un comprobante (CPE) en SUNAT
  */
@@ -85,71 +84,6 @@ exports.validarCpeSunat = (0, https_1.onCall)({ secrets: secrets_1.ALL_SECRETS }
     catch (error) {
         console.error("Error en validarCpeSunat:", error);
         throw new https_1.HttpsError("internal", error.message || "Error al validar comprobante en SUNAT");
-    }
-});
-/**
- * Callable para consultar datos de RUC en APIS.NET (decolecta.com)
- */
-exports.consultarRuc = (0, https_1.onCall)({ secrets: [secrets_1.APISNET_TOKEN] }, async (request) => {
-    if (!request.auth) {
-        throw new https_1.HttpsError("unauthenticated", "Usuario no autenticado");
-    }
-    const { ruc, full = true } = request.data;
-    if (!ruc || ruc.length !== 11) {
-        throw new https_1.HttpsError("invalid-argument", "RUC inválido. Debe tener 11 dígitos.");
-    }
-    try {
-        const data = await (0, apisnet_1.fetchRucData)(ruc, full);
-        // Audit Log
-        const db = admin.firestore();
-        await db.collection("audit_logs").add({
-            action: "ENRICH_PARTY_DATA",
-            entityId: ruc,
-            userEmail: request.auth.token.email || "unknown",
-            details: `Consulta de RUC: ${data.razonSocial || data.razon_social || "Desconocido"}`,
-            timestamp: firestore_1.FieldValue.serverTimestamp(),
-        });
-        return { success: true, data };
-    }
-    catch (error) {
-        console.error("Error en consultarRuc:", error);
-        const message = error.message || "Error al consultar RUC";
-        throw new https_1.HttpsError("internal", message.includes("apis.net")
-            ? message
-            : `Error al consultar RUC: ${message}`);
-    }
-});
-/**
- * Callable para consultar datos de DNI en APIS.NET (decolecta.com)
- */
-exports.consultarDni = (0, https_1.onCall)({ secrets: [secrets_1.APISNET_TOKEN] }, async (request) => {
-    if (!request.auth) {
-        throw new https_1.HttpsError("unauthenticated", "Usuario no autenticado");
-    }
-    const { dni } = request.data;
-    if (!dni || dni.length !== 8) {
-        throw new https_1.HttpsError("invalid-argument", "DNI inválido. Debe tener 8 dígitos.");
-    }
-    try {
-        const data = await (0, apisnet_1.fetchDniData)(dni);
-        // Audit Log
-        const db = admin.firestore();
-        await db.collection("audit_logs").add({
-            action: "ENRICH_PARTY_DATA",
-            entityId: dni,
-            userEmail: request.auth.token.email || "unknown",
-            details: `Consulta de DNI: ${data.nombres || ""} ${data.apellidoPaterno || ""}`.trim() ||
-                "Desconocido",
-            timestamp: firestore_1.FieldValue.serverTimestamp(),
-        });
-        return { success: true, data };
-    }
-    catch (error) {
-        console.error("Error en consultarDni:", error);
-        const message = error.message || "Error al consultar DNI";
-        throw new https_1.HttpsError("internal", message.includes("apis.net")
-            ? message
-            : `Error al consultar DNI: ${message}`);
     }
 });
 //# sourceMappingURL=integrations.js.map

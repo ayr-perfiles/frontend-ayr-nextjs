@@ -35,7 +35,11 @@ export const registerCoil = onCall(async (request) => {
     throw new HttpsError("permission-denied", "Solo un ADMIN o SUPERVISOR puede registrar bobinas");
   }
 
-  const { coils, invoice } = request.data as { coils: CoilInput[]; invoice: InvoiceInput };
+  const { coils, invoice, requestId } = request.data as { coils: CoilInput[]; invoice: InvoiceInput; requestId: string };
+
+  if (!requestId || typeof requestId !== "string") {
+    throw new HttpsError("invalid-argument", "El requestId es obligatorio para garantizar idempotencia");
+  }
 
   if (!Array.isArray(coils) || coils.length === 0) {
     throw new HttpsError("invalid-argument", "Debe enviar al menos una bobina");
@@ -51,16 +55,16 @@ export const registerCoil = onCall(async (request) => {
   // Validate each coil input
   for (const coil of coils) {
     const weight = Number(coil.weight);
-    if (!coil.coilId || typeof coil.coilId !== "string" || coil.coilId.trim() === "") {
-      throw new HttpsError("invalid-argument", "Cada bobina debe tener un coilId válido");
-    }
     if (isNaN(weight) || weight <= 0) {
-      throw new HttpsError("invalid-argument", `El peso de la bobina ${coil.coilId} debe ser mayor a 0`);
+      throw new HttpsError("invalid-argument", `El peso de la bobina debe ser mayor a 0`);
     }
     if (!coil.finish || typeof coil.finish !== "string") {
-      throw new HttpsError("invalid-argument", `La bobina ${coil.coilId} debe tener un acabado`);
+      throw new HttpsError("invalid-argument", `La bobina debe tener un acabado`);
     }
   }
+
+  const provParts = (invoice?.provider || "PROV").toUpperCase().replace(/[^A-Z0-9 ]/g, "").split(/\s+/).filter(Boolean);
+  const provCode = provParts.length > 0 ? provParts[0].substring(0, 6) : "PROV";
 
   const db = admin.firestore();
 
@@ -72,19 +76,15 @@ export const registerCoil = onCall(async (request) => {
 
   return await db.runTransaction(async (transaction) => {
     // === ALL READS FIRST ===
-
-    // Read all coil docs to check for duplicates
-    const coilRefs = coils.map((c) =>
-      db.collection("coils").doc(c.coilId.toUpperCase())
-    );
-    const coilSnaps = await Promise.all(coilRefs.map((ref) => transaction.get(ref)));
-
-    for (let i = 0; i < coilSnaps.length; i++) {
-      if (coilSnaps[i].exists) {
-        const id = coils[i].coilId.toUpperCase();
-        throw new HttpsError("already-exists", `La bobina ${id} ya está registrada.`);
-      }
+    const idempotencyRef = db.collection("idempotency_keys").doc(requestId);
+    const idempotencySnap = await transaction.get(idempotencyRef);
+    if (idempotencySnap.exists) {
+      return idempotencySnap.data()!.result as { success: boolean, coilIds: string[] };
     }
+
+    const counterRef = db.collection("counters").doc("coils");
+    const counterSnap = await transaction.get(counterRef);
+    let currentCounter = counterSnap.exists ? (counterSnap.data()?.current || 0) : 0;
 
     // Read distinct finishes
     const distinctFinishes = [...new Set(coils.map((c) => c.finish))];
@@ -120,7 +120,14 @@ export const registerCoil = onCall(async (request) => {
 
     for (let i = 0; i < coils.length; i++) {
       const coil = coils[i];
-      const id = coil.coilId.toUpperCase();
+      currentCounter++;
+      
+      const safeFinish = coil.finish.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+      const esp = Math.round(Number(coil.thickness) * 100).toString().padStart(3, "0");
+      const peso = Math.round(Number(coil.weight)).toString();
+      const nnnnn = currentCounter.toString().padStart(5, "0");
+      
+      const id = `${provCode}-${safeFinish}-${esp}-${peso}-${nnnnn}`;
       const weight = Number(coil.weight);
       const inputValue = Number(coil.value);
       const totalPEN = currency === "USD" ? inputValue * exchangeRate : inputValue;
@@ -135,6 +142,7 @@ export const registerCoil = onCall(async (request) => {
         finish: coil.finish,
         pricePerKg,
         status: "AVAILABLE",
+        isClosed: false,
         registeredBy: email,
         createdAt: now,
         updatedAt: now,
@@ -156,9 +164,15 @@ export const registerCoil = onCall(async (request) => {
         },
       };
 
-      transaction.set(coilRefs[i], coilDoc);
+      const coilRef = db.collection("coils").doc(id);
+      transaction.set(coilRef, coilDoc);
       coilIds.push(id);
     }
+
+    transaction.set(counterRef, {
+      current: currentCounter,
+      updatedAt: now,
+    }, { merge: true });
 
     const auditRef = db.collection("audit_logs").doc();
     transaction.set(auditRef, {
@@ -169,6 +183,12 @@ export const registerCoil = onCall(async (request) => {
       timestamp: now,
     });
 
-    return { success: true, coilIds };
+    const result = { success: true, coilIds };
+    transaction.set(idempotencyRef, {
+      result,
+      createdAt: now,
+    });
+
+    return result;
   });
 });

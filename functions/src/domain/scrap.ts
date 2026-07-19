@@ -44,3 +44,68 @@ export function determineCoilStatusAfterReversal(
 ): CoilStatus {
   return newWeight >= initialWeight - REVERSAL_EPSILON ? "AVAILABLE" : "IN_PROGRESS";
 }
+
+export function buildScrapTransactionWrites({
+  coilId,
+  coil,
+  scrapWeightKg,
+  reason,
+  uid,
+  now,
+  scrapLogId,
+}: {
+  coilId: string;
+  coil: { currentWeight?: number; initialWeight?: number; pricePerKg?: number; status: string };
+  scrapWeightKg: number;
+  reason: string;
+  uid: string;
+  now: any;
+  scrapLogId: string;
+}) {
+  const currentWeight = coil.currentWeight ?? coil.initialWeight ?? 0;
+  const pricePerKg = coil.pricePerKg ?? 0;
+
+  const scrapCostPEN = calculateScrapCost(scrapWeightKg, pricePerKg);
+  const newWeight = calculateNewWeight(currentWeight, scrapWeightKg);
+  const hasNegativeCoilWarning = newWeight < 0;
+  const newStatus = determineCoilStatusAfterScrap(newWeight, coil.status);
+
+  return {
+    newWeight,
+    scrapCostPEN,
+    hasNegativeCoilWarning,
+    newStatus,
+    coilUpdate: {
+      currentWeight: newWeight,
+      status: newStatus,
+      updatedAt: now,
+    },
+    kardexWrite: {
+      sku: coilId,
+      date: now,
+      type: "SCRAP",
+      quantity: 1,
+      weightKg: scrapWeightKg,
+      costPerKg: pricePerKg,
+      balance: newWeight,
+      reference: scrapLogId,
+      description: `Merma: ${reason.trim()}`,
+      user: uid,
+    },
+    scrapLogWrite: {
+      coilId,
+      scrapWeightKg,
+      scrapCostPEN,
+      reason: reason.trim(),
+      adminId: uid,
+      timestamp: now,
+    },
+    auditWrite: {
+      action: "REGISTER_SCRAP",
+      entityId: coilId,
+      userEmail: uid,
+      details: `Merma: ${scrapWeightKg} kg (S/ ${scrapCostPEN}). Motivo: ${reason.trim()}. Peso resultante: ${newWeight} kg.`,
+      timestamp: now,
+    }
+  };
+}

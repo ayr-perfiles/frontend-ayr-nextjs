@@ -1,6 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 export { produceFromCoils, voidProductionFromCoils } from "./callables/production";
-export { produceFromStrip } from "./callables/drywallProduction";
+export { produceFromStrip, revertProductionLog } from "./callables/drywallProduction";
 /**
  * Cloud Functions para AYR Steel ERP
  *
@@ -401,6 +401,7 @@ export { registerCoil } from "./callables/coilRegistration";
 
 export { voidCoil, updateCoil, cancelCoilPlan, deleteCoilDraft } from "./callables/coilManagement";
 export { registerCoilsBulk } from "./callables/coilBulkRegistration";
+export { setCoilClosed } from "./callables/coilClose";
 
 // INTEGRACIONES: Consultas RUC/DNI
 export { consultarRuc, consultarDni } from "./callables/integrations";

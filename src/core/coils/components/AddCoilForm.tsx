@@ -27,6 +27,7 @@ import {
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { functions } from "@/lib/firebase/clientApp";
 import { httpsCallable } from "firebase/functions";
+import { calcCoilTheoreticalML } from "@/modules/metallic-roofing/domain/yieldCalc";
 
 interface AddCoilFormProps {
   onOpenChange: (isOpen: boolean) => void;
@@ -34,7 +35,7 @@ interface AddCoilFormProps {
 
 interface CoilEntry {
   uid: string;
-  coilId: string;
+  coilId?: string;
   weight: number | "";
   width: number | "";
   thickness: number | "";
@@ -60,6 +61,8 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
   const [loading, setLoading] = useState(false);
   const [searchingDoc, setSearchingDoc] = useState(false);
   const [fetchingRate, setFetchingRate] = useState(false);
+  
+  const [requestId] = useState(() => crypto.randomUUID());
 
   // --- HEADER FORM ---
   const initialHeader: CoilInvoiceHeader = {
@@ -79,7 +82,6 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
   const [coils, setCoils] = useState<CoilEntry[]>([
     {
       uid: Date.now().toString(),
-      coilId: "",
       weight: "",
       width: 1200,
       thickness: 0.45,
@@ -88,6 +90,11 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     },
   ]);
   const [coilErrors, setCoilErrors] = useState<Record<string, RowErrors>>({});
+
+  const provParts = (values.providerName || "PROV").toUpperCase().replace(/[^A-Z0-9 ]/g, "").split(/\s+/).filter(Boolean);
+  const provCode = provParts.length > 0 ? provParts[0].substring(0, 6) : "PROV";
+
+
 
   // --- FETCH EXCHANGE RATE ---
   useEffect(() => {
@@ -170,7 +177,6 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       ...coils,
       {
         uid: Date.now().toString(),
-        coilId: "",
         weight: "",
         width: 1200,
         thickness: 0.45,
@@ -198,7 +204,12 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     field: keyof CoilEntry,
     val: CoilEntry[keyof CoilEntry],
   ) => {
-    setCoils(coils.map((c) => (c.uid === uid ? { ...c, [field]: val } : c)));
+    setCoils(
+      coils.map((c) => {
+        if (c.uid !== uid) return c;
+        return { ...c, [field]: val };
+      })
+    );
     if (coilErrors[uid]?.[field as keyof RowErrors]) {
       setCoilErrors((prev) => ({
         ...prev,
@@ -225,7 +236,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     const rowErrors: Record<string, RowErrors> = {};
     for (const coil of coils) {
       const result = coilEntryFormSchema.safeParse({
-        coilId: coil.coilId,
+        coilId: "AUTO",
         weight: coil.weight,
         width: coil.width,
         thickness: coil.thickness,
@@ -251,7 +262,6 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     setLoading(true);
     try {
       const payloadCoils = coils.map((coil) => ({
-        coilId: coil.coilId.toString().toUpperCase(),
         weight: Number(coil.weight),
         width: Number(coil.width),
         thickness: Number(coil.thickness),
@@ -271,7 +281,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       };
 
       const registerCoilFn = httpsCallable(functions, "registerCoil");
-      await registerCoilFn({ coils: payloadCoils, invoice: payloadInvoice });
+      await registerCoilFn({ coils: payloadCoils, invoice: payloadInvoice, requestId });
 
       const isConverted = values.currency === "USD";
       toast.success(
@@ -295,8 +305,8 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     }
   };
 
-  const hasHeaderErrors = Object.keys(errors).length > 0;
-  const hasRowErrors = Object.keys(coilErrors).length > 0;
+  const hasHeaderErrors = Object.values(errors).some(Boolean);
+  const hasRowErrors = Object.values(coilErrors).some((errObj) => Object.values(errObj).some(Boolean));
 
   const totalInvoiceValue = coils.reduce(
     (sum, c) => sum + (Number(c.value) || 0),
@@ -432,7 +442,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     ...prev,
                     invoiceDate: e.target.value,
                   }));
-                  setErrors((prev) => ({ ...prev, invoiceDate: undefined }));
+                  setErrors((prev) => ({ ...prev, invoiceDate: undefined, exchangeRate: undefined }));
                 }}
               />
               {errors.invoiceDate && (
@@ -466,12 +476,13 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
               </label>
               <select
                 value={values.currency}
-                onChange={(e) =>
+                onChange={(e) => {
                   setValues((prev) => ({
                     ...prev,
                     currency: e.target.value as "PEN" | "USD",
-                  }))
-                }
+                  }));
+                  setErrors((prev) => ({ ...prev, exchangeRate: undefined }));
+                }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500"
               >
                 <option value="PEN">Soles (S/)</option>
@@ -481,7 +492,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
 
             <div>
               <label
-                className={`block text-[11px] font-bold mb-1.5 uppercase ${errors.exchangeRate ? "text-red-500" : "text-slate-500"}`}
+                className={`block text-[11px] font-bold mb-1.5 uppercase ${errors.exchangeRate ? "text-red-500" : (values.currency === "USD" && values.exchangeRate <= 1) ? "text-orange-500" : "text-slate-500"}`}
               >
                 T. Cambio
               </label>
@@ -489,7 +500,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                 type="number"
                 step="0.001"
                 disabled={values.currency === "PEN"}
-                className={`w-full bg-white border rounded-lg p-2.5 text-sm font-bold disabled:bg-slate-100 outline-none focus:border-blue-500 ${errors.exchangeRate ? "border-red-300" : "border-slate-200"}`}
+                className={`w-full bg-white border rounded-lg p-2.5 text-sm font-bold disabled:bg-slate-100 outline-none focus:border-blue-500 ${errors.exchangeRate ? "border-red-300" : (values.currency === "USD" && values.exchangeRate <= 1) ? "border-orange-400 bg-orange-50" : "border-slate-200"}`}
                 value={values.exchangeRate}
                 onChange={(e) => {
                   setValues((prev) => ({
@@ -507,7 +518,14 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                   {errors.exchangeRate}
                 </p>
               )}
+              {values.currency === "USD" && values.exchangeRate <= 1 && !errors.exchangeRate && !fetchingRate && (
+                <p className="text-orange-600 text-xs mt-1 font-semibold leading-tight">
+                  TC real no disponible — ingresá el TC del día
+                </p>
+              )}
             </div>
+
+
           </div>
         </div>
 
@@ -526,14 +544,14 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
           </header>
 
           <div className="space-y-3">
-            <div className="hidden lg:grid grid-cols-12 gap-4 px-4 py-3 bg-slate-50 rounded-lg text-[11px] font-black text-slate-500 uppercase">
-              <div className="col-span-2">N° Serie / ID *</div>
-              <div className="col-span-2">Acabado *</div>
-              <div className="col-span-2">Peso (kg) *</div>
-              <div className="col-span-2">Ancho (mm) *</div>
-              <div className="col-span-1">Espesor *</div>
-              <div className="col-span-2">Valor ({values.currency}) *</div>
-              <div className="col-span-1 text-center">Acción</div>
+            <div className="hidden lg:grid grid-cols-[minmax(0,2fr)_minmax(0,2.5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)] gap-4 px-4 py-3 bg-slate-50 rounded-lg text-[11px] font-black text-slate-500 uppercase">
+              <div>N° Serie / ID *</div>
+              <div>Acabado *</div>
+              <div>Peso (kg) *</div>
+              <div>Ancho (mm) *</div>
+              <div>Espesor *</div>
+              <div>Valor ({values.currency}) *</div>
+              <div className="text-center">Acción</div>
             </div>
 
             {coils.map((coil) => {
@@ -542,33 +560,23 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
               return (
                 <div
                   key={coil.uid}
-                  className={`grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 bg-white border rounded-lg relative transition ${Object.keys(rowErr).length > 0 ? "border-red-300 bg-red-50/20" : "border-slate-100 hover:border-blue-200 hover:shadow-md"}`}
+                  className={`grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,2.5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)] gap-4 p-4 bg-white border rounded-lg relative transition ${Object.values(rowErr).some(Boolean) ? "border-red-300 bg-red-50/20" : "border-slate-100 hover:border-blue-200 hover:shadow-md"}`}
                 >
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
                       N° Serie *
                     </label>
                     <input
                       type="text"
-                      placeholder="F001-..."
-                      className={`w-full border rounded-md p-2.5 text-sm font-black uppercase outline-none focus:bg-white focus:border-blue-500 ${rowErr.coilId ? "bg-red-50 border-red-300" : "bg-slate-50 border-slate-200"}`}
-                      value={coil.coilId}
-                      onChange={(e) =>
-                        updateCoil(
-                          coil.uid,
-                          "coilId",
-                          e.target.value.toUpperCase(),
-                        )
-                      }
+                      readOnly
+                      disabled
+                      className={`w-full border rounded-md p-2.5 text-sm font-black text-slate-400 uppercase outline-none bg-slate-100 border-slate-200 cursor-not-allowed`}
+                      value={`${provCode}-${coil.finish ? coil.finish.toUpperCase().replace(/[^A-Z0-9-]/g, "") : "ACABADO"}-${coil.thickness ? Math.round(Number(coil.thickness) * 100).toString().padStart(3, "0") : "ESP"}-${coil.weight ? Math.round(Number(coil.weight)).toString() : "PESO"}-AUTO`}
+                      title="Generado automáticamente por el sistema"
                     />
-                    {rowErr.coilId && (
-                      <p className="text-red-500 text-xs mt-1">
-                        {rowErr.coilId}
-                      </p>
-                    )}
                   </div>
 
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
                       Acabado *
                     </label>
@@ -598,7 +606,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     )}
                   </div>
 
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
                       Peso (kg) *
                     </label>
@@ -611,6 +619,18 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                         updateCoil(coil.uid, "weight", e.target.value)
                       }
                     />
+                    {(() => {
+                      if (!coil.weight || !coil.width || !coil.thickness || !selectedFinish?.densityFactor) {
+                        return <p className="text-[10px] font-bold text-slate-400 mt-1">≈ — ML</p>;
+                      }
+                      const ml = calcCoilTheoreticalML({
+                        weightKg: Number(coil.weight),
+                        thicknessMm: Number(coil.thickness),
+                        masterWidthMm: Number(coil.width),
+                        densityFactor: selectedFinish.densityFactor,
+                      });
+                      return <p className="text-[10px] font-black text-blue-600 mt-1">≈ {ml.toFixed(2)} ML</p>;
+                    })()}
                     {rowErr.weight && (
                       <p className="text-red-500 text-xs mt-1">
                         {rowErr.weight}
@@ -618,7 +638,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     )}
                   </div>
 
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
                       Ancho (mm) *
                     </label>
@@ -637,7 +657,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     )}
                   </div>
 
-                  <div className="lg:col-span-1">
+                  <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
                       Espesor (mm) *
                     </label>
@@ -657,7 +677,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     )}
                   </div>
 
-                  <div className="lg:col-span-2">
+                  <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
                       Valor {values.currency} *
                     </label>
@@ -697,7 +717,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     )}
                   </div>
 
-                  <div className="lg:col-span-1 flex items-end justify-center pb-1">
+                  <div className="flex items-end justify-center pb-1">
                     <button
                       type="button"
                       onClick={() => removeCoilRow(coil.uid)}

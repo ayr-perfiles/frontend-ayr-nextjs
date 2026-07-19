@@ -12,6 +12,7 @@ import {
 interface InventoryMetricsProps {
   metrics: {
     byFinish: Record<string, number>;
+    byFinishML?: Record<string, number>;
     enTercero: number;
     totalValuePEN: number;
     totalAvailableKg: number;
@@ -115,16 +116,24 @@ export function InventoryMetrics({ metrics }: InventoryMetricsProps) {
 
       {/* 2. DESGLOSE POR ACABADO */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-         {Object.entries(metrics.byFinish).map(([finish, weight]) => (
-           <div key={finish} className="bg-slate-50/50 border border-slate-100 px-4 py-3 rounded-2xl flex flex-col justify-center">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider truncate mb-1">
-                {finish}
-              </span>
-              <span className="text-sm font-black text-slate-700">
-                {formatTn(weight)} <span className="text-[10px] text-slate-400">TN</span>
-              </span>
-           </div>
-         ))}
+         {Object.entries(metrics.byFinish).map(([finish, weight]) => {
+           const ml = metrics.byFinishML?.[finish];
+           return (
+             <div key={finish} className="bg-slate-50/50 border border-slate-100 px-4 py-3 rounded-2xl flex flex-col justify-center">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider truncate mb-1">
+                  {finish}
+                </span>
+                <span className="text-sm font-black text-slate-700">
+                  {formatTn(weight)} <span className="text-[10px] text-slate-400">TN</span>
+                  {ml !== undefined && (
+                    <span className="ml-1 text-blue-600">
+                      · {ml.toLocaleString('es-PE', { maximumFractionDigits: 0 })} <span className="text-[10px]">ML</span>
+                    </span>
+                  )}
+                </span>
+             </div>
+           );
+         })}
       </div>
     </div>
   );

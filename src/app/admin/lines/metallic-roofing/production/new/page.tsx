@@ -7,7 +7,7 @@ import { db } from "@/lib/firebase/clientApp";
 import { useAuth } from "@/context/AuthContext";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { listProducts } from "@/modules/metallic-roofing/services/catalogService";
-import { produceFromCoils, getQuoteFulfillmentLogs } from "@/modules/metallic-roofing/services/productionService";
+import { produceFromCoils, getQuoteFulfillmentLogs, getProducedForQuoteLine } from "@/modules/metallic-roofing/services/productionService";
 import { calcProductionFromCoils } from "@/modules/metallic-roofing/domain/coilProduction";
 import { isThicknessWithinTolerance } from "@/modules/metallic-roofing/domain/thicknessMatch";
 import { parsePositiveNumberInput, computeCoverageDeclaredMl } from "@/modules/metallic-roofing/domain/coverageProductionInput";
@@ -87,6 +87,53 @@ function MetallicProductionForm() {
     sunatFilter: "",
     skipAggregates: true,
   });
+
+  const [filteredQuotes, setFilteredQuotes] = useState<(Sale & { activeItems: SaleItem[] })[]>([]);
+  const [loadingFilteredQuotes, setLoadingFilteredQuotes] = useState(false);
+
+  useEffect(() => {
+    if (!quotes.length) {
+      setFilteredQuotes([]);
+      return;
+    }
+
+    let isMounted = true;
+    const computePending = async () => {
+      setLoadingFilteredQuotes(true);
+      try {
+        const result: (Sale & { activeItems: SaleItem[] })[] = [];
+        
+        for (const q of quotes) {
+          const metallicItems = q.items?.filter(item => item.businessLine === "metallic-roofing") || [];
+          if (metallicItems.length === 0) continue;
+          
+          const activeItems: SaleItem[] = [];
+          for (const item of metallicItems) {
+            const produced = await getProducedForQuoteLine(q.id!, item.sku);
+            const pending = Math.max(0, item.quantity - produced);
+            if (pending > 0) {
+              activeItems.push(item);
+            }
+          }
+          
+          if (activeItems.length > 0) {
+            result.push({ ...q, activeItems });
+          }
+        }
+        
+        if (isMounted) {
+          setFilteredQuotes(result);
+        }
+      } catch (err) {
+        console.error("Error filtrando cotizaciones:", err);
+      } finally {
+        if (isMounted) setLoadingFilteredQuotes(false);
+      }
+    };
+    
+    computePending();
+    return () => { isMounted = false; };
+  }, [quotes]);
 
   const [selectedSku, setSelectedSku] = useState("");
   const [rows, setRows] = useState<CoilRow[]>([newRow()]);
@@ -181,6 +228,7 @@ function MetallicProductionForm() {
         const validFinishIds = finishes.filter(f => f.lines.includes('metallic-roofing')).map(f => f.id);
         
         const coils = qSnap.docs.map(d => ({ id: d.id, ...d.data() } as Coil)).filter(c =>
+          !c.isClosed &&
           c.currentWeight > 0 &&
           c.thickness != null &&
           isThicknessWithinTolerance(c.thickness, selectedProduct.thickness) &&
@@ -381,7 +429,7 @@ function MetallicProductionForm() {
           <FileText size={14} className="text-orange-500" /> Producir contra Cotización (Obligatorio)
         </h2>
         
-        {loadingQuotes ? (
+        {loadingQuotes || loadingFilteredQuotes ? (
           <div className="flex items-center gap-2 text-slate-400 text-sm">
             <Loader2 size={16} className="animate-spin" /> Cargando cotizaciones...
           </div>
@@ -394,7 +442,7 @@ function MetallicProductionForm() {
                 onChange={(e) => {
                   const qId = e.target.value;
                   setSelectedQuoteId(qId);
-                  const q = quotes.find((s) => s.id === qId);
+                  const q = filteredQuotes.find((s) => s.id === qId);
                   if (q) {
                     setSelectedQuoteLabel(q.customerName || qId);
                   } else {
@@ -406,7 +454,7 @@ function MetallicProductionForm() {
                 }}
               >
                 <option value="">— Seleccionar Cotización —</option>
-                {quotes.map((q) => (
+                {filteredQuotes.map((q) => (
                   <option key={q.id} value={q.id}>
                     {q.id} — {q.customerName}
                   </option>
@@ -429,7 +477,7 @@ function MetallicProductionForm() {
               <div className="p-3 bg-orange-50 rounded-xl border border-orange-100">
                 <p className="text-xs font-bold text-orange-800 mb-2">Selecciona un producto de la cotización:</p>
                 <div className="grid gap-2">
-                  {quotes.find(q => q.id === selectedQuoteId)?.items?.filter(item => item.businessLine === "metallic-roofing").map((item, idx) => {
+                  {filteredQuotes.find(q => q.id === selectedQuoteId)?.activeItems.map((item, idx) => {
                     const produced = quoteLogs.filter(l => l.sku === item.sku).reduce((acc, l) => acc + (l.piecesProduced || 0), 0);
                     const pending = Math.max(0, item.quantity - produced);
                     const isFulfilled = pending === 0;

@@ -10,7 +10,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { revertProductionLog } from "@/modules/drywall/services/productionService";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "@/lib/firebase/clientApp";
 import { useProductionLogs } from "@/modules/drywall/hooks/useProductionLogs";
 import toast from "react-hot-toast";
 
@@ -83,11 +84,12 @@ export default function ProductionPage() {
       })
     ) {
       try {
-        await revertProductionLog(logId, user?.email || "Admin");
+        const revertFn = httpsCallable(functions, "revertProductionLog");
+        await revertFn({ logId });
         toast.success("✅ Producción anulada y costos revertidos.");
         refresh();
-      } catch (error: unknown) {
-        toast.error(error instanceof Error ? error.message : "Error al anular el registro.");
+      } catch (error: any) {
+        toast.error(error.message || "Error al anular el registro.");
       }
     }
   };

@@ -23,6 +23,7 @@ interface InventoryTableProps {
   onCancelPlan: (coilId: string) => void;
   onDeleteDraft?: (coilId: string) => void;
   onReverseSplit?: (childId: string) => void;
+  onToggleClose?: (coil: Coil) => void;
   onSendToCut?: (coil: Coil) => void;
   onSplit?: (coil: Coil) => void;
   onViewDetails: (coil: Coil) => void;
@@ -138,6 +139,7 @@ export default function InventoryTable({
   onCancelPlan,
   onDeleteDraft,
   onReverseSplit,
+  onToggleClose,
   onSendToCut,
   onSplit,
   onViewDetails,
@@ -294,7 +296,14 @@ export default function InventoryTable({
       key: "status",
       header: "Estado",
       render: (coil) => (
-        <StatusBadge status={coil.status} orderId={orderMapping[coil.id]} />
+        <div className="flex flex-col gap-1 items-center">
+          <StatusBadge status={coil.status} orderId={orderMapping[coil.id]} />
+          {coil.isClosed && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black border tracking-widest text-center bg-slate-800 text-white border-slate-900">
+              CERRADA
+            </span>
+          )}
+        </div>
       )
     },
     {
@@ -333,6 +342,16 @@ export default function InventoryTable({
         }
 
         const actions: RowAction[] = [];
+
+        if (role === "ADMIN" && !["SOLD", "VOIDED"].includes(coil.status)) {
+          actions.push({
+            id: "toggleClose",
+            label: coil.isClosed ? "Abrir bobina" : "Cerrar bobina",
+            icon: <AlertCircle size={16} />,
+            variant: "warning",
+            onClick: () => onToggleClose?.(coil),
+          });
+        }
 
         if (role === "ADMIN" && !["SOLD"].includes(coil.status)) {
           actions.push({

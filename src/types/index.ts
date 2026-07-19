@@ -46,6 +46,7 @@ export interface Coil {
     observations?: string;
     splitFrom?: string;  // ID de la bobina padre (solo en hijas de split)
   };
+  isClosed?: boolean;
 }
 
 export interface CutOrder {
