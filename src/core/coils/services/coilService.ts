@@ -396,3 +396,28 @@ export const voidCoilScrap = async (scrapLogId: string) => {
     throw new Error(error?.message || "Error al anular la merma.");
   }
 };
+
+export const setCoilClosed = async (coilId: string, close: boolean, remnantAsMerma?: boolean) => {
+  const callable = httpsCallable<{ coilId: string; close: boolean; remnantAsMerma?: boolean }, { success: boolean }>(
+    functions,
+    "setCoilClosed"
+  );
+  try {
+    const response = await callable({ coilId, close, remnantAsMerma });
+    return response.data;
+  } catch (error: any) {
+    if (error?.code) {
+      switch (error.code) {
+        case "unauthenticated":
+          throw new Error("Debes iniciar sesión para cerrar/abrir bobinas.");
+        case "permission-denied":
+          throw new Error("Solo un administrador puede cerrar/abrir bobinas.");
+        case "not-found":
+          throw new Error("La bobina especificada no existe.");
+        default:
+          throw new Error(error.message || "Error al cerrar/abrir bobina.");
+      }
+    }
+    throw new Error("Error interno del servidor.");
+  }
+};

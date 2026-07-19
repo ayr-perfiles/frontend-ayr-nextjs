@@ -3,10 +3,8 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import {
   validateScrapRequest,
-  calculateScrapCost,
-  calculateNewWeight,
-  determineCoilStatusAfterScrap,
   determineCoilStatusAfterReversal,
+  buildScrapTransactionWrites,
 } from "../domain/scrap";
 
 export const registerCoilScrap = onCall(async (request) => {
@@ -49,60 +47,36 @@ export const registerCoilScrap = onCall(async (request) => {
       );
     }
 
-    const currentWeight = coil.currentWeight ?? coil.initialWeight ?? 0;
-    const pricePerKg = coil.pricePerKg ?? 0;
-
-    const scrapCostPEN = calculateScrapCost(scrapWeightKg, pricePerKg);
-    const newWeight = calculateNewWeight(currentWeight, scrapWeightKg);
-    const hasNegativeCoilWarning = newWeight < 0;
-    const newStatus = determineCoilStatusAfterScrap(newWeight, coil.status);
-
     const kardexRef = db.collection("kardex_movements").doc();
     const scrapLogRef = db.collection("scrap_logs").doc();
     const auditRef = db.collection("audit_logs").doc();
 
     const now = FieldValue.serverTimestamp();
 
-    transaction.update(coilRef, {
-      currentWeight: newWeight,
-      status: newStatus,
-      updatedAt: now,
-    });
-
-    transaction.set(kardexRef, {
-      sku: coilId,
-      date: now,
-      type: "SCRAP",
-      quantity: 1,
-      weightKg: scrapWeightKg,
-      costPerKg: pricePerKg,
-      balance: newWeight,
-      reference: scrapLogRef.id,
-      description: `Merma: ${reason.trim()}`,
-      user: uid,
-    });
-
-    transaction.set(scrapLogRef, {
+    const writes = buildScrapTransactionWrites({
       coilId,
+      coil: {
+        currentWeight: coil.currentWeight,
+        initialWeight: coil.initialWeight,
+        pricePerKg: coil.pricePerKg,
+        status: coil.status,
+      },
       scrapWeightKg,
-      scrapCostPEN,
-      reason: reason.trim(),
-      adminId: uid,
-      timestamp: now,
+      reason,
+      uid,
+      now,
+      scrapLogId: scrapLogRef.id,
     });
 
-    transaction.set(auditRef, {
-      action: "REGISTER_SCRAP",
-      entityId: coilId,
-      userEmail: uid,
-      details: `Merma: ${scrapWeightKg} kg (S/ ${scrapCostPEN}). Motivo: ${reason.trim()}. Peso resultante: ${newWeight} kg.`,
-      timestamp: now,
-    });
+    transaction.update(coilRef, writes.coilUpdate);
+    transaction.set(kardexRef, writes.kardexWrite);
+    transaction.set(scrapLogRef, writes.scrapLogWrite);
+    transaction.set(auditRef, writes.auditWrite);
 
     return {
-      newWeight,
-      scrapCostPEN,
-      hasNegativeCoilWarning,
+      newWeight: writes.newWeight,
+      scrapCostPEN: writes.scrapCostPEN,
+      hasNegativeCoilWarning: writes.hasNegativeCoilWarning,
       scrapLogId: scrapLogRef.id,
     };
   });

@@ -22,6 +22,7 @@ import {
   cancelCoilPlan,
   deleteCoilDraft,
   reverseCoilSplit,
+  setCoilClosed,
 } from "@/core/coils/services/coilService";
 import { fetchAvailableCoilsForExport } from "@/core/coils/services/coilService";
 import { useAuth } from "@/context/AuthContext";
@@ -188,18 +189,20 @@ export default function CoilsPage() {
           if (!coil.finish) {
             summary.alerts.noFinish++;
           } else {
-            summary.byFinish[coil.finish] = (summary.byFinish[coil.finish] || 0) + weight;
-            
-            if (coil.status === 'AVAILABLE' || coil.status === 'IN_PROGRESS') {
-              const finishDef = finishes.find(f => f.id === coil.finish);
-              if (coil.thickness && coil.masterWidth && finishDef?.densityFactor) {
-                const ml = calcCoilTheoreticalML({
-                  weightKg: weight,
-                  thicknessMm: coil.thickness,
-                  masterWidthMm: coil.masterWidth,
-                  densityFactor: finishDef.densityFactor
-                });
-                summary.byFinishML[coil.finish] = (summary.byFinishML[coil.finish] || 0) + ml;
+            if (!coil.isClosed) {
+              summary.byFinish[coil.finish] = (summary.byFinish[coil.finish] || 0) + weight;
+              
+              if (coil.status === 'AVAILABLE' || coil.status === 'IN_PROGRESS') {
+                const finishDef = finishes.find(f => f.id === coil.finish);
+                if (coil.thickness && coil.masterWidth && finishDef?.densityFactor) {
+                  const ml = calcCoilTheoreticalML({
+                    weightKg: weight,
+                    thicknessMm: coil.thickness,
+                    masterWidthMm: coil.masterWidth,
+                    densityFactor: finishDef.densityFactor
+                  });
+                  summary.byFinishML[coil.finish] = (summary.byFinishML[coil.finish] || 0) + ml;
+                }
               }
             }
           }
@@ -333,6 +336,57 @@ export default function CoilsPage() {
         .promise(cancelCoilPlan(coilId, user?.email || "Admin"), {
           loading: "Cancelando plan...",
           success: "Plan cancelado. Bobina disponible.",
+          error: (err: any) => err.message,
+        })
+        .then(() => refresh());
+    }
+  };
+
+  const handleToggleClose = async (coil: Coil) => {
+    if (coil.isClosed) {
+      if (
+        await confirm({
+          title: "Abrir Bobina",
+          message: `¿Estás seguro de abrir la bobina ${coil.id}?`,
+          variant: "warning",
+          confirmLabel: "Abrir",
+        })
+      ) {
+        toast
+          .promise(setCoilClosed(coil.id, false), {
+            loading: "Abriendo...",
+            success: "Bobina abierta.",
+            error: (err: any) => err.message,
+          })
+          .then(() => refresh());
+      }
+    } else {
+      const w = coil.currentWeight || 0;
+      
+      const sureToClose = await confirm({
+        title: "Cerrar Bobina",
+        message: `¿Estás seguro de cerrar la bobina ${coil.id}?`,
+        variant: "warning",
+        confirmLabel: "Continuar",
+      });
+      
+      if (!sureToClose) return;
+
+      let remnantAsMerma = false;
+      if (w > 0) {
+        remnantAsMerma = await confirm({
+          title: "Remanente",
+          message: `¿El remanente (${w} kg) es merma?`,
+          variant: "warning",
+          confirmLabel: "Sí",
+          cancelLabel: "No",
+        });
+      }
+
+      toast
+        .promise(setCoilClosed(coil.id, true, remnantAsMerma), {
+          loading: "Cerrando...",
+          success: "Bobina cerrada.",
           error: (err: any) => err.message,
         })
         .then(() => refresh());
@@ -503,6 +557,7 @@ export default function CoilsPage() {
           onDeleteDraft={onDeleteDraft}
           onReverseSplit={handleReverseSplit}
           onCancelPlan={handleCancelPlan}
+          onToggleClose={handleToggleClose}
           onSendToCut={(coil) => {
             setSelectedIds([coil.id]);
             setShowCutModal(true);
