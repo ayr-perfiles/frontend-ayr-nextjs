@@ -201,6 +201,20 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /counters/{counterId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /sunatCounters/{counterId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    match /idempotency_keys/{keyId} {
+      allow read, write: if false; // Solo backend
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

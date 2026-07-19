@@ -35,13 +35,12 @@ interface AddCoilFormProps {
 
 interface CoilEntry {
   uid: string;
-  coilId: string;
+  coilId?: string;
   weight: number | "";
   width: number | "";
   thickness: number | "";
   finish: string;
   value: number | "";
-  isManual?: boolean;
 }
 
 type RowErrors = Partial<
@@ -62,6 +61,8 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
   const [loading, setLoading] = useState(false);
   const [searchingDoc, setSearchingDoc] = useState(false);
   const [fetchingRate, setFetchingRate] = useState(false);
+  
+  const [requestId] = useState(() => crypto.randomUUID());
 
   // --- HEADER FORM ---
   const initialHeader: CoilInvoiceHeader = {
@@ -78,34 +79,22 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     useForm<CoilInvoiceHeader>(coilInvoiceHeaderSchema, initialHeader);
 
   // --- COIL ROWS ---
-  const [baseSerie, setBaseSerie] = useState("");
   const [coils, setCoils] = useState<CoilEntry[]>([
     {
       uid: Date.now().toString(),
-      coilId: "",
       weight: "",
       width: 1200,
       thickness: 0.45,
       finish: "",
       value: "",
-      isManual: false,
     },
   ]);
   const [coilErrors, setCoilErrors] = useState<Record<string, RowErrors>>({});
 
-  const handleBaseSerieChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newBase = e.target.value.toUpperCase();
-    setBaseSerie(newBase);
-    setCoils((prev) =>
-      prev.map((coil, idx) => {
-        if (coil.isManual) return coil;
-        return {
-          ...coil,
-          coilId: newBase ? `${newBase}-${idx + 1}` : "",
-        };
-      })
-    );
-  };
+  const provParts = (values.providerName || "PROV").toUpperCase().replace(/[^A-Z0-9 ]/g, "").split(/\s+/).filter(Boolean);
+  const provCode = provParts.length > 0 ? provParts[0].substring(0, 6) : "PROV";
+
+
 
   // --- FETCH EXCHANGE RATE ---
   useEffect(() => {
@@ -188,13 +177,11 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       ...coils,
       {
         uid: Date.now().toString(),
-        coilId: baseSerie ? `${baseSerie}-${coils.length + 1}` : "",
         weight: "",
         width: 1200,
         thickness: 0.45,
         finish: "",
         value: "",
-        isManual: false,
       },
     ]);
   };
@@ -220,9 +207,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     setCoils(
       coils.map((c) => {
         if (c.uid !== uid) return c;
-        const next = { ...c, [field]: val };
-        if (field === "coilId") next.isManual = true;
-        return next;
+        return { ...c, [field]: val };
       })
     );
     if (coilErrors[uid]?.[field as keyof RowErrors]) {
@@ -251,7 +236,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     const rowErrors: Record<string, RowErrors> = {};
     for (const coil of coils) {
       const result = coilEntryFormSchema.safeParse({
-        coilId: coil.coilId,
+        coilId: "AUTO",
         weight: coil.weight,
         width: coil.width,
         thickness: coil.thickness,
@@ -277,7 +262,6 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     setLoading(true);
     try {
       const payloadCoils = coils.map((coil) => ({
-        coilId: coil.coilId.toString().toUpperCase(),
         weight: Number(coil.weight),
         width: Number(coil.width),
         thickness: Number(coil.thickness),
@@ -297,7 +281,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
       };
 
       const registerCoilFn = httpsCallable(functions, "registerCoil");
-      await registerCoilFn({ coils: payloadCoils, invoice: payloadInvoice });
+      await registerCoilFn({ coils: payloadCoils, invoice: payloadInvoice, requestId });
 
       const isConverted = values.currency === "USD";
       toast.success(
@@ -541,18 +525,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
               )}
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase">
-                Base de N° Serie
-              </label>
-              <input
-                type="text"
-                placeholder="Ej. F001-13071"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-sm font-bold text-slate-700 outline-none focus:border-blue-500"
-                value={baseSerie}
-                onChange={handleBaseSerieChange}
-              />
-            </div>
+
           </div>
         </div>
 
@@ -595,22 +568,12 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     </label>
                     <input
                       type="text"
-                      placeholder="F001-..."
-                      className={`w-full border rounded-md p-2.5 text-sm font-black uppercase outline-none focus:bg-white focus:border-blue-500 ${rowErr.coilId ? "bg-red-50 border-red-300" : "bg-slate-50 border-slate-200"}`}
-                      value={coil.coilId}
-                      onChange={(e) =>
-                        updateCoil(
-                          coil.uid,
-                          "coilId",
-                          e.target.value.toUpperCase(),
-                        )
-                      }
+                      readOnly
+                      disabled
+                      className={`w-full border rounded-md p-2.5 text-sm font-black text-slate-400 uppercase outline-none bg-slate-100 border-slate-200 cursor-not-allowed`}
+                      value={`${provCode}-${coil.finish ? coil.finish.toUpperCase().replace(/[^A-Z0-9-]/g, "") : "ACABADO"}-${coil.thickness ? Math.round(Number(coil.thickness) * 100).toString().padStart(3, "0") : "ESP"}-${coil.weight ? Math.round(Number(coil.weight)).toString() : "PESO"}-AUTO`}
+                      title="Generado automáticamente por el sistema"
                     />
-                    {rowErr.coilId && (
-                      <p className="text-red-500 text-xs mt-1">
-                        {rowErr.coilId}
-                      </p>
-                    )}
                   </div>
 
                   <div>
