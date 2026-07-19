@@ -295,8 +295,8 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
     }
   };
 
-  const hasHeaderErrors = Object.keys(errors).length > 0;
-  const hasRowErrors = Object.keys(coilErrors).length > 0;
+  const hasHeaderErrors = Object.values(errors).some(Boolean);
+  const hasRowErrors = Object.values(coilErrors).some((errObj) => Object.values(errObj).some(Boolean));
 
   const totalInvoiceValue = coils.reduce(
     (sum, c) => sum + (Number(c.value) || 0),
@@ -548,7 +548,7 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
               return (
                 <div
                   key={coil.uid}
-                  className={`grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,2.5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)] gap-4 p-4 bg-white border rounded-lg relative transition ${Object.keys(rowErr).length > 0 ? "border-red-300 bg-red-50/20" : "border-slate-100 hover:border-blue-200 hover:shadow-md"}`}
+                  className={`grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,2.5fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)] gap-4 p-4 bg-white border rounded-lg relative transition ${Object.values(rowErr).some(Boolean) ? "border-red-300 bg-red-50/20" : "border-slate-100 hover:border-blue-200 hover:shadow-md"}`}
                 >
                   <div>
                     <label className="lg:hidden block text-[11px] font-bold text-slate-400 mb-1.5">
