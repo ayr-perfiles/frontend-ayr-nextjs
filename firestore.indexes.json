@@ -188,20 +188,6 @@
       "density": "SPARSE_ALL"
     },
     {
-      "collectionGroup": "coils",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "parentCoilId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "kardex_movements",
       "queryScope": "COLLECTION",
       "fields": [
@@ -794,6 +780,80 @@
       "density": "SPARSE_ALL"
     },
     {
+      "collectionGroup": "roofing_catalog",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "displayName",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "strips_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "widthMm",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "strips_stock",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "widthMm",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalStrips",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "trading_catalog",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "displayName",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "coils",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "parentCoilId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "sales",
       "queryScope": "COLLECTION",
       "fields": [
@@ -803,6 +863,10 @@
         },
         {
           "fieldPath": "timestamp",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
           "order": "ASCENDING"
         }
       ]
