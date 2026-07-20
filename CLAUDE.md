@@ -1,7 +1,18 @@
-# CLAUDE.md — AYR Steel ERP (v6.21)
+# CLAUDE.md — AYR Steel ERP (v6.22)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + integración serializada verde | Functions v2 operativa.
+> **v6.23:** (Cerrado EN PROD esta sesión)
+> - WRITE 7b drywall coil-directo CERRADO EN PROD: revertProductionLog un-amputa branch coils, reversa a stripCost congelado, resta-de-lote WAC, peso re-derivado (approximateWeight flag, NaN guard masterWidth→HttpsError), stock negativo Opción 2 (qty≤0 congela WAC + negativeStockWarning), idempotente, dominio puro calcRevertProductionFromCoil. Runtime prod validado con callable real (positivo recalcula WAC, negativo congela). Guard laterSales confirmado en vivo.
+> - 7a (strips_stock pool) validado, sirve flujo aspiracional (strips_stock casi vacío en prod).
+> **v6.22:**
+> - Frente 1.5: fix coilRef.id en voidProductionFromCoils (bobinas sin campo id → kardex sku undefined). Runtime validado.
+> - Cotización↔producción: production_log.source={type:'QUOTE',id,label}, selector "producir contra cotización" + fulfillment derivado (getProducedForSourceLine) + warning sobre-producción (base pendiente) + vista en SaleDetailsModal + botón ver cotización. Índice production_logs(source.id,status,timestamp).
+> - HARD GATE: producción metallic SOLO contra cotización (eliminado ad-hoc + descartado Slice 2 solicitudes manuales). Backend guard: produceFromCoils exige source.type=='QUOTE'.
+> - Cotización captura piezas+longitud (SaleItem aditivo, quantity=ML derivado, pricing/peso igual). Ocultar cotizaciones/líneas cumplidas del selector.
+> - Bug Ventas: índice sales(businessLines CONTAINS,timestamp,totalAmount,totalProfit,totalWeight) + useSales muestra error visible en /admin/sales.
+> - RUC/DNI en prod RESUELTO: consultarRuc/Dni extraídas de codebase 'sunat' a 'default'; secret APISNET_TOKEN + doc integrations/apisnet en prod. Funciona.
+> - Factura de Compra (AddCoilForm): fix botón (errores por valores truthy, no Object.keys de undefined), espesor ensanchado, warning TC USD manual. COMPOSITE ID {PROV}-{ACABADO}-{ESP}-{PESO}-{NNNNN} en registerCoil + contador global counters/coils + idempotencia (requestId/idempotency_keys). ML por bobina + rollup TN·ML por acabado. isClosed: callable setCoilClosed (ADMIN, open/close + merma opcional del remanente vía buildScrapTransactionWrites extraído de registerCoilScrap); filtro producción + rollup excluyen cerradas; badge CERRADA. Backend en prod.
 > **v6.21:** `voidProductionFromCoils` (metallic) migrado client→CALLABLE backend, CERRADO EN PROD. ADMIN-only, runTransaction lee-antes-de-escribir, idempotente. GUARD POSTERIOR nuevo (hard-block si el PT tiene venta `status COMPLETED` con `(approvedAt ?? timestamp) > log.timestamp` — `approvedAt` corrige false-negative de ventas ex-cotización que spreadean timestamp viejo). Costo CONGELADO en kardex IN (`costPEN/weightConsumedKg`, NUNCA `coil.pricePerKg` actual). Helper `determineCoilStatusAfterReversal` deduped (mató copia inline). Audit `VOID_PRODUCTION_FROM_COILS` + union type. UI `MetallicProductionHistory` thin-client; función client-side `runTransaction` BORRADA. Runtime prod verde (costo congelado 4/5 ≠ 9.99 mutado). ENDURECIDO: `production.ts:391` (`coil.id` → `coilRef.id` para prevenir bug de kardex con sku undefined).
 > **v6.20:** TC 3.75 fallback MUERTO. `/api/tipo-cambio` en fallback devuelve `{fallback:true}` SIN número (no más `venta:3.75`/`compra:3.7`). PurchaseCoilFromXml + BulkUpload respetan fallback: NO auto-aplican, TC vacío + warning "TC real no disponible, ingresá el del día", submit guard USD (`isValidUsdExchangeRate` [2,7] compartido, single source). Verificado API por curl (fecha inválida → solo fallback, sin número). Relabel `/admin/kardex` → "Kardex de Productos (Drywall)" + sidebar "Kardex productos" + breadcrumb: es product/drywall-only (`products` = 100% drywall, 4 líneas tienen colección propia), NO global. Deuda de rótulo cerrada.
 > **v6.19:** reverseCoilSplit (WRITE nuevo, reversa de split) CERRADO EN PROD. Callable ADMIN-only, molde voidCoilScrap (runTransaction, lee-antes-de-escribir, idempotente, 0 borrado físico). Restaura peso+ancho a la madre (currentWeight+=childWeight, masterWidth+=childWidth), status via determineCoilStatusAfterReversal; hija VOIDED weight 0; kardex IN madre + OUT hija (costo congelado child.pricePerKg); audit REVERSE_COIL_SPLIT. 7 guards fail-closed (ADMIN, childId, existe, idempotente si VOIDED, es hija de split, madre existe/no-VOIDED, hija prístina: sin producción/split-anidado/merma + invariante currentWeight==initialWeight). Runtime prod verde (idToken ADMIN real, TESTPROD-). UI: botón 'Revertir split' en RowActionsMenu (ADMIN+AVAILABLE+parentCoilId), useConfirm requireInput 'REVERTIR', error.message crudo. Índice coils(parentCoilId,status) faltaba en TEST (divergencia test↔prod), desplegado; ya estaba en prod.
@@ -22,7 +33,7 @@ ERP modular para transformación y comercialización de acero/PVC. 5 líneas de 
 
 | #   | Línea                | Módulo             | Estado                     | Materia Prima          | Modelo         |
 | --- | -------------------- | ------------------ | -------------------------- | ---------------------- | -------------- |
-| 1   | **Drywall**          | `drywall`          | ✅                         | Bobina (vía Flejes)    | Transformación |
+| 1   | **Drywall**          | `drywall`          | ✅                         | Bobina (Directo)       | Transformación |
 | 2   | **Metallic Roofing** | `metallic-roofing` | ✅ Pipeline completo (dev) | Bobina (Conformado A2) | Transformación |
 | 3   | **Roofing (UPVC)**   | `roofing`          | ✅                         | Producto Terminado     | Compra-Venta   |
 | 4   | **Trading**          | `trading`          | ✅                         | Terceros               | Compra-Venta   |
@@ -283,6 +294,14 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 
 ## 11. Deuda Técnica Menor (Backlog)
 
+- ⚠️ **CRÍTICO WRITE 7 drywall:** `revertProductionLog` en develop+master + front thin-client, PERO callable NO en prod (solo test) y NO runtime-validado. Si el thin-client está en prod → anular producción drywall ROTA (404). [En proceso de verificación y despliegue a PROD en sesión actual].
+- **Vercel APIS_PERU_TOKEN (TC):** pendiente manual en prod.
+- **Verificar rules counters en prod:** deploy de rules se saltó en v6.22 (verificar si requires update).
+- **Rotar token decolecta:** quedó expuesto en un chat.
+- **ML yield -100% (`calcCoilYieldDeviation`):** transitorio en close/merma, inspeccionar si recurre.
+- **`registerCoilsBulk`:** mantiene ID viejo.
+- **Relabel COGS vs Costo Corrida:** match por largo en fulfillment; ruta muerta `/api/consulta-doc`; `useSales` swallow parcial.
+
 - **RUC/DNI en prod RESUELTO:** consultarRuc/Dni extraídas a codebase `functions` (default, sin secrets SOL), secret APISNET_TOKEN + doc integrations/apisnet sembrados en prod, funcionando. Pendiente menor: (1) rotar el token de decolecta (quedó expuesto en un chat); (2) ruta muerta src/app/api/consulta-doc/route.ts (deuda cosmética).
 - **Ventas históricas pre-multilínea sin `businessLines`/`items[].businessLine`** (era todo drywall) → invisibles al filtro por línea. Deuda ACEPTADA; filtro sirve para data nueva. Backfill descartado (migración de data financiera en prod, alto riesgo/bajo valor) salvo necesidad real de reportar históricos por línea.
 - **Índice sales agregado + hook endurecido:** Índice sales(businessLines CONTAINS, timestamp, totalAmount, totalProfit, totalWeight) agregado. Arregla filtro por línea + agregados. `useSales` ahora muestra error visible en `/admin/sales` en caso de fallar, en vez de tragarlo.
@@ -371,3 +390,23 @@ El bulk (`registerCoilsBulk` + UI) está listo y validado en test-nube. La impor
 ## 15. Fórmulas y modelo de costeo
 
 **Ver `docs/05-formulas/` (índice en su README).** Fichas verificadas contra código (archivo:línea + snippet + congelado/WAC + consumidores): `modelo-de-costeo.md` (los 3 principios: costo congelado en reversas / WAC actual en ingresos / densidad única por acabado), `costeo-coils.md`, `costeo-drywall.md`, `ventas-igv.md`, `costeo-pvc.md`. Glosario ES↔código en `docs/02-glosario/`; patrones con excepciones reales en `docs/03-arquitectura/`. ADRs de costeo: ADR-009 (costo congelado), ADR-010 (guard posterior), ADR-011 (bulk por-factura). Nueva fórmula → ficha con `docs/05-formulas/_TEMPLATE.md`.
+
+---
+
+## 16. ÍNDICE DE VERDAD POR MÓDULO
+
+> **REGLA DE ORO:** Antes de tocar lógica compleja, costeo o writes de un módulo, **DEBÉS LEER SU DOC DE VERDAD AQUÍ**. Los docs se pudren. Traen fecha de verificación. Si está vieja, re-verificá contra prod usando el checklist antes de codear. Claude Code tiene la service key local para leer prod y hacer el recon.
+
+| Módulo | Documento | Última Verificación | Estado |
+|--------|-----------|---------------------|--------|
+| Drywall | [docs/modules/drywall.md](docs/modules/drywall.md) | 2026-07-19 | Verificado contra BD prod |
+| Metallic | *(Pendiente)* | - | - |
+| Ventas | *(Pendiente)* | - | - |
+| Compras | *(Pendiente)* | - | - |
+
+**Checklist de Re-verificación:**
+1. Hacer grep del escritor **VIVO** (no asumir cuál es el código real vs el aspiracional).
+2. Leer 1 documento **REAL** de producción del log o stock que vas a tocar.
+3. ¿El flujo que vas a cambiar tiene un consumidor vivo en la UI, o es huérfano/aspiracional?
+4. Costo congelado: ¿De qué campo **REAL** sale en BD? (Ojo con los overrides por spread `...`).
+5. Reversar siempre usando el campo congelado. Nunca WAC-lookback.
