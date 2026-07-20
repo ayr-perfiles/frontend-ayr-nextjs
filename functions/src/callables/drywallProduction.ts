@@ -1,7 +1,8 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
-import { calcProductionFromStrip } from "../domain/drywallProduction";
+import { calcProductionFromStrip, calcRevertProductionFromStrip, calcRevertProductionFromCoil } from "../domain/drywallProduction";
+import { determineCoilStatusAfterReversal } from "../domain/scrap";
 import { drywallStockStrategy } from "../domain/strategies/drywallStockStrategy";
 
 export const produceFromStrip = onCall(async (request) => {
@@ -230,7 +231,7 @@ export const revertProductionLog = onCall(async (request) => {
   const logData = logSnap.data()!;
 
   if (logData.status === "VOIDED") {
-    throw new HttpsError("failed-precondition", "El registro de producción ya fue anulado.");
+    return { success: true, alreadyVoided: true };
   }
 
   if (logData.line && logData.line !== "drywall") {
@@ -259,121 +260,209 @@ export const revertProductionLog = onCall(async (request) => {
     }
   }
 
-  // WAC-LOOKBACK (FUERA DE TXN)
-  const recentLogsSnap = await db.collection("production_logs")
-    .where("sku", "==", logData.sku)
-    .where("status", "==", "ACTIVE")
-    .orderBy("timestamp", "desc")
-    .limit(2)
-    .get();
-
-  let previousValidCost: number | null = null;
-  recentLogsSnap.docs.forEach((d) => {
-    if (d.id !== logId) {
-      previousValidCost = d.data().averageCostAfter || d.data().costPerPiece || 0;
-    }
-  });
-
   return await db.runTransaction(async (tx) => {
     // 1. LECTURAS (DENTRO DE TXN)
     const txLogDoc = await tx.get(logRef);
     if (!txLogDoc.exists) throw new HttpsError("not-found", "El registro no existe.");
     const txLogData = txLogDoc.data()!;
 
-    if (txLogData.status === "VOIDED") throw new HttpsError("failed-precondition", "Ya fue anulado.");
+    if (txLogData.status === "VOIDED") {
+      return { success: true, alreadyVoided: true };
+    }
 
-    const stockRef = db.collection("inventory_stock").doc(txLogData.sku);
-    const prodRef = db.collection("products").doc(txLogData.sku);
-    
-    const [stockDoc, prodDoc] = await Promise.all([
-      tx.get(stockRef),
-      tx.get(prodRef)
-    ]);
-
-    let coilDoc: admin.firestore.DocumentSnapshot | null = null;
-    let coilRef: admin.firestore.DocumentReference | null = null;
     if (txLogData.parentCoilId) {
-      coilRef = db.collection("coils").doc(txLogData.parentCoilId);
-      coilDoc = await tx.get(coilRef);
-    }
+      const coilRef = db.collection("coils").doc(txLogData.parentCoilId);
+      const stockRef = db.collection("inventory_stock").doc(txLogData.sku);
+      
+      const [coilDoc, stockDoc] = await Promise.all([
+        tx.get(coilRef),
+        tx.get(stockRef)
+      ]);
 
-    let ssSnap: admin.firestore.DocumentSnapshot | null = null;
-    let ssRef: admin.firestore.DocumentReference | null = null;
-    if (!txLogData.parentCoilId && txLogData.totalUsedWidth) {
-      ssRef = db.collection("strips_stock").doc(txLogData.totalUsedWidth.toString());
-      ssSnap = await tx.get(ssRef);
-    }
+      if (!coilDoc.exists) throw new HttpsError("not-found", "La bobina madre no existe.");
 
-    // 2. CÁLCULOS
-    let stdW = prodDoc.exists ? (prodDoc.data()!.standardWeight || 0) : 0;
-    const wSub = txLogData.reportedWeight || txLogData.piecesProduced * stdW;
-    let newQty = 0;
+      const coilData = coilDoc.data()!;
+      const stockData = stockDoc.exists ? stockDoc.data()! : { totalQuantity: 0, lastCostPerPiece: 0 };
 
-    const now = FieldValue.serverTimestamp();
+      if (!coilData.masterWidth || coilData.masterWidth <= 0) {
+        throw new HttpsError("failed-precondition", "No se puede reversar: la bobina no tiene masterWidth, requiere anulación manual.");
+      }
 
-    // 3. ESCRITURAS
-    if (stockDoc.exists) {
-      const sData = stockDoc.data()!;
-      newQty = sData.totalQuantity - txLogData.piecesProduced;
-      tx.update(stockRef, {
-        totalQuantity: newQty,
-        totalWeight: sData.totalWeight - wSub,
-        lastUpdate: now,
-        ...(previousValidCost !== null ? { lastCostPerPiece: previousValidCost } : (newQty === 0 ? { lastCostPerPiece: 0 } : {}))
+      const output = calcRevertProductionFromCoil({
+        coil: {
+          initialWeight: coilData.initialWeight || 0,
+          masterWidth: coilData.masterWidth,
+          currentWeight: coilData.currentWeight || 0
+        },
+        ptStock: {
+          totalQuantity: stockData.totalQuantity || 0,
+          lastCostPerPiece: stockData.lastCostPerPiece || 0
+        },
+        log: {
+          piecesProduced: txLogData.piecesProduced || 0,
+          stripCost: txLogData.stripCost || 0,
+          totalUsedWidth: txLogData.totalUsedWidth || 0
+        }
       });
-    }
 
-    if (coilDoc && coilDoc.exists && coilRef) {
-      const cData = coilDoc.data()!;
-      const upStrips = cData.plannedStrips?.map((s: any) => s.sku === txLogData.sku ? { ...s, pendingCount: s.pendingCount + 1 } : s);
-      const restoredW = (txLogData.totalUsedWidth || 0) * (cData.initialWeight / cData.masterWidth!);
+      const now = FieldValue.serverTimestamp();
+      const newStatus = determineCoilStatusAfterReversal(output.coilNewWeight, coilData.initialWeight || 0);
+
+      const updatedPlannedStrips = coilData.plannedStrips || [];
+      if (updatedPlannedStrips.length > 0) {
+        const stripIndex = updatedPlannedStrips.findIndex((s: any) => s.sku === txLogData.sku);
+        if (stripIndex !== -1) {
+          updatedPlannedStrips[stripIndex].pendingCount += 1;
+        }
+      }
+
       tx.update(coilRef, {
-        plannedStrips: upStrips,
-        status: "IN_PROGRESS",
-        currentWeight: Math.min(cData.initialWeight, (cData.currentWeight || 0) + restoredW),
+        currentWeight: output.coilNewWeight,
+        status: newStatus,
+        plannedStrips: updatedPlannedStrips,
         updatedAt: now
       });
-    } else if (ssSnap && ssSnap.exists && ssRef) {
+
+      tx.set(stockRef, {
+        totalQuantity: output.pt.newQuantity,
+        lastCostPerPiece: output.pt.newLastCostPerPiece,
+        lastUpdate: now
+      }, { merge: true });
+
+      const costPerKg = txLogData.stripCost / output.coilRestoredWeightKg;
+      tx.set(db.collection("kardex_movements").doc(), {
+        sku: txLogData.parentCoilId,
+        date: now,
+        type: "IN",
+        quantity: 1,
+        weightKg: output.coilRestoredWeightKg,
+        costPerKg,
+        balance: output.coilNewWeight,
+        reference: logId,
+        user: email,
+      });
+
+      tx.set(db.collection("kardex_movements").doc(), {
+        sku: txLogData.sku,
+        date: now,
+        type: "OUT",
+        quantity: txLogData.piecesProduced,
+        balance: output.pt.newQuantity,
+        reference: logId,
+        description: "Anulación de Producción Directa",
+        user: email,
+      });
+
+      tx.update(logRef, { status: "VOIDED", voidedBy: email, voidedAt: now });
+      
+      tx.set(db.collection("audit_logs").doc(), {
+        action: "VOID_PRODUCTION_DRYWALL",
+        entityId: logId,
+        userEmail: email,
+        details: {
+          approximateWeight: output.approximateWeight,
+          negativeStockWarning: output.negativeStockWarning,
+          message: `Anuló ${txLogData.piecesProduced} pzas de ${txLogData.sku}.`
+        },
+        timestamp: now
+      });
+
+      return { success: true };
+    } else {
+      const stockRef = db.collection("inventory_stock").doc(txLogData.sku);
+      const prodRef = db.collection("products").doc(txLogData.sku);
+      
+      let ssRef: admin.firestore.DocumentReference | null = null;
+      if (txLogData.totalUsedWidth) {
+        ssRef = db.collection("strips_stock").doc(txLogData.totalUsedWidth.toString());
+      }
+
+      const [stockDoc, prodDoc, ssSnap] = await Promise.all([
+        tx.get(stockRef),
+        tx.get(prodRef),
+        ssRef ? tx.get(ssRef) : Promise.resolve(null)
+      ]);
+
+      if (!ssSnap || !ssSnap.exists || !ssRef) {
+        throw new HttpsError("not-found", "El inventario de flejes no existe.");
+      }
+
+      // 2. CÁLCULOS
       const ssData = ssSnap.data()!;
+      const stockData = stockDoc.exists ? stockDoc.data()! : { totalQuantity: 0, lastCostPerPiece: 0, totalWeight: 0 };
+      
+      const output = calcRevertProductionFromStrip({
+        stripPool: {
+          totalWeight: ssData.totalWeight || 0,
+          totalStrips: ssData.totalStrips || 0,
+          avgCostPerKg: ssData.avgCostPerKg || 0
+        },
+        ptStock: {
+          totalQuantity: stockData.totalQuantity || 0,
+          lastCostPerPiece: stockData.lastCostPerPiece || 0
+        },
+        log: {
+          consumedWeightKg: txLogData.consumedWeightKg || 0,
+          consumedCostPEN: txLogData.consumedCostPEN || 0,
+          stripsUsed: txLogData.stripsUsed || 0,
+          piecesProduced: txLogData.piecesProduced || 0
+        }
+      });
+
+      const now = FieldValue.serverTimestamp();
+      const stdWeight = prodDoc.exists ? (prodDoc.data()!.standardWeight || 0) : 0;
+      const weightToSubtract = txLogData.reportedWeight || (txLogData.piecesProduced * stdWeight);
+      const newTotalWeight = Math.max(0, (stockData.totalWeight || 0) - weightToSubtract);
+
+      // 3. ESCRITURAS
       tx.update(ssRef, {
-        totalStrips: ssData.totalStrips + 1,
-        totalWeight: ssData.totalWeight + (ssData.totalWeight / (ssData.totalStrips || 1)),
+        totalWeight: output.strip.newTotalWeight,
+        totalStrips: output.strip.newTotalStrips,
+        avgCostPerKg: output.strip.newAvgCostPerKg,
         lastUpdate: now
       });
+
       tx.set(db.collection("strips_movements").doc(), {
         type: 'ENTRADA',
         widthMm: txLogData.totalUsedWidth,
-        quantity: 1,
-        weight: (ssData.totalWeight / (ssData.totalStrips || 1)),
-        costPerKg: ssData.avgCostPerKg,
+        quantity: txLogData.stripsUsed,
+        weight: txLogData.consumedWeightKg,
+        costPerKg: output.frozenStripCostPerKg,
         referenceId: logId,
         description: `Anulación ${logId}`,
         timestamp: now,
         user: email
       });
+
+      tx.set(stockRef, {
+        totalQuantity: output.pt.newQuantity,
+        lastCostPerPiece: output.pt.newLastCostPerPiece,
+        totalWeight: newTotalWeight,
+        lastUpdate: now
+      }, { merge: true });
+
+      tx.set(db.collection("kardex_movements").doc(), {
+        sku: txLogData.sku,
+        date: now,
+        type: "OUT",
+        quantity: txLogData.piecesProduced,
+        balance: output.pt.newQuantity,
+        reference: 'STRIP',
+        description: "Anulación de Producción",
+        user: email,
+      });
+
+      tx.update(logRef, { status: "VOIDED", voidedBy: email, voidedAt: now });
+      
+      tx.set(db.collection("audit_logs").doc(), {
+        action: "VOID_PRODUCTION_DRYWALL",
+        entityId: logId,
+        userEmail: email,
+        details: `Anuló ${txLogData.piecesProduced} pzas de ${txLogData.sku}.`,
+        timestamp: now
+      });
+
+      return { success: true };
     }
-
-    tx.set(db.collection("kardex_movements").doc(), {
-      sku: txLogData.sku,
-      date: now,
-      type: "OUT",
-      quantity: txLogData.piecesProduced,
-      balance: newQty,
-      reference: txLogData.parentCoilId || 'STRIP',
-      description: "Anulación de Producción",
-      user: email,
-    });
-
-    tx.update(logRef, { status: "VOIDED", voidedBy: email, voidedAt: now });
-    
-    tx.set(db.collection("audit_logs").doc(), {
-      action: "VOID_PRODUCTION",
-      entityId: logId,
-      userEmail: email,
-      details: `Anuló ${txLogData.piecesProduced} pzas de ${txLogData.sku}.`,
-      timestamp: now
-    });
-
-    return { success: true };
   });
 });
