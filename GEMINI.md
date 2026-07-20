@@ -1,9 +1,12 @@
-# GEMINI.md — AYR Steel ERP (v6.22)
+<!-- ⚠️ AUTO-GENERADO desde CLAUDE.md. NO editar a mano — editá CLAUDE.md y corré sync-context. -->
+# CLAUDE.md — AYR Steel ERP (v6.22)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + integración serializada verde | Functions v2 operativa.
-> **v6.22:** (Cerrado EN PROD esta sesión)
-> - Metallic Frente 1: filtro espesor tolerancia ±0.02 (helper entero) + input cantidad×longitud→ML derivado (piecesCount/pieceLengthM en perCoilBreakdown).
+> **v6.23:** (Cerrado EN PROD esta sesión)
+> - WRITE 7b drywall coil-directo CERRADO EN PROD: revertProductionLog un-amputa branch coils, reversa a stripCost congelado, resta-de-lote WAC, peso re-derivado (approximateWeight flag, NaN guard masterWidth→HttpsError), stock negativo Opción 2 (qty≤0 congela WAC + negativeStockWarning), idempotente, dominio puro calcRevertProductionFromCoil. Runtime prod validado con callable real (positivo recalcula WAC, negativo congela). Guard laterSales confirmado en vivo.
+> - 7a (strips_stock pool) validado, sirve flujo aspiracional (strips_stock casi vacío en prod).
+> **v6.22:**
 > - Frente 1.5: fix coilRef.id en voidProductionFromCoils (bobinas sin campo id → kardex sku undefined). Runtime validado.
 > - Cotización↔producción: production_log.source={type:'QUOTE',id,label}, selector "producir contra cotización" + fulfillment derivado (getProducedForSourceLine) + warning sobre-producción (base pendiente) + vista en SaleDetailsModal + botón ver cotización. Índice production_logs(source.id,status,timestamp).
 > - HARD GATE: producción metallic SOLO contra cotización (eliminado ad-hoc + descartado Slice 2 solicitudes manuales). Backend guard: produceFromCoils exige source.type=='QUOTE'.
@@ -31,7 +34,7 @@ ERP modular para transformación y comercialización de acero/PVC. 5 líneas de 
 
 | #   | Línea                | Módulo             | Estado                     | Materia Prima          | Modelo         |
 | --- | -------------------- | ------------------ | -------------------------- | ---------------------- | -------------- |
-| 1   | **Drywall**          | `drywall`          | ✅                         | Bobina (vía Flejes)    | Transformación |
+| 1   | **Drywall**          | `drywall`          | ✅                         | Bobina (Directo)       | Transformación |
 | 2   | **Metallic Roofing** | `metallic-roofing` | ✅ Pipeline completo (dev) | Bobina (Conformado A2) | Transformación |
 | 3   | **Roofing (UPVC)**   | `roofing`          | ✅                         | Producto Terminado     | Compra-Venta   |
 | 4   | **Trading**          | `trading`          | ✅                         | Terceros               | Compra-Venta   |
@@ -388,3 +391,23 @@ El bulk (`registerCoilsBulk` + UI) está listo y validado en test-nube. La impor
 ## 15. Fórmulas y modelo de costeo
 
 **Ver `docs/05-formulas/` (índice en su README).** Fichas verificadas contra código (archivo:línea + snippet + congelado/WAC + consumidores): `modelo-de-costeo.md` (los 3 principios: costo congelado en reversas / WAC actual en ingresos / densidad única por acabado), `costeo-coils.md`, `costeo-drywall.md`, `ventas-igv.md`, `costeo-pvc.md`. Glosario ES↔código en `docs/02-glosario/`; patrones con excepciones reales en `docs/03-arquitectura/`. ADRs de costeo: ADR-009 (costo congelado), ADR-010 (guard posterior), ADR-011 (bulk por-factura). Nueva fórmula → ficha con `docs/05-formulas/_TEMPLATE.md`.
+
+---
+
+## 16. ÍNDICE DE VERDAD POR MÓDULO
+
+> **REGLA DE ORO:** Antes de tocar lógica compleja, costeo o writes de un módulo, **DEBÉS LEER SU DOC DE VERDAD AQUÍ**. Los docs se pudren. Traen fecha de verificación. Si está vieja, re-verificá contra prod usando el checklist antes de codear. Claude Code tiene la service key local para leer prod y hacer el recon.
+
+| Módulo | Documento | Última Verificación | Estado |
+|--------|-----------|---------------------|--------|
+| Drywall | [docs/modules/drywall.md](docs/modules/drywall.md) | 2026-07-19 | Verificado contra BD prod |
+| Metallic | *(Pendiente)* | - | - |
+| Ventas | *(Pendiente)* | - | - |
+| Compras | *(Pendiente)* | - | - |
+
+**Checklist de Re-verificación:**
+1. Hacer grep del escritor **VIVO** (no asumir cuál es el código real vs el aspiracional).
+2. Leer 1 documento **REAL** de producción del log o stock que vas a tocar.
+3. ¿El flujo que vas a cambiar tiene un consumidor vivo en la UI, o es huérfano/aspiracional?
+4. Costo congelado: ¿De qué campo **REAL** sale en BD? (Ojo con los overrides por spread `...`).
+5. Reversar siempre usando el campo congelado. Nunca WAC-lookback.
