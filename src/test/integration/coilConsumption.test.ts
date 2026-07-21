@@ -163,4 +163,23 @@ describe('coilConsumptionService.consume (Integration)', () => {
       operatorId: 'op-1'
     })).rejects.toThrow(/está inactivo/);
   });
+  it('isClosed=true bloquea consumo', async () => {
+    const coilId = await seedCoil(db, {
+      id: 'BOB-CLOSED',
+      finish: 'ALUZINC',
+      initialWeight: 1000,
+      currentWeight: 1000,
+      isClosed: true
+    });
+
+    await expect(consumeCoil({
+      coilId,
+      line: 'metallic-roofing',
+      sku: 'COB030ROJO',
+      pieces: 5,
+      weightConsumed: 100,
+      operatorId: 'op-01'
+    })).rejects.toThrow(/La bobina está cerrada. El supervisor debe abrirla antes de producir./);
+  });
+
 });

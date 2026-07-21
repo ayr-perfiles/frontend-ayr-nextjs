@@ -81,14 +81,17 @@ function FinishBadge({
 }) {
   if (!finishId) {
     return (
-      <div className="flex flex-col gap-1 items-start">
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 text-[10px] font-black uppercase">
+      <div className="flex flex-col gap-1 items-start max-w-full">
+        <span 
+          className="inline-block px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 text-[10px] font-black uppercase whitespace-nowrap"
+          title="SIN ACABADO"
+        >
           SIN ACABADO
         </span>
         {onAssign && (
           <button 
             onClick={onAssign}
-            className="flex items-center gap-1 text-[9px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-tighter"
+            className="flex items-center gap-1 text-[9px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-tighter shrink-0"
           >
             <Tag size={10} /> Asignar
           </button>
@@ -98,9 +101,13 @@ function FinishBadge({
   }
 
   const finish = finishes.find((f) => f.id === finishId);
+  const label = finish?.label || finishId;
   return (
-    <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 border border-blue-200 text-[10px] font-black uppercase whitespace-nowrap">
-      {finish?.label || finishId}
+    <span 
+      className="inline-block px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 border border-blue-200 text-[10px] font-black uppercase whitespace-nowrap align-middle"
+      title={label}
+    >
+      {label}
     </span>
   );
 }
@@ -184,6 +191,7 @@ export default function InventoryTable({
     {
       key: "id",
       header: "Serie",
+      width: "w-32",
       render: (coil) => (
         <div className="flex flex-col">
           <span
@@ -192,7 +200,10 @@ export default function InventoryTable({
             {coil.id}
           </span>
           {coil.metadata?.provider && (
-            <span className="text-[10px] text-gray-400 font-bold uppercase mt-0.5">
+            <span 
+              className="text-[10px] text-gray-400 font-bold uppercase mt-0.5 truncate max-w-[150px]"
+              title={coil.metadata.provider}
+            >
               {coil.metadata.provider}
             </span>
           )}
@@ -202,6 +213,7 @@ export default function InventoryTable({
     {
       key: "finish",
       header: "Acabado",
+      width: "w-40",
       render: (coil) => (
         <FinishBadge 
           finishId={coil.finish} 
@@ -211,36 +223,28 @@ export default function InventoryTable({
       )
     },
     {
-      key: "date",
-      header: "Fecha Ingreso",
-      render: (coil) => (
-        <div
-          className={`text-sm font-bold ${coil.status === "VOIDED" ? "text-gray-400 line-through" : "text-gray-700"}`}
-        >
-          {formatDate(coil.metadata?.invoiceDate || coil.createdAt)}
-        </div>
-      )
-    },
-    {
       key: "material",
-      header: (
-        <>
-          Material <span className="text-gray-400 normal-case font-normal">(Ancho x Esp)</span>
-        </>
-      ),
+      header: "Material",
       render: (coil) => (
-        <div className={`text-sm font-medium ${coil.status === "VOIDED" ? "text-gray-400 line-through" : "text-gray-600"}`}>
-          {coil.masterWidth}{" "}
-          <span className="text-gray-400 mx-0.5 text-[10px]">mm</span>
-          <span className="text-gray-300 mx-1">x</span>
-          {coil.thickness}{" "}
-          <span className="text-gray-400 mx-0.5 text-[10px]">mm</span>
+        <div className="flex flex-col">
+          <div className={`text-sm font-medium ${coil.status === "VOIDED" ? "text-gray-400 line-through" : "text-gray-600"}`}>
+            {coil.masterWidth} <span className="text-gray-400 text-[10px]">mm</span> x {coil.thickness} <span className="text-gray-400 text-[10px]">mm</span>
+          </div>
+          {coil.metadata?.originalDescription && (
+            <span 
+              className="text-[10px] text-gray-400 font-bold uppercase mt-0.5 truncate max-w-[180px]"
+              title={coil.metadata.originalDescription}
+            >
+              {coil.metadata.originalDescription}
+            </span>
+          )}
         </div>
       )
     },
     {
       key: "valuation",
       header: "Valorización",
+      width: "w-32",
       render: (coil) => {
         const totalValuePEN = (coil.currentWeight || 0) * (coil.pricePerKg || 0);
         const isUSD = coil.metadata?.currency === 'USD';
@@ -261,33 +265,45 @@ export default function InventoryTable({
     {
       key: "stock",
       header: "Stock Disponible",
-      width: "w-60",
-      render: (coil) => (
-        <div className={coil.status === "VOIDED" ? "opacity-50 grayscale" : ""}>
-          <WeightIndicator
-            current={coil.currentWeight || 0}
-            initial={coil.initialWeight || 0}
-          />
-        </div>
-      )
-    },
-    {
-      key: "responsible",
-      header: "Responsable",
+      width: "w-56",
       render: (coil) => {
-        const creatorEmail = coil.registeredBy || "Sistema";
-        const initial = creatorEmail.charAt(0).toUpperCase();
+        let density = coil.densityFactor;
+        if (!density && coil.finish) {
+          const finishObj = finishes.find((f) => f.id === coil.finish);
+          if (finishObj && finishObj.densityFactor) {
+            density = finishObj.densityFactor;
+          }
+        }
+        
+        const thickness = coil.thickness || 0;
+        const masterWidth = coil.masterWidth || 0;
+        const factor = density && density > 0 ? masterWidth * thickness * density : 0;
+        
+        const mlCurrent = factor > 0 ? (coil.currentWeight || 0) / factor : 0;
+        const mlInitial = factor > 0 ? (coil.initialWeight || 0) / factor : 0;
+        const isSplit = !!coil.parentCoilId;
+
         return (
-          <div className={`flex items-center gap-2 ${coil.status === "VOIDED" ? "opacity-50 grayscale" : ""}`}>
-            <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-[10px] shrink-0">
-              {initial}
+          <div className={`flex flex-col gap-1 ${coil.status === "VOIDED" ? "opacity-50 grayscale" : ""}`}>
+            <WeightIndicator
+              current={coil.currentWeight || 0}
+              initial={coil.initialWeight || 0}
+            />
+            <div className="flex justify-between items-center text-[10px] text-gray-400 font-medium mt-[-2px]">
+              {factor > 0 ? (
+                <>
+                  <span>≈ {Math.round(mlCurrent)} ML</span>
+                  <span 
+                    className={isSplit ? "text-amber-500 font-bold" : ""} 
+                    title={isSplit ? "ML total aproximado por split (masterWidth influye)" : ""}
+                  >
+                    / {isSplit ? "≈" : ""} {Math.round(mlInitial)} ML
+                  </span>
+                </>
+              ) : (
+                <span className="w-full text-center text-[10px] text-gray-400" title="Densidad no disponible para calcular ML">s/densidad</span>
+              )}
             </div>
-            <span
-              className="text-xs font-medium text-gray-600 truncate max-w-[120px]"
-              title={creatorEmail}
-            >
-              {creatorEmail.split("@")[0]}
-            </span>
           </div>
         );
       }
@@ -295,6 +311,7 @@ export default function InventoryTable({
     {
       key: "status",
       header: "Estado",
+      width: "w-32",
       render: (coil) => (
         <div className="flex flex-col gap-1 items-center">
           <StatusBadge status={coil.status} orderId={orderMapping[coil.id]} />
@@ -310,7 +327,7 @@ export default function InventoryTable({
       key: "actions",
       header: "Acciones",
       align: "center",
-      width: "w-32",
+      width: "w-24",
       render: (coil) => {
         if (coil.status === "VOIDED") {
           if (role === "ADMIN") {
@@ -451,7 +468,7 @@ export default function InventoryTable({
       currentPage={currentPage}
       pageSize={pageSize}
       showRowNumber={true}
-      minWidth="min-w-[1200px]"
+      minWidth="w-full table-fixed"
       emptyState={{
         icon: "Search",
         title: "No hay resultados",

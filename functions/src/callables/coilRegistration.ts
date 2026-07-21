@@ -142,7 +142,7 @@ export const registerCoil = onCall(async (request) => {
         finish: coil.finish,
         pricePerKg,
         status: "AVAILABLE",
-        isClosed: false,
+        isClosed: true,
         registeredBy: email,
         createdAt: now,
         updatedAt: now,

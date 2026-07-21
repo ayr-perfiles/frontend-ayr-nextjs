@@ -259,4 +259,29 @@ describe('Split Module (Integration - Backend Callable)', () => {
     const finalParent = await adminDb.collection("coils").doc("BOB-TEST-5").get();
     expect(finalParent.data()?.currentWeight).toBe(res1.newParentWeight);
   });
+  it('Test 6: isClosed=true no bloquea el split', async () => {
+    const adminDb = admin.firestore();
+    await adminDb.collection("coils").doc("BOB-TEST-CLOSED").set({
+      initialWeight: 10000,
+      currentWeight: 10000,
+      masterWidth: 1200,
+      pricePerKg: 3.5,
+      status: "AVAILABLE",
+      isClosed: true,
+      thickness: 0.45,
+      finish: "GALV",
+    });
+    await adminDb.collection("coil_finishes").doc("GALV").set({ active: true, label: "GALV", densityFactor: 0.00785 });
+
+    const request = {
+      data: { coilId: "BOB-TEST-CLOSED", newChildWidthMm: 300, requestId: "req-closed-split" },
+      auth: { uid: "admin", token: { role: "ADMIN", email: "a@test.com" } }
+    };
+
+    const res = await registerCoilSplit.run(request as any);
+    expect(res.childId).toBeDefined();
+
+    const parentSnap = await adminDb.collection("coils").doc("BOB-TEST-CLOSED").get();
+    expect(parentSnap.data()?.masterWidth).toBe(900);
+  });
 });

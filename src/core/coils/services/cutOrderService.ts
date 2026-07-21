@@ -44,6 +44,10 @@ export const sendToCut = async (params: {
           throw new Error(`La bobina ${snap.id} no está disponible (estado: ${coil.status}).`);
         }
 
+        if (coil.isClosed) {
+          throw new Error("La bobina está cerrada. El supervisor debe abrirla antes de producir.");
+        }
+
         if (coil.currentWeight <= 0) {
           throw new Error(`La bobina ${snap.id} no tiene peso disponible.`);
         }
