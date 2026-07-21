@@ -1,9 +1,11 @@
 <!-- ⚠️ AUTO-GENERADO desde CLAUDE.md. NO editar a mano — editá CLAUDE.md y corré sync-context. -->
-# CLAUDE.md — AYR Steel ERP (v6.22)
+# CLAUDE.md — AYR Steel ERP (v6.24)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + integración serializada verde | Functions v2 operativa.
-> **v6.23:** (Cerrado EN PROD esta sesión)
+> **v6.24:** (Cerrado EN PROD esta sesión)
+> - Frente B: Bobinas nacen CERRADAS por defecto (isClosed:true en writes); tabla InventoryTable rediseñada con estado CERRADA y fórmula ML corregida (masterWidth_mm DIRECTO, sin /1000); guard backend hermético en `produceFromCoils`.
+> **v6.23:** (Cerrado EN PROD)
 > - WRITE 7b drywall coil-directo CERRADO EN PROD: revertProductionLog un-amputa branch coils, reversa a stripCost congelado, resta-de-lote WAC, peso re-derivado (approximateWeight flag, NaN guard masterWidth→HttpsError), stock negativo Opción 2 (qty≤0 congela WAC + negativeStockWarning), idempotente, dominio puro calcRevertProductionFromCoil. Runtime prod validado con callable real (positivo recalcula WAC, negativo congela). Guard laterSales confirmado en vivo.
 > - 7a (strips_stock pool) validado, sirve flujo aspiracional (strips_stock casi vacío en prod).
 > **v6.22:**
@@ -401,6 +403,7 @@ El bulk (`registerCoilsBulk` + UI) está listo y validado en test-nube. La impor
 | Módulo | Documento | Última Verificación | Estado |
 |--------|-----------|---------------------|--------|
 | Drywall | [docs/modules/drywall.md](docs/modules/drywall.md) | 2026-07-19 | Verificado contra BD prod |
+| Coils (Bobinas) | [docs/modules/coils.md](docs/modules/coils.md) | 2026-07-21 | Verificado contra BD prod |
 | Metallic | *(Pendiente)* | - | - |
 | Ventas | *(Pendiente)* | - | - |
 | Compras | *(Pendiente)* | - | - |
