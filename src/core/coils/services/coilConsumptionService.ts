@@ -57,6 +57,10 @@ export const consumeCoil = async (params: ConsumptionParams) => {
         throw new Error(`La bobina no está en un estado válido para consumo (${coil.status}).`);
       }
 
+      if (coil.isClosed) {
+        throw new Error("La bobina está cerrada. El supervisor debe abrirla antes de producir.");
+      }
+
       if (!coil.finish) {
         throw new Error("La bobina no tiene un acabado asignado. Edítala primero.");
       }

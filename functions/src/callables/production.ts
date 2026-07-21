@@ -114,6 +114,10 @@ export const produceFromCoils = onCall(async (request) => {
         throw new HttpsError("invalid-argument", `La bobina '${coilId}' no está disponible para producción (estado: ${coil.status}).`);
       }
 
+      if (coil.isClosed) {
+        throw new HttpsError("failed-precondition", "La bobina está cerrada. El supervisor debe abrirla antes de producir.");
+      }
+
       if (!coil.finish) {
         throw new HttpsError("failed-precondition", `La bobina '${coilId}' no tiene acabado asignado.`);
       }

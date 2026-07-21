@@ -340,4 +340,45 @@ describe('produceFromCoils Integration Tests', () => {
     expect(stockSnap.data()!.avgCost).toBe(80);
   });
 
+  it('11. isClosed=true bloquea producción', async () => {
+    await db.collection('coil_finishes').doc('F-CLOSED').set({ active: true, lines: ['metallic-roofing'], densityFactor: 0.00785 });
+    await db.collection('coils').doc('COIL-CLOSED').set({ id: 'COIL-CLOSED', status: 'AVAILABLE', isClosed: true, finish: 'F-CLOSED', masterWidth: 1000, thickness: 1, pricePerKg: 10, currentWeight: 1000 });
+
+    const request = {
+      data: {
+        targetSku: 'SKU-CLOSED',
+        productKind: 'COBERTURA_ML',
+        coilInputs: [{ coilId: 'COIL-CLOSED', declared: 10 }],
+        requestId: 'req-closed', source: { type: 'QUOTE', id: 'Q1' }
+      },
+      auth: { uid: 'u', token: { role: 'ADMIN' } }
+    };
+    
+    await expect(produceFromCoils.run(request as any)).rejects.toThrow('La bobina está cerrada. El supervisor debe abrirla antes de producir.');
+  });
+
+  it('12. toggle abrir sobre cerrada -> luego produceFromCoils -> PASA', async () => {
+    await db.collection('coil_finishes').doc('F-OPEN').set({ active: true, lines: ['metallic-roofing'], densityFactor: 0.00785 });
+    await db.collection('coils').doc('COIL-TOGGLE').set({ id: 'COIL-TOGGLE', status: 'AVAILABLE', isClosed: true, finish: 'F-OPEN', masterWidth: 1000, thickness: 1, pricePerKg: 10, currentWeight: 1000, initialWeight: 1000 });
+
+    // Simular el toggle abriendo la bobina
+    await db.collection('coils').doc('COIL-TOGGLE').update({ isClosed: false });
+
+    const request = {
+      data: {
+        targetSku: 'SKU-TOGGLE',
+        productKind: 'COBERTURA_ML',
+        coilInputs: [{ coilId: 'COIL-TOGGLE', declared: 10 }],
+        requestId: 'req-toggle', source: { type: 'QUOTE', id: 'Q1' }
+      },
+      auth: { uid: 'u', token: { role: 'ADMIN' } }
+    };
+    
+    const res = await produceFromCoils.run(request as any);
+    expect(res.success).toBe(true);
+
+    const coilSnap = await db.collection('coils').doc('COIL-TOGGLE').get();
+    expect(coilSnap.data()!.status).toBe('IN_PROGRESS');
+  });
+
 });
