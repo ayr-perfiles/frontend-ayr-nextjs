@@ -65,9 +65,6 @@ export const registerCoil = onCall(async (request) => {
     }
   }
 
-  const provParts = (invoice?.provider || "PROV").toUpperCase().replace(/[^A-Z0-9 ]/g, "").split(/\s+/).filter(Boolean);
-  const provCode = provParts.length > 0 ? provParts[0].substring(0, 6) : "PROV";
-
   const db = admin.firestore();
 
   // Parse invoice date outside transaction (doesn't need to be consistent)
