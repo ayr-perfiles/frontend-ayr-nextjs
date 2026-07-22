@@ -2,6 +2,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 
+import { generateCoilId } from "../domain/coilId";
+
 interface CoilInput {
   coilId: string;
   weight: number;
@@ -63,9 +65,6 @@ export const registerCoil = onCall(async (request) => {
     }
   }
 
-  const provParts = (invoice?.provider || "PROV").toUpperCase().replace(/[^A-Z0-9 ]/g, "").split(/\s+/).filter(Boolean);
-  const provCode = provParts.length > 0 ? provParts[0].substring(0, 6) : "PROV";
-
   const db = admin.firestore();
 
   // Parse invoice date outside transaction (doesn't need to be consistent)
@@ -122,12 +121,13 @@ export const registerCoil = onCall(async (request) => {
       const coil = coils[i];
       currentCounter++;
       
-      const safeFinish = coil.finish.toUpperCase().replace(/[^A-Z0-9-]/g, "");
-      const esp = Math.round(Number(coil.thickness) * 100).toString().padStart(3, "0");
-      const peso = Math.round(Number(coil.weight)).toString();
-      const nnnnn = currentCounter.toString().padStart(5, "0");
-      
-      const id = `${provCode}-${safeFinish}-${esp}-${peso}-${nnnnn}`;
+      const id = generateCoilId({
+        provider: invoice?.provider,
+        finish: coil.finish,
+        thickness: coil.thickness,
+        weight: coil.weight,
+        counter: currentCounter,
+      });
       const weight = Number(coil.weight);
       const inputValue = Number(coil.value);
       const totalPEN = currency === "USD" ? inputValue * exchangeRate : inputValue;

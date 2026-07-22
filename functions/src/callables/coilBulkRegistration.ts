@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
+import { generateCoilId } from "../domain/coilId";
 
 interface BulkCoilInput {
   finish: string;
@@ -75,20 +76,19 @@ export const registerCoilsBulk = onCall(async (request) => {
       await db.runTransaction(async (transaction) => {
         // === ALL READS FIRST ===
         
-        // 1. Dedup check
-        const coilRefs = invoice.coils.map((c, idx) => {
-          const id = `${invoice.serie}-${invoice.nroDoc}-${(idx + 1).toString().padStart(2, '0')}`.toUpperCase();
-          return db.collection("coils").doc(id);
-        });
-
-        const coilSnaps = await Promise.all(coilRefs.map(ref => transaction.get(ref)));
-        for (let i = 0; i < coilSnaps.length; i++) {
-          if (coilSnaps[i].exists) {
-            throw new Error('ALREADY_EXISTS_DUP');
-          }
+        // 1. Dedup check by metadata.invoiceNumber
+        const dupQuery = db.collection("coils").where("metadata.invoiceNumber", "==", invoiceString);
+        const dupSnap = await transaction.get(dupQuery);
+        if (!dupSnap.empty) {
+          throw new Error('ALREADY_EXISTS_DUP');
         }
 
-        // 2. Finishes check
+        // 2. Read shared counter counters/coils
+        const counterRef = db.collection("counters").doc("coils");
+        const counterSnap = await transaction.get(counterRef);
+        let currentCounter = counterSnap.exists ? (counterSnap.data()?.current || 0) : 0;
+
+        // 3. Finishes check
         const distinctFinishes = [...new Set(invoice.coils.map(c => c.finish))];
         const finishRefs = distinctFinishes.map(f => db.collection("coil_finishes").doc(f));
         const finishSnaps = await Promise.all(finishRefs.map(ref => transaction.get(ref)));
@@ -111,7 +111,16 @@ export const registerCoilsBulk = onCall(async (request) => {
 
         for (let i = 0; i < invoice.coils.length; i++) {
           const coil = invoice.coils[i];
-          const id = `${invoice.serie}-${invoice.nroDoc}-${(i + 1).toString().padStart(2, '0')}`.toUpperCase();
+          currentCounter++;
+
+          const id = generateCoilId({
+            provider: invoice.provider,
+            finish: coil.finish,
+            thickness: coil.thickness,
+            weight: coil.weight,
+            counter: currentCounter,
+          });
+
           const weight = Number(coil.weight);
           const inputValue = Number(coil.value);
           const totalPEN = currency === "USD" ? inputValue * exchangeRate : inputValue;
@@ -146,9 +155,15 @@ export const registerCoilsBulk = onCall(async (request) => {
             },
           };
 
-          transaction.set(coilRefs[i], coilDoc);
+          const coilRef = db.collection("coils").doc(id);
+          transaction.set(coilRef, coilDoc);
           coilIds.push(id);
         }
+
+        transaction.set(counterRef, {
+          current: currentCounter,
+          updatedAt: now,
+        }, { merge: true });
 
         const auditRef = db.collection("audit_logs").doc();
         transaction.set(auditRef, {
