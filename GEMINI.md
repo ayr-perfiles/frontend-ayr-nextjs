@@ -1,8 +1,13 @@
-<!-- ⚠️ AUTO-GENERADO desde CLAUDE.md. NO editar a mano — editá CLAUDE.md y corré sync-context. -->
-# CLAUDE.md — AYR Steel ERP (v6.24)
+# CLAUDE.md — AYR Steel ERP (v6.25)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
-> **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + integración serializada verde | Functions v2 operativa.
+> **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + 3 unit (coilId) + integración serializada verde | Functions v2 operativa.
+> **v6.25:** (Cerrado EN PROD) ID de bobina UNIFICADO en los 3 paths de alta.
+> - registerCoilsBulk migrado al composite PROV-ACABADO-ESP-PESO-NNNNN (antes serie-nroDoc-NN). Provider code = primera palabra 6 chars; ACABADO = KEY de coil_finishes (guion intacto, ALU-GRIS verificado en prod), NO el label. Counter counters/coils COMPARTIDO con registerCoil (atómico, read-antes-de-write en la txn por-invoice; retry re-lee fresco).
+> - Dedup migrado de doc.id determinista a QUERY por metadata.invoiceNumber (transaction.get sobre where invoiceNumber == `${serie}-${nroDoc}`). Motivo: el composite lleva correlativo global → doc.id ya no es key estable. El query tapa el hueco §14 (bobina de la misma factura entrada antes por manual/XML con composite id → el dedup viejo por doc.id NO la veía → duplicaba). Tolera VOIDED (query las ve → sigue bloqueando). Escape deleteCoilDraft intacto (borrado físico → query vacío → re-import permitido). Consecuencia: 1 factura = 1 importación, todo-o-nada; para agregar bobinas a una factura ya importada hay que borrar + reimportar.
+> - Helper extraído a functions/src/domain/coilId.ts (generateCoilId), CONSUMIDO por registerCoil Y registerCoilsBulk (fuente única, test de paridad). XML (PurchaseCoilFromXml) ya heredaba el formato por llamar a registerCoil — sin cambios.
+> - Fecha bulk: normalizeFecha acepta serial Excel (SheetJS raw:true, epoch 1899-12-30, ventana [20000,60000], salida YYYY-MM-DD que el backend exige); display DD/MM/YYYY en preview. Rango de peso [1000,20000] (antes [2000,7000]). Runtime prod: invoiceDate a mediodía UTC → día correcto sin off-by-one.
+> - GREEN 8/8 integración + 3/3 paridad emulador. Runtime prod validado con Excel real de junio (carga real §14): ID composite MIROMI-ALU-GRIS-035-8555-00023, re-import → skipped-dup, counter no se movió. Deploy por nombre a prod Y test (sincronizados). Commits b2a22097 + 18a2ee10, merge de702f73.
 > **v6.24:** (Cerrado EN PROD esta sesión)
 > - Frente B: Bobinas nacen CERRADAS por defecto (isClosed:true en writes); tabla InventoryTable rediseñada con estado CERRADA y fórmula ML corregida (masterWidth_mm DIRECTO, sin /1000); guard backend hermético en `produceFromCoils`.
 > **v6.23:** (Cerrado EN PROD)
