@@ -16,6 +16,21 @@ describe('bulkUploadLogic', () => {
       expect(normalizeFecha("01/04/2026")).toBe("2026-04-01"); 
       expect(normalizeFecha("05/06/2026")).toBe("2026-06-05"); 
     });
+
+    it('should correctly parse Excel date serial numbers and numeric strings', () => {
+      expect(normalizeFecha(44927)).toBe("2023-01-01");
+      expect(normalizeFecha(45658)).toBe("2025-01-01");
+      expect(normalizeFecha('46183')).toBe("2026-06-10");
+    });
+
+    it('should return null for numbers outside serial window [20000, 60000]', () => {
+      expect(normalizeFecha(693)).toBe(null);
+    });
+
+    it('should preserve standard date string parsing (DD/MM/YYYY and YYYY-MM-DD)', () => {
+      expect(normalizeFecha('25/07/2026')).toBe("2026-07-25");
+      expect(normalizeFecha('2026-07-25')).toBe("2026-07-25");
+    });
   });
 
   describe('normalizeCurrency', () => {
@@ -122,20 +137,20 @@ describe('bulkUploadLogic', () => {
     });
 
     // --- WEIGHT RANGE TESTS ---
-    it('should return invalid for weightKg 500 (out of range)', () => {
+    it('should return invalid for weightKg 500 (out of range < 1000)', () => {
       const res = validateCoilRow({ ...validBase, weightRaw: '500' }, liveFinishKeys);
       expect(res.valid).toBe(false);
       expect(res.errors.some(e => e.includes('fuera de rango esperado'))).toBe(true);
     });
 
-    it('should return invalid for weightKg 11.214 (without comma -> 11.214 kg out of range)', () => {
-      // BOMBA A TRAPADA
+    it('should return invalid for weightKg 11.214 (without comma -> 11.214 kg out of range < 1000)', () => {
+      // BOMBA ATRAPADA
       const res = validateCoilRow({ ...validBase, weightRaw: '11.214', unitRaw: 'KILOGRAMO' }, liveFinishKeys);
       expect(res.valid).toBe(false);
       expect(res.errors.some(e => e.includes('fuera de rango esperado'))).toBe(true);
     });
 
-    it('should return invalid for weightKg 11214000 (TON mal)', () => {
+    it('should return invalid for weightKg 11214000 (TON mal > 20000)', () => {
       const res = validateCoilRow({ ...validBase, weightRaw: '11214', unitRaw: 'TONELADA' }, liveFinishKeys);
       expect(res.valid).toBe(false);
       expect(res.errors.some(e => e.includes('fuera de rango esperado'))).toBe(true);
@@ -151,11 +166,16 @@ describe('bulkUploadLogic', () => {
       expect(res.valid).toBe(true);
     });
 
-    it('should return valid for exact borders and invalid for just outside', () => {
-      expect(validateCoilRow({ ...validBase, weightRaw: '2000' }, liveFinishKeys).valid).toBe(true);
-      expect(validateCoilRow({ ...validBase, weightRaw: '7000' }, liveFinishKeys).valid).toBe(true);
-      expect(validateCoilRow({ ...validBase, weightRaw: '1999' }, liveFinishKeys).valid).toBe(false);
-      expect(validateCoilRow({ ...validBase, weightRaw: '7001' }, liveFinishKeys).valid).toBe(false);
+    it('should return valid for weightKg 8711 (previously failed under 7000 limit)', () => {
+      const res = validateCoilRow({ ...validBase, weightRaw: '8711', unitRaw: 'KILOGRAMO' }, liveFinishKeys);
+      expect(res.valid).toBe(true);
+    });
+
+    it('should return valid for exact borders [1000, 20000] and invalid for just outside', () => {
+      expect(validateCoilRow({ ...validBase, weightRaw: '1000' }, liveFinishKeys).valid).toBe(true);
+      expect(validateCoilRow({ ...validBase, weightRaw: '20000' }, liveFinishKeys).valid).toBe(true);
+      expect(validateCoilRow({ ...validBase, weightRaw: '999' }, liveFinishKeys).valid).toBe(false);
+      expect(validateCoilRow({ ...validBase, weightRaw: '20001' }, liveFinishKeys).valid).toBe(false);
     });
     // --------------------------
 

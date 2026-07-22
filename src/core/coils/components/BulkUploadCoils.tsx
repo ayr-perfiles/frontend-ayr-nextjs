@@ -355,7 +355,12 @@ export function BulkUploadCoils() {
                       <input type="text" value={row.nroDoc} onChange={(e) => handleRowChange(i, "nroDoc", e.target.value)} className="w-20 p-1 border rounded text-xs" />
                     </td>
                     <td className="p-1">
-                      <input type="text" value={row.fecha} onChange={(e) => handleRowChange(i, "fecha", e.target.value)} className="w-20 p-1 border rounded text-xs" title="DD/MM/YYYY o YYYY-MM-DD" placeholder="DD/MM/YYYY" />
+                      <input type="text" value={(() => {
+                        const norm = normalizeFecha(row.fecha);
+                        if (!norm) return String(row.fecha ?? "");
+                        const [y, m, d] = norm.split("-");
+                        return `${d}/${m}/${y}`;
+                      })()} onChange={(e) => handleRowChange(i, "fecha", e.target.value)} className="w-20 p-1 border rounded text-xs" title="DD/MM/YYYY o YYYY-MM-DD" placeholder="DD/MM/YYYY" />
                     </td>
                     <td className="p-1">
                       <input type="text" value={row.provider} onChange={(e) => handleRowChange(i, "provider", e.target.value)} className="w-32 p-1 border rounded text-xs" />

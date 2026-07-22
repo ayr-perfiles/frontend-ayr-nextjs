@@ -12,7 +12,7 @@ export const TOKEN_TO_FINISH: Record<string, string> = {
 export interface CoilRow {
   serie: string;
   nroDoc: string;
-  fecha: string;
+  fecha: string | number;
   provider: string;
   providerDoc: string;
   currencyRaw: string;
@@ -48,8 +48,28 @@ export interface InvoicePayload {
   }>;
 }
 
-export function normalizeFecha(raw: string): string | null {
-  if (!raw) return null;
+export function normalizeFecha(raw: string | number | null | undefined): string | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+
+  let serialNum: number | null = null;
+  if (typeof raw === "number") {
+    serialNum = raw;
+  } else {
+    const s = String(raw).trim();
+    if (/^\d+(\.\d+)?$/.test(s)) {
+      serialNum = Number(s);
+    }
+  }
+
+  if (serialNum !== null && serialNum >= 20000 && serialNum <= 60000) {
+    const ms = Date.UTC(1899, 11, 30) + Math.floor(serialNum) * 86400000;
+    const d = new Date(ms);
+    const y = d.getUTCFullYear();
+    const mStr = (d.getUTCMonth() + 1).toString().padStart(2, "0");
+    const dStr = d.getUTCDate().toString().padStart(2, "0");
+    return `${y}-${mStr}-${dStr}`;
+  }
+
   const s = String(raw).trim();
   
   let year: number, month: number, day: number;
@@ -94,8 +114,8 @@ export function normalizeCurrency(raw: string): 'USD' | 'PEN' | null {
   return null;
 }
 
-export const WEIGHT_MIN_KG = 2000;
-export const WEIGHT_MAX_KG = 7000;
+export const WEIGHT_MIN_KG = 1000;
+export const WEIGHT_MAX_KG = 20000;
 
 export const EXCHANGE_RATE_MIN = 2;
 export const EXCHANGE_RATE_MAX = 7;
