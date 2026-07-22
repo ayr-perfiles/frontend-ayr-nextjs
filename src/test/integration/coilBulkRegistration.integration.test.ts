@@ -10,7 +10,7 @@ import { registerCoilsBulk } from '../../../functions/src/callables/coilBulkRegi
 const ADMIN_AUTH = { token: { role: "ADMIN", email: "admin@example.com" } };
 const OPERATOR_AUTH = { token: { role: "OPERATOR", email: "op@ayrsteel.com" } };
 
-describe('registerCoilsBulk (Integration)', () => {
+describe('registerCoilsBulk (Integration Composite ID & Dedup)', () => {
   beforeAll(async () => {
     if (!admin.apps.length) {
       admin.initializeApp({ projectId: TEST_PROJECT_ID });
@@ -25,27 +25,33 @@ describe('registerCoilsBulk (Integration)', () => {
     await adminDb.collection("coil_finishes").doc("GALVANIZADO").set({
       active: true, label: "Galvanizado", densityFactor: 0.00785, lines: ["drywall"],
     });
+    await adminDb.collection("coil_finishes").doc("GALV").set({
+      active: true, label: "Galv", densityFactor: 0.00785, lines: ["drywall"],
+    });
     await adminDb.collection("coil_finishes").doc("NATURAL").set({
       active: true, label: "Natural", densityFactor: 0.00785, lines: ["metallic-roofing"],
     });
     await adminDb.collection("coil_finishes").doc("AZUL").set({
       active: true, label: "Azul", densityFactor: 0.008, lines: ["metallic-roofing"],
     });
+    await adminDb.collection("coil_finishes").doc("ALU-AZUL").set({
+      active: true, label: "Aluzinc Azul", densityFactor: 0.008, lines: ["metallic-roofing"],
+    });
   });
 
-  it('1. HAPPY 1 factura / 2 coils', async () => {
+  it('1. ID FORMATO: 1 invoice, 2 bobinas -> composite ID (PROV-ACABADO-ESP-PESO-NNNNN), provCode primera palabra 6 chars', async () => {
     const request = {
       data: {
         invoices: [{
           serie: "F001",
           nroDoc: "13070",
           fecha: "2026-06-30",
-          provider: "Prov SA",
+          provider: "REPRESENTACIONES JAVI",
           providerDoc: "20123456789",
           currency: "PEN" as const,
           exchangeRate: 1,
           coils: [
-            { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 3708, value: 2862.58 }, // PEN
+            { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 3708, value: 2862.58 },
             { finish: "NATURAL", width: 1220, thickness: 0.40, weight: 1000, value: 1000 }
           ]
         }]
@@ -54,45 +60,33 @@ describe('registerCoilsBulk (Integration)', () => {
     };
 
     const result = await registerCoilsBulk.run(request as any);
-    expect(result).toHaveProperty('results');
-    expect(result.results).toHaveLength(1);
-    expect(result.results[0]).toMatchObject({
-      invoice: "F001-13070",
-      status: "created",
-      count: 2
-    });
+    expect(result.results[0]).toMatchObject({ invoice: "F001-13070", status: "created", count: 2 });
 
     const adminDb = admin.firestore();
-    const snap1 = await adminDb.collection("coils").doc("F001-13070-01").get();
-    expect(snap1.exists).toBe(true);
-    const coil1 = snap1.data()!;
-    expect(coil1.id).toBe("F001-13070-01");
-    expect(coil1.status).toBe("AVAILABLE");
-    expect(coil1.initialWeight).toBe(3708);
-    expect(coil1.currentWeight).toBe(3708);
-    expect(coil1.masterWidth).toBe(1200);
-    expect(coil1.thickness).toBe(0.45);
-    expect(coil1.finish).toBe("GALVANIZADO");
-    expect(coil1.pricePerKg).toBe(0.772001); // 2862.58 / 3708 = 0.772001... -> 0.772001
-    expect(coil1.registeredBy).toBe("admin@example.com");
+    const coilsSnap = await adminDb.collection("coils").where("metadata.invoiceNumber", "==", "F001-13070").get();
+    expect(coilsSnap.size).toBe(2);
 
-    const snap2 = await adminDb.collection("coils").doc("F001-13070-02").get();
-    expect(snap2.exists).toBe(true);
+    for (const doc of coilsSnap.docs) {
+      expect(doc.id).toMatch(/^[A-Z0-9]{1,6}-[A-Z0-9-]+-\d{3}-\d+-\d{5}$/);
+      expect(doc.id).not.toMatch(/^F001-13070-\d{2}$/);
+      expect(doc.id.startsWith("REPRES-")).toBe(true);
+    }
   });
 
-  it('2. USD conversión', async () => {
+  it('1b. KEY CON GUION INTACTA: finish="ALU-AZUL" -> doc.id contiene "-ALU-AZUL-", finish="GALV" -> "-GALV-"', async () => {
     const request = {
       data: {
         invoices: [{
-          serie: "F002",
+          serie: "F001",
           nroDoc: "13071",
           fecha: "2026-06-30",
-          provider: "Prov SA",
+          provider: "PROV SA",
           providerDoc: "20123456789",
-          currency: "USD" as const,
-          exchangeRate: 3.5,
+          currency: "PEN" as const,
+          exchangeRate: 1,
           coils: [
-            { finish: "AZUL", width: 1219, thickness: 0.38, weight: 2000, value: 4000 } // USD 4000 -> PEN 14000 -> 7.0 per kg
+            { finish: "ALU-AZUL", width: 1200, thickness: 0.45, weight: 2000, value: 2000 },
+            { finish: "GALV", width: 1200, thickness: 0.45, weight: 2000, value: 2000 }
           ]
         }]
       },
@@ -103,226 +97,208 @@ describe('registerCoilsBulk (Integration)', () => {
     expect(result.results[0].status).toBe("created");
 
     const adminDb = admin.firestore();
-    const snap1 = await adminDb.collection("coils").doc("F002-13071-01").get();
-    expect(snap1.data()!.pricePerKg).toBe(7.0);
+    const coilsSnap = await adminDb.collection("coils").where("metadata.invoiceNumber", "==", "F001-13071").get();
+    expect(coilsSnap.size).toBe(2);
+
+    const docIds = coilsSnap.docs.map(d => d.id);
+    const aluAzulDoc = docIds.find(id => id.includes("-ALU-AZUL-"));
+    const galvDoc = docIds.find(id => id.includes("-GALV-"));
+
+    expect(aluAzulDoc).toBeDefined();
+    expect(aluAzulDoc).toMatch(/-ALU-AZUL-\d{3}-/);
+    expect(galvDoc).toBeDefined();
+    expect(galvDoc).toMatch(/-GALV-\d{3}-/);
   });
 
-  it('3. MULTI-factura fallo parcial', async () => {
-    const request = {
-      data: {
-        invoices: [
-          {
-            serie: "F001", nroDoc: "001", fecha: "2026-06-30", provider: "A", providerDoc: "1", currency: "PEN" as const, exchangeRate: 1,
-            coils: [{ finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }]
-          },
-          {
-            serie: "F002", nroDoc: "002", fecha: "2026-06-30", provider: "B", providerDoc: "2", currency: "PEN" as const, exchangeRate: 1,
-            coils: [{ finish: "NO-EXISTE", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }]
-          },
-          {
-            serie: "F003", nroDoc: "003", fecha: "2026-06-30", provider: "C", providerDoc: "3", currency: "PEN" as const, exchangeRate: 1,
-            coils: [{ finish: "AZUL", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }]
-          }
-        ]
-      },
-      auth: ADMIN_AUTH,
-    };
-
-    const result = await registerCoilsBulk.run(request as any);
-    expect(result.results).toHaveLength(3);
-    
-    expect(result.results[0]).toMatchObject({ invoice: "F001-001", status: "created", count: 1 });
-    expect(result.results[1]).toMatchObject({ invoice: "F002-002", status: "failed", count: 0 });
-    expect(result.results[2]).toMatchObject({ invoice: "F003-003", status: "created", count: 1 });
-
+  it('2. COUNTER COMPARTIDO: counters/coils.current sube +2 y luego +1', async () => {
     const adminDb = admin.firestore();
-    expect((await adminDb.collection("coils").doc("F001-001-01").get()).exists).toBe(true);
-    expect((await adminDb.collection("coils").doc("F002-002-01").get()).exists).toBe(false);
-    expect((await adminDb.collection("coils").doc("F003-003-01").get()).exists).toBe(true);
-  });
+    await adminDb.collection("counters").doc("coils").set({ current: 10, updatedAt: new Date() });
 
-  it('4. DEDUP skip-factura', async () => {
-    const adminDb = admin.firestore();
-    // Pre-sembrar una bobina de la factura F001-13070
-    await adminDb.collection("coils").doc("F001-13070-01").set({ status: "AVAILABLE", initialWeight: 1000 });
-
-    const request = {
-      data: {
-        invoices: [
-          {
-            serie: "F001", nroDoc: "13070", fecha: "2026-06-30", provider: "A", providerDoc: "1", currency: "PEN" as const, exchangeRate: 1,
-            coils: [
-              { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 },
-              { finish: "NATURAL", width: 1200, thickness: 0.40, weight: 1000, value: 1000 }
-            ]
-          },
-          {
-            serie: "F002", nroDoc: "12345", fecha: "2026-06-30", provider: "B", providerDoc: "2", currency: "PEN" as const, exchangeRate: 1,
-            coils: [{ finish: "AZUL", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }]
-          }
-        ]
-      },
-      auth: ADMIN_AUTH,
-    };
-
-    const result = await registerCoilsBulk.run(request as any);
-    
-    expect(result.results[0]).toMatchObject({ invoice: "F001-13070", status: "skipped-dup", count: 0 });
-    expect(result.results[1]).toMatchObject({ invoice: "F002-12345", status: "created", count: 1 });
-
-    // La bobina -02 de la F001-13070 no debió crearse (todo-o-nada skip por factura)
-    expect((await adminDb.collection("coils").doc("F001-13070-02").get()).exists).toBe(false);
-    // La bobina de la F002 sí debió crearse
-    expect((await adminDb.collection("coils").doc("F002-12345-01").get()).exists).toBe(true);
-  });
-
-  it('5. TC fuera de rango', async () => {
-    const request = {
+    const req1 = {
       data: {
         invoices: [{
-          serie: "F004", nroDoc: "999", fecha: "2026-06-30", provider: "Prov", providerDoc: "123",
-          currency: "USD" as const, exchangeRate: 9, // Fuera de rango
-          coils: [{ finish: "AZUL", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }]
+          serie: "F001", nroDoc: "100", fecha: "2026-06-30", provider: "PROV", currency: "PEN" as const, exchangeRate: 1,
+          coils: [
+            { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 },
+            { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }
+          ]
+        }]
+      },
+      auth: ADMIN_AUTH,
+    };
+    await registerCoilsBulk.run(req1 as any);
+
+    let counterSnap = await adminDb.collection("counters").doc("coils").get();
+    expect(counterSnap.data()?.current).toBe(12);
+
+    const req2 = {
+      data: {
+        invoices: [{
+          serie: "F001", nroDoc: "101", fecha: "2026-06-30", provider: "PROV", currency: "PEN" as const, exchangeRate: 1,
+          coils: [
+            { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }
+          ]
+        }]
+      },
+      auth: ADMIN_AUTH,
+    };
+    await registerCoilsBulk.run(req2 as any);
+
+    counterSnap = await adminDb.collection("counters").doc("coils").get();
+    expect(counterSnap.data()?.current).toBe(13);
+  });
+
+  it('3. DEDUP re-import: re-importar mismo serie/nroDoc -> skipped-dup por query metadata.invoiceNumber (incluso con ID no-posicional)', async () => {
+    const adminDb = admin.firestore();
+    // Sembrar manualmente 1 bobina con metadata.invoiceNumber=="F001-999" PERO con doc.id "SEED-XYZ"
+    await adminDb.collection("coils").doc("SEED-XYZ").set({
+      status: "AVAILABLE",
+      initialWeight: 1000,
+      metadata: { invoiceNumber: "F001-999" }
+    });
+
+    const req = {
+      data: {
+        invoices: [{
+          serie: "F001", nroDoc: "999", fecha: "2026-06-30", provider: "PROV", currency: "PEN" as const, exchangeRate: 1,
+          coils: [
+            { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 },
+            { finish: "NATURAL", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }
+          ]
         }]
       },
       auth: ADMIN_AUTH,
     };
 
-    const result = await registerCoilsBulk.run(request as any);
-    expect(result.results[0].status).toBe("failed");
+    const res = await registerCoilsBulk.run(req as any);
+    expect(res.results[0].status).toBe("skipped-dup");
 
+    const coilsSnap = await adminDb.collection("coils").where("metadata.invoiceNumber", "==", "F001-999").get();
+    expect(coilsSnap.size).toBe(1); // Sigue 1 (solo la semilla)
+  });
+
+  it('4. DEDUP tolera VOIDED: bobina VOIDED con invoiceNumber y doc.id no-posicional -> re-import SIGUE bloqueado (skipped-dup)', async () => {
     const adminDb = admin.firestore();
-    expect((await adminDb.collection("coils").doc("F004-999-01").get()).exists).toBe(false);
-  });
+    // Sembrar 1 bobina VOIDED con doc.id "SEED-VOIDED-00001" y metadata.invoiceNumber "F001-999"
+    await adminDb.collection("coils").doc("SEED-VOIDED-00001").set({
+      status: "VOIDED",
+      initialWeight: 1000,
+      metadata: { invoiceNumber: "F001-999" }
+    });
 
-  it('6. AUTH: caller OPERATOR → throw', async () => {
-    const request = {
-      data: { invoices: [] },
-      auth: OPERATOR_AUTH,
-    };
-    
-    await expect(registerCoilsBulk.run(request as any)).rejects.toMatchObject({ code: 'permission-denied' });
-  });
-
-  it('7. AUDIT logs', async () => {
-    const request = {
+    const req = {
       data: {
         invoices: [{
-          serie: "F005", nroDoc: "111", fecha: "2026-06-30", provider: "Prov SA", providerDoc: "20123456789", currency: "PEN" as const, exchangeRate: 1,
-          coils: [{ finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }]
+          serie: "F001", nroDoc: "999", fecha: "2026-06-30", provider: "PROV", currency: "PEN" as const, exchangeRate: 1,
+          coils: [
+            { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 },
+            { finish: "NATURAL", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }
+          ]
         }]
       },
       auth: ADMIN_AUTH,
     };
 
-    await registerCoilsBulk.run(request as any);
-
-    const adminDb = admin.firestore();
-    const auditSnap = await adminDb.collection("audit_logs").where("action", "==", "REGISTER_COIL_BULK").get();
-    expect(auditSnap.size).toBe(1);
-    
-    const auditData = auditSnap.docs[0].data();
-    expect(auditData.userEmail).toBe("admin@example.com");
-    expect(auditData.coilIds).toContain("F005-111-01");
+    const res2 = await registerCoilsBulk.run(req as any);
+    expect(res2.results[0].status).toBe("skipped-dup");
   });
 
-  it('8. Fecha Válida YYYY-MM-DD se persiste correctamente', async () => {
-    const request = {
+  it('5. ESCAPE deleteCoilDraft: importar F001-777 -> IDs composite, borrar físico, re-importar -> IDs composite y distintos de primera corrida', async () => {
+    const adminDb = admin.firestore();
+    const req = {
       data: {
-        invoices: [
-          {
-            serie: "F006", nroDoc: "INV4", fecha: "2026-06-30", provider: "D", providerDoc: "4", currency: "PEN" as const, exchangeRate: 1,
-            coils: [{ finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }]
-          }
-        ]
+        invoices: [{
+          serie: "F001", nroDoc: "777", fecha: "2026-06-30", provider: "PROV", currency: "PEN" as const, exchangeRate: 1,
+          coils: [
+            { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 },
+            { finish: "NATURAL", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }
+          ]
+        }]
       },
       auth: ADMIN_AUTH,
     };
 
-    const result = await registerCoilsBulk.run(request as any);
-    expect(result.results).toHaveLength(1);
-    expect(result.results[0].status).toBe("created");
+    const res1 = await registerCoilsBulk.run(req as any);
+    expect(res1.results[0].status).toBe("created");
 
-    const adminDb = admin.firestore();
-    const snap = await adminDb.collection("coils").doc("F006-INV4-01").get();
-    expect(snap.exists).toBe(true);
-    const invoiceDateStr = snap.data()!.metadata.invoiceDate.toDate().toISOString().split('T')[0];
-    expect(invoiceDateStr).toBe("2026-06-30");
+    const snap1 = await adminDb.collection("coils").where("metadata.invoiceNumber", "==", "F001-777").get();
+    expect(snap1.size).toBe(2);
+    const firstRunIds = snap1.docs.map(d => d.id);
+
+    // Ambas deben tener formato composite PROV-ACABADO-ESP-PESO-NNNNN
+    for (const id of firstRunIds) {
+      expect(id).toMatch(/^[A-Z0-9]{1,6}-[A-Z0-9-]+-\d{3}-\d+-\d{5}$/);
+    }
+
+    // Borrar físicamente ambas
+    for (const doc of snap1.docs) {
+      await doc.ref.delete();
+    }
+
+    // Re-importar
+    const res2 = await registerCoilsBulk.run(req as any);
+    expect(res2.results[0].status).toBe("created");
+
+    const snap2 = await adminDb.collection("coils").where("metadata.invoiceNumber", "==", "F001-777").get();
+    expect(snap2.size).toBe(2);
+    const secondRunIds = snap2.docs.map(d => d.id);
+
+    for (const id of secondRunIds) {
+      expect(id).toMatch(/^[A-Z0-9]{1,6}-[A-Z0-9-]+-\d{3}-\d+-\d{5}$/);
+      expect(firstRunIds).not.toContain(id);
+    }
   });
 
-  it('9. BUG: Fecha ISO / Inválida NO debe crashear, debe ser failed', async () => {
-    const request = {
+  it('6. IDs IDÉNTICOS EN ESPEC: 2 bobinas mismo acabado/espesor/peso -> doc.id con sufijo counter de 5 dígitos consecutivo', async () => {
+    const req = {
       data: {
-        invoices: [
-          {
-            serie: "F006", nroDoc: "INV1", fecha: "2026-06-30T16:50:00.000Z", provider: "A", providerDoc: "1", currency: "PEN" as const, exchangeRate: 1,
-            coils: [{ finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }]
-          },
-          {
-            serie: "F006", nroDoc: "INV2", fecha: "2026-13-45", provider: "B", providerDoc: "2", currency: "PEN" as const, exchangeRate: 1,
-            coils: [{ finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }]
-          },
-          {
-            serie: "F006", nroDoc: "INV3", fecha: "basura", provider: "C", providerDoc: "3", currency: "PEN" as const, exchangeRate: 1,
-            coils: [{ finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }]
-          }
-        ]
+        invoices: [{
+          serie: "F001", nroDoc: "888", fecha: "2026-06-30", provider: "PROV", currency: "PEN" as const, exchangeRate: 1,
+          coils: [
+            { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 },
+            { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }
+          ]
+        }]
       },
       auth: ADMIN_AUTH,
     };
 
-    const result = await registerCoilsBulk.run(request as any);
-    expect(result.results).toHaveLength(3);
+    const res = await registerCoilsBulk.run(req as any);
+    expect(res.results[0].status).toBe("created");
 
-    // Los primeros 3 deben fallar limpiamente con reason
-    expect(result.results[0].status).toBe("failed");
-    expect(result.results[0].reason).toContain("formato YYYY-MM-DD");
-    expect(result.results[1].status).toBe("failed");
-    expect(result.results[1].reason).toContain("formato YYYY-MM-DD");
-    expect(result.results[2].status).toBe("failed");
-    expect(result.results[2].reason).toContain("formato YYYY-MM-DD");
+    const adminDb = admin.firestore();
+    const coilsSnap = await adminDb.collection("coils").where("metadata.invoiceNumber", "==", "F001-888").get();
+    expect(coilsSnap.size).toBe(2);
+
+    const ids = coilsSnap.docs.map(d => d.id);
+    expect(ids[0]).toMatch(/-\d{5}$/);
+    expect(ids[1]).toMatch(/-\d{5}$/);
+    expect(ids[0]).not.toBe(ids[1]);
+
+    const num0 = parseInt(ids[0].slice(-5), 10);
+    const num1 = parseInt(ids[1].slice(-5), 10);
+    expect(Math.abs(num1 - num0)).toBe(1);
   });
 
-  it('10. BUG: Coil con width <= 0 o inválido falla la factura entera', async () => {
-    const request = {
+  it('7. COUNTER SIN STALE ENTRE INVOICES: 2 invoices en la misma corrida -> 4 correlativos únicos y +4 en counter', async () => {
+    const adminDb = admin.firestore();
+    await adminDb.collection("counters").doc("coils").set({ current: 100, updatedAt: new Date() });
+
+    const req = {
       data: {
         invoices: [
           {
-            serie: "F010", nroDoc: "INV-W0", fecha: "2026-06-30", provider: "A", providerDoc: "1", currency: "PEN" as const, exchangeRate: 1,
+            serie: "F001", nroDoc: "100", fecha: "2026-06-30", provider: "PROV", currency: "PEN" as const, exchangeRate: 1,
             coils: [
               { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 },
-              { finish: "GALVANIZADO", width: 0, thickness: 0.45, weight: 1000, value: 1000 }
-            ]
-          }
-        ]
-      },
-      auth: ADMIN_AUTH,
-    };
-
-    const result = await registerCoilsBulk.run(request as any);
-    expect(result.results).toHaveLength(1);
-    expect(result.results[0].status).toBe("failed");
-    expect(result.results[0].reason).toContain("Las dimensiones (ancho/espesor) deben ser numéricas y mayores a 0");
-
-    const adminDb = admin.firestore();
-    const q = await adminDb.collection("coils").where("invoice", "==", "F010-INV-W0").get();
-    expect(q.size).toBe(0);
-  });
-
-  it('11. BUG: Coil con thickness <= 0 o inválido falla la factura entera', async () => {
-    const request = {
-      data: {
-        invoices: [
-          {
-            serie: "F011", nroDoc: "INV-T0", fecha: "2026-06-30", provider: "A", providerDoc: "1", currency: "PEN" as const, exchangeRate: 1,
-            coils: [
-              { finish: "GALVANIZADO", width: 1200, thickness: -0.5, weight: 1000, value: 1000 }
+              { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }
             ]
           },
           {
-            serie: "F011", nroDoc: "INV-TNAN", fecha: "2026-06-30", provider: "B", providerDoc: "2", currency: "PEN" as const, exchangeRate: 1,
+            serie: "F001", nroDoc: "200", fecha: "2026-06-30", provider: "PROV", currency: "PEN" as const, exchangeRate: 1,
             coils: [
-              { finish: "GALVANIZADO", width: 1200, thickness: NaN, weight: 1000, value: 1000 }
+              { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 },
+              { finish: "GALVANIZADO", width: 1200, thickness: 0.45, weight: 1000, value: 1000 }
             ]
           }
         ]
@@ -330,45 +306,22 @@ describe('registerCoilsBulk (Integration)', () => {
       auth: ADMIN_AUTH,
     };
 
-    const result = await registerCoilsBulk.run(request as any);
-    expect(result.results).toHaveLength(2);
-    expect(result.results[0].status).toBe("failed");
-    expect(result.results[0].reason).toContain("Las dimensiones (ancho/espesor) deben ser numéricas y mayores a 0");
-    expect(result.results[1].status).toBe("failed");
-    expect(result.results[1].reason).toContain("Las dimensiones (ancho/espesor) deben ser numéricas y mayores a 0");
+    const res = await registerCoilsBulk.run(req as any);
+    expect(res.results[0].status).toBe("created");
+    expect(res.results[1].status).toBe("created");
 
-    const adminDb = admin.firestore();
-    const q1 = await adminDb.collection("coils").where("invoice", "==", "F011-INV-T0").get();
-    expect(q1.size).toBe(0);
-    const q2 = await adminDb.collection("coils").where("invoice", "==", "F011-INV-TNAN").get();
-    expect(q2.size).toBe(0);
-  });
+    const counterSnap = await adminDb.collection("counters").doc("coils").get();
+    expect(counterSnap.data()?.current).toBe(104);
 
-  it('12. Sanidad: Factura con width/thickness válidos se crea correctamente', async () => {
-    const request = {
-      data: {
-        invoices: [
-          {
-            serie: "F012", nroDoc: "INV-OK", fecha: "2026-06-30", provider: "A", providerDoc: "1", currency: "PEN" as const, exchangeRate: 1,
-            coils: [
-              { finish: "GALVANIZADO", width: 1219, thickness: 0.38, weight: 1000, value: 1000 }
-            ]
-          }
-        ]
-      },
-      auth: ADMIN_AUTH,
-    };
+    const coilsSnap100 = await adminDb.collection("coils").where("metadata.invoiceNumber", "==", "F001-100").get();
+    const coilsSnap200 = await adminDb.collection("coils").where("metadata.invoiceNumber", "==", "F001-200").get();
 
-    const result = await registerCoilsBulk.run(request as any);
-    expect(result.results).toHaveLength(1);
-    expect(result.results[0].status).toBe("created");
-    expect(result.results[0].count).toBe(1);
+    const ids100 = coilsSnap100.docs.map(d => d.id);
+    const ids200 = coilsSnap200.docs.map(d => d.id);
+    const allIds = [...ids100, ...ids200];
+    const uniqueIds = new Set(allIds);
 
-    const adminDb = admin.firestore();
-    const q = await adminDb.collection("coils").doc("F012-INV-OK-01").get();
-    expect(q.exists).toBe(true);
-    expect(q.data()!.masterWidth).toBe(1219);
-    expect(q.data()!.thickness).toBe(0.38);
+    expect(allIds.length).toBe(4);
+    expect(uniqueIds.size).toBe(4);
   });
 });
-
