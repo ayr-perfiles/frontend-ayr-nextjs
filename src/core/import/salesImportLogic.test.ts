@@ -272,4 +272,13 @@ describe("buildImportWrites - Cotización Aluzinc en Importador (RED PHASE)", ()
     expect(isImportedQuotation(null)).toBe(false);
     expect(isImportedQuotation(undefined)).toBe(false);
   });
+
+  // RED TEST 3 (Frente 1 - productionStatus): la cotización COT- nace CONFIRMED, no PENDING
+  it("RED 3: quotationDoc.productionStatus es CONFIRMED (la venta ya existe, nada que confirmar)", () => {
+    const result = buildImportWrites(sampleMetallicSale);
+
+    expect(result.quotationDoc).not.toBeNull();
+    // FAILS IN RED! buildImportWrites todavía no escribe el campo productionStatus.
+    expect(result.quotationDoc?.productionStatus).toBe("CONFIRMED");
+  });
 });

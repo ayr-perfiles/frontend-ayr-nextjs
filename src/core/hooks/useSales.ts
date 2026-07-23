@@ -13,6 +13,7 @@ export interface SalesFilters {
   startDate: string;
   endDate: string;
   sunatFilter: string;
+  productionStatusFilter?: string;
   skipAggregates?: boolean;
 }
 
@@ -40,6 +41,7 @@ export function useSales(filters: SalesFilters) {
     startDate: filters.startDate,
     endDate: filters.endDate,
     sunatFilter: filters.sunatFilter,
+    productionStatusFilter: filters.productionStatusFilter,
   });
 
   useEffect(() => {
@@ -57,7 +59,8 @@ export function useSales(filters: SalesFilters) {
         prevFiltersRef.current.searchTerm !== debouncedSearch ||
         prevFiltersRef.current.startDate !== filters.startDate ||
         prevFiltersRef.current.endDate !== filters.endDate ||
-        prevFiltersRef.current.sunatFilter !== filters.sunatFilter;
+        prevFiltersRef.current.sunatFilter !== filters.sunatFilter ||
+        prevFiltersRef.current.productionStatusFilter !== filters.productionStatusFilter;
 
       const skipAggregates = filters.skipAggregates ? true : 
         forceRefetchAggregates ? false : 
@@ -70,6 +73,7 @@ export function useSales(filters: SalesFilters) {
         startDate: filters.startDate,
         endDate: filters.endDate,
         sunatFilter: filters.sunatFilter,
+        productionStatusFilter: filters.productionStatusFilter,
       };
 
       setLoading(true);
@@ -83,6 +87,7 @@ export function useSales(filters: SalesFilters) {
           startDate: filters.startDate,
           endDate: filters.endDate,
           sunatFilter: filters.sunatFilter,
+          productionStatusFilter: filters.productionStatusFilter,
           direction: dir,
           cursorDoc: dir === "next" ? lastDocRef.current : dir === "prev" ? firstDocRef.current : null,
           skipAggregates,
@@ -105,7 +110,7 @@ export function useSales(filters: SalesFilters) {
         setLoading(false);
       }
     },
-    [debouncedSearch, filters.pageSize, filters.statusFilter, filters.businessLine, filters.startDate, filters.endDate, filters.sunatFilter, filters.skipAggregates, aggregates],
+    [debouncedSearch, filters.pageSize, filters.statusFilter, filters.businessLine, filters.startDate, filters.endDate, filters.sunatFilter, filters.productionStatusFilter, filters.skipAggregates, aggregates],
   );
 
   useEffect(() => {

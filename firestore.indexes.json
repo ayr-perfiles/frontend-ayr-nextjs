@@ -539,6 +539,33 @@
           "order": "ASCENDING"
         },
         {
+          "fieldPath": "productionStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "businessLines",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "documentNumber",
           "order": "ASCENDING"
         },
