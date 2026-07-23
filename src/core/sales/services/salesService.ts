@@ -228,6 +228,10 @@ export const approveQuotation = async (quotationId: string): Promise<{ success: 
     if (quoteData.status === 'COMPLETED' || quoteData.status === 'CONVERTED') {
       throw new Error('Esta cotización ya fue aprobada.');
     }
+    if (quoteData.relatedSaleId || quoteData.metadata?.isQuotation || quoteData.metadata?.isHistorical) {
+      throw new Error('Esta cotización proviene de una venta ya facturada; no se aprueba, solo sirve para registrar producción.');
+    }
+
 
     const settingsRef = doc(db, 'settings', SETTINGS_DOC_ID);
     const settingsDoc = await transaction.get(settingsRef);
@@ -495,7 +499,8 @@ export const fetchSales = async (params: FetchSalesParams) => {
 
     if (hitIds.length > 0) {
       const snap = await getDocs(query(collection(db, 'sales'), where(documentId(), 'in', hitIds)));
-      const firestoreDocs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const firestoreDocs = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+
       sales = hitIds
         .map((id) => firestoreDocs.find((d) => d.id === id))
         .filter(Boolean) as Record<string, unknown>[];
@@ -598,7 +603,8 @@ export const fetchSales = async (params: FetchSalesParams) => {
   }
 
   const snapshot = await getDocs(query(collRef, ...paginationConstraints));
-  let sales = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Record<string, unknown>[];
+  let sales = snapshot.docs.map((d) => ({ ...d.data(), id: d.id })) as Record<string, unknown>[];
+
 
   if (statusFilter === 'ALL' && customerDoc) {
     sales = sales.filter((s) => ['COMPLETED', 'QUOTATION', 'CONVERTED'].includes(s.status as string));
