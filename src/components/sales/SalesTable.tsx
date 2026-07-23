@@ -1,5 +1,7 @@
 import { Sale } from "@/types";
+import { isImportedQuotation } from "@/core/import/salesImportLogic";
 import { DataTable, ColumnDef } from "@/components/ui/DataTable";
+
 import { RowActionsMenu, RowAction } from "@/components/ui/RowActionsMenu";
 import {
   CheckCircle2,
@@ -15,6 +17,7 @@ import {
   Link as LinkIcon,
   CloudOff,
   Loader2,
+  Factory,
 } from "lucide-react";
 
 // --- COMPONENTE INTERNO: SUNAT BADGE ---
@@ -145,9 +148,15 @@ export function SalesTable({
             </span>
           )}
           {sale.status === "QUOTATION" && (
-            <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full text-[10px] font-black border border-orange-200 uppercase tracking-widest">
-              <FileText size={12} /> Cot. Pendiente
-            </span>
+            isImportedQuotation(sale) ? (
+              <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full text-[10px] font-black border border-slate-200 uppercase tracking-widest">
+                <Factory size={12} /> Producción
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full text-[10px] font-black border border-orange-200 uppercase tracking-widest">
+                <FileText size={12} /> Cot. Pendiente
+              </span>
+            )
           )}
           {sale.status === "CONVERTED" && (
             <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full text-[10px] font-black border border-slate-200 uppercase tracking-widest">
@@ -296,7 +305,8 @@ export function SalesTable({
               variant: "primary",
               loading: isProcessing,
               disabled: isProcessing,
-              hidden: !(role === "ADMIN" || role === "SUPERVISOR"),
+              hidden: !(role === "ADMIN" || role === "SUPERVISOR") || isImportedQuotation(sale),
+
               section: "quotation",
             },
             {

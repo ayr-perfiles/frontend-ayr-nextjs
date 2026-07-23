@@ -61,3 +61,6 @@ serviceAccount.json
 /test-rules.js
 /test-trigger.cjs
 /scripts/backfill-claims-test.cjs
+sales_june_prod_backup_*.json
+sales_test_import_backup_*.json
+sales_test_approval_backup_*.json

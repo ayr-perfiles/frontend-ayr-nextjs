@@ -84,8 +84,8 @@ export const fetchKardexPaginated = async (params: FetchKardexParams) => {
     const movements = snap.docs.map((doc) => {
       const data = doc.data();
       return {
+        ...doc.data(),
         id: doc.id,
-        ...data,
         date: data.date?.toDate() || new Date(),
       } as KardexMovement;
     });

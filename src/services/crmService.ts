@@ -63,8 +63,9 @@ export const fetchCustomersPaginated = async (params: FetchCustomersParams) => {
       );
       const snap = await getDocs(qDocs);
       const firestoreDocs = snap.docs.map((doc) => ({
-        id: doc.id,
         ...doc.data(),
+        id: doc.id,
+
       }));
 
       // Reordenar según relevancia de Algolia
@@ -109,8 +110,9 @@ export const fetchCustomersPaginated = async (params: FetchCustomersParams) => {
   const snapshot = await getDocs(finalQuery);
 
   const customers = snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
+      ...doc.data(),
+      id: doc.id,
+
   }));
 
   return {

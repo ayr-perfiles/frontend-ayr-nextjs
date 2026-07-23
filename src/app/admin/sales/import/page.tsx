@@ -50,8 +50,10 @@ import {
   NormalizedDocType,
   NcStockAction
 } from "@/utils/importHelpers";
+import { buildImportWrites } from "@/core/import/salesImportLogic";
 
 // ── Types & Constants ─────────────────────────────────────────────────────
+
 
 interface CatalogRef {
   sku: string;
@@ -706,22 +708,21 @@ export default function SalesImportPage() {
               });
             }
 
-            const skusArray = Array.from(new Set(sale.items.map((i: any) => i.sku)));
-            tx.set(saleRef, {
+            const saleInputWithMeta = {
               ...sale,
-              skus: skusArray,
-              uploadedAt: serverTimestamp(),
               metadata: {
-                isHistorical: true,
-                isReplacement: isReplacement,
+                isReplacement,
                 uploadedBy: user?.email,
-                documentType: sale.documentType,
-                adjustedDocument: sale.adjustedDocument,
-                currency: sale.currency,
-                exchangeRate: sale.exchangeRateApplied,
-                originalCurrencyAmount: sale.currency === "USD" ? Number(sale.originalCurrencyAmount.toFixed(2)) : null,
               },
-            });
+            };
+            const { saleDoc, quotationDoc } = buildImportWrites(saleInputWithMeta, serverTimestamp());
+            tx.set(saleRef, saleDoc);
+            if (quotationDoc) {
+              const quoteRef = doc(db, "sales", `COT-${sale.documentNumber}`);
+              tx.set(quoteRef, quotationDoc);
+            }
+
+
 
             if (sale.manuallyResolvedNC) {
               const auditRef = doc(collection(db, "audit_logs"));
