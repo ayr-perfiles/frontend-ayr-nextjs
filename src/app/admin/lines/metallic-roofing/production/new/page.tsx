@@ -85,6 +85,7 @@ function MetallicProductionForm() {
     startDate: "",
     endDate: "",
     sunatFilter: "",
+    productionStatusFilter: "CONFIRMED",
     skipAggregates: true,
   });
 

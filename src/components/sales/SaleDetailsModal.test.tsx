@@ -50,7 +50,7 @@ function buildQuote(productionStatus: string | undefined): Sale {
 
 async function waitForFulfillmentLoaded() {
   await waitFor(() =>
-    expect(screen.queryByText(/cargando producci[oó]n/i)).not.toBeInTheDocument(),
+    expect(screen.queryByText(/cargando producci[oó]n/i)).not.toBeTruthy(),
   );
 }
 
@@ -71,15 +71,15 @@ describe("SaleDetailsModal - botón Mandar a producción (RED PHASE)", () => {
     await waitForFulfillmentLoaded();
 
     // FAILS IN RED! El botón "Mandar a producción" todavía no existe en el componente.
-    expect(screen.getByText(/mandar a producci[oó]n/i)).toBeInTheDocument();
+    expect(screen.getByText(/mandar a producci[oó]n/i)).toBeTruthy();
     // FAILS IN RED! Hoy "PRODUCIR" se muestra sin mirar productionStatus.
-    expect(screen.queryByText("PRODUCIR")).not.toBeInTheDocument();
+    expect(screen.queryByText("PRODUCIR")).not.toBeTruthy();
 
     rerender(<SaleDetailsModal key="confirmed" sale={buildQuote("CONFIRMED")} onClose={vi.fn()} />);
     await waitForFulfillmentLoaded();
 
-    expect(screen.getByText("PRODUCIR")).toBeInTheDocument();
-    expect(screen.queryByText(/mandar a producci[oó]n/i)).not.toBeInTheDocument();
+    expect(screen.getByText("PRODUCIR")).toBeTruthy();
+    expect(screen.queryByText(/mandar a producci[oó]n/i)).not.toBeTruthy();
   });
 
   it("RED 3: Cotización LEGACY sin campo productionStatus (como las 23 de prod) -> se trata como PENDING", async () => {
@@ -87,8 +87,8 @@ describe("SaleDetailsModal - botón Mandar a producción (RED PHASE)", () => {
     await waitForFulfillmentLoaded();
 
     // FAILS IN RED! Hoy (sin gate) una legacy sin productionStatus muestra PRODUCIR directo.
-    expect(screen.getByText(/mandar a producci[oó]n/i)).toBeInTheDocument();
-    expect(screen.queryByText("PRODUCIR")).not.toBeInTheDocument();
+    expect(screen.getByText(/mandar a producci[oó]n/i)).toBeTruthy();
+    expect(screen.queryByText("PRODUCIR")).not.toBeTruthy();
   });
 
   it("RED 4: PENDING + metallic + OPERATOR -> NO muestra NINGUNO de los dos botones", async () => {
@@ -97,8 +97,8 @@ describe("SaleDetailsModal - botón Mandar a producción (RED PHASE)", () => {
     await waitForFulfillmentLoaded();
 
     // FAILS IN RED! Hoy canProduce incluye OPERATOR y muestra PRODUCIR sin mirar productionStatus.
-    expect(screen.queryByText("PRODUCIR")).not.toBeInTheDocument();
+    expect(screen.queryByText("PRODUCIR")).not.toBeTruthy();
     // "Mandar a producción" es ADMIN+SUPERVISOR únicamente (por ahora) -> OPERATOR tampoco lo ve.
-    expect(screen.queryByText(/mandar a producci[oó]n/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/mandar a producci[oó]n/i)).not.toBeTruthy();
   });
 });

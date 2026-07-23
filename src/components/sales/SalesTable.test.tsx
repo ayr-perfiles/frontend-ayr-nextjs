@@ -19,10 +19,12 @@ describe("SalesTable Component Guard (RED PHASE)", () => {
     customerName: "GIANCARLO SINUIRI",
     documentNumber: "72248285",
     totalAmount: 240,
+    totalCost: 0,
+    totalProfit: 0,
     sellerId: "demo@cliente.com",
     timestamp: new Date(),
     items: [],
-  };
+  } as unknown as Sale;
 
   const importedQuote: Sale = {
     id: "COT-BBV1-316",
@@ -30,11 +32,13 @@ describe("SalesTable Component Guard (RED PHASE)", () => {
     customerName: "QUIROZ CARRANZA",
     documentNumber: "BBV1-316",
     totalAmount: 381.6,
+    totalCost: 0,
+    totalProfit: 0,
     sellerId: "SISTEMA",
     relatedSaleId: "BBV1-316",
     timestamp: new Date(),
     items: [],
-  };
+  } as unknown as Sale;
 
   it("RED 3: Cotización comercial (sin relatedSaleId) muestra la opción 'Aprobar Venta'", () => {
     render(
@@ -84,8 +88,8 @@ describe("SalesTable Component Guard (RED PHASE)", () => {
       />
     );
 
-    expect(screen.getByText(/producci[oó]n/i)).toBeInTheDocument();
-    expect(screen.queryByText(/cot\. pendiente/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/producci[oó]n/i)).toBeTruthy();
+    expect(screen.queryByText(/cot\. pendiente/i)).toBeNull();
   });
 
   it("RED 4: Cotización comercial (sin relatedSaleId/metadata.isQuotation) conserva badge 'COT. PENDIENTE'", () => {
@@ -101,7 +105,7 @@ describe("SalesTable Component Guard (RED PHASE)", () => {
       />
     );
 
-    expect(screen.getByText(/cot\. pendiente/i)).toBeInTheDocument();
-    expect(screen.queryByText(/producci[oó]n/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/cot\. pendiente/i)).toBeTruthy();
+    expect(screen.queryByText(/producci[oó]n/i)).toBeNull();
   });
 });
