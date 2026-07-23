@@ -1,7 +1,12 @@
-# CLAUDE.md — AYR Steel ERP (v6.25)
+# CLAUDE.md — AYR Steel ERP (v6.26)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
-> **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + 3 unit (coilId) + integración serializada verde | Functions v2 operativa.
+> **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + 3 unit (coilId) + 14 unit (salesImportLogic) + 4 component (SalesTable) + integración serializada verde | Functions v2 operativa.
+> **v6.26:** (Cerrado en develop+master, sin deploy — frente documental)
+> - **Agregados `/admin/sales` corregidos** (`fix(sales)` e3a37143): tarjetas de dinero y pie de tabla usaban la MISMA constraint de status → cotizaciones `QUOTATION` y `CONVERTED` inflaban los montos (`approveQuotation` crea venta `COMPLETED` nueva y deja la cotización original `CONVERTED` con montos íntegros = plata contada dos veces). Fix: `aggregateCount` (tarjetas) filtra solo `COMPLETED`; `listTotalCount` (pie de tabla) cuenta `COMPLETED+QUOTATION+CONVERTED`. Rótulos de tarjeta dinámicos según filtro activo. Guard de array vacío (`statuses.length===0` no dispara query — Firestore `in []` explota). `dashboardService`/`reportFunctions` ya filtraban `COMPLETED` estricto, no tenían el bug.
+> - **Importador crea cotización `COT-{documentNumber}`** (`feat(import)` 3d3bf0fd) para facturas con línea aluzinc: la cotización sirve de percha de producción (no consume correlativo `nextQuotationNumber`, timestamp histórico = fecha real de la factura). Profit por ítem con `baseCost` real; flag "sin peso" para ítems metallic con `weight:0` (hueco de datos del catálogo aluzinc, no bug del importador). Guard anti-aprobación de cotización importada: UI (`isImportedQuotation` oculta "Aprobar Venta", badge "PRODUCCIÓN") + backend (`approveQuotation` throw si `relatedSaleId` presente). Campo `id` parásito eliminado de `saleDoc`/`quotationDoc`. Mapeos defensivos `{...doc.data(), id: doc.id}` (id SIEMPRE al final del spread) en `salesService`/`crmService`/`kardexService` — deuda viva: `crmService.ts:147/159/170` conservan el spread viejo (`{id, ...data}`), no tocado esta sesión. Tests: 14 unit `salesImportLogic` + 4 component `SalesTable` + 5 integración emulador.
+> - **3 índices `sales` declarados** en `firestore.indexes.json` y desplegados a prod Y test (PREVENTIVOS — prod ya cargaba bien sin ellos: `status+timestamp`, `sunat.estado+timestamp`, soporte de agregados). `coils[status,createdAt]` declarado explícitamente en el JSON para blindarlo de un futuro `DELETE` de un diff de índices — sigue HUÉRFANO (sin consumidor vivo detectado), solo protegido contra borrado accidental.
+> - Doc nuevo `docs/modules/ventas.md` (§16 tabla actualizada). Frente 100% documental: sin cambios de código, sin deploy de Functions/rules.
 > **v6.25:** (Cerrado EN PROD) ID de bobina UNIFICADO en los 3 paths de alta.
 > - registerCoilsBulk migrado al composite PROV-ACABADO-ESP-PESO-NNNNN (antes serie-nroDoc-NN). Provider code = primera palabra 6 chars; ACABADO = KEY de coil_finishes (guion intacto, ALU-GRIS verificado en prod), NO el label. Counter counters/coils COMPARTIDO con registerCoil (atómico, read-antes-de-write en la txn por-invoice; retry re-lee fresco).
 > - Dedup migrado de doc.id determinista a QUERY por metadata.invoiceNumber (transaction.get sobre where invoiceNumber == `${serie}-${nroDoc}`). Motivo: el composite lleva correlativo global → doc.id ya no es key estable. El query tapa el hueco §14 (bobina de la misma factura entrada antes por manual/XML con composite id → el dedup viejo por doc.id NO la veía → duplicaba). Tolera VOIDED (query las ve → sigue bloqueando). Escape deleteCoilDraft intacto (borrado físico → query vacío → re-import permitido). Consecuencia: 1 factura = 1 importación, todo-o-nada; para agregar bobinas a una factura ya importada hay que borrar + reimportar.
@@ -410,7 +415,7 @@ El bulk (`registerCoilsBulk` + UI) está listo y validado en test-nube. La impor
 | Drywall | [docs/modules/drywall.md](docs/modules/drywall.md) | 2026-07-19 | Verificado contra BD prod |
 | Coils (Bobinas) | [docs/modules/coils.md](docs/modules/coils.md) | 2026-07-21 | Verificado contra BD prod |
 | Metallic | *(Pendiente)* | - | - |
-| Ventas | *(Pendiente)* | - | - |
+| Ventas | [docs/modules/ventas.md](docs/modules/ventas.md) | 2026-07-22 | Verificado contra código |
 | Compras | *(Pendiente)* | - | - |
 
 **Checklist de Re-verificación:**
