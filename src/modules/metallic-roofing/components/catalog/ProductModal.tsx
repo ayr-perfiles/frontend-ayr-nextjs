@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Save, RefreshCw, Lock, AlertTriangle, Cpu, Pencil } from "lucide-react";
+import { X, Save, RefreshCw, Lock, AlertTriangle, Cpu, Pencil, CheckCircle2 } from "lucide-react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/clientApp";
 import toast from "react-hot-toast";
@@ -19,6 +19,7 @@ import type { MetallicProductInput } from "@/modules/metallic-roofing/schemas/ca
 import type { MetallicProduct, MetallicFamily } from "@/modules/metallic-roofing/types";
 import { useForm } from "@/core/hooks/useForm";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
+import { toggleFinish } from "@/modules/metallic-roofing/domain/finishSelection";
 
 const FAMILY_OPTIONS: MetallicFamily[] = ["COBERTURA", "PLANCHA"];
 const UNIT_OPTIONS = ["PIEZA", "METRO", "KILOGRAMO", "TONELADA"] as const;
@@ -43,6 +44,7 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
     ? {
         family: "COBERTURA",
         finish: "",
+        finishes: [],
         thickness: "0.35",
         width: "",
         length: "",
@@ -54,6 +56,7 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
     : {
         family: product.family,
         finish: product.finish,
+        finishes: product.finishes ?? (product.finish ? [product.finish] : []),
         thickness: product.thickness.toString(),
         width: product.width?.toString() ?? "",
         length: product.length?.toString() ?? "",
@@ -101,6 +104,17 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
 
     setForm(next);
 
+    validateForm(next);
+  }
+
+  function handleToggleFinish(finishId: string) {
+    const nextFinishes = toggleFinish(form.finishes || [], finishId);
+    const nextForm = { ...form, finishes: nextFinishes, finish: nextFinishes[0] || "" };
+    setForm(nextForm);
+    validateForm(nextForm);
+  }
+
+  function validateForm(next: AddMetallicProductFormState) {
     // Re-validate all fields if there are already errors (keeps button enabled when fixed)
     if (Object.keys(errors).length > 0) {
       const res = addMetallicProductFormSchema.safeParse(next);
@@ -114,7 +128,9 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
         setErrors(errs);
       }
     } else {
-      setErrors((prev) => ({ ...prev, [key]: undefined }));
+      // Clear specific error? The old logic was:
+      // setErrors((prev) => ({ ...prev, [key]: undefined }));
+      // But we can just leave it as is if there were no errors.
     }
   }
 
@@ -172,6 +188,7 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
     const input: MetallicProductInput = {
       family: form.family as MetallicFamily,
       finish: form.finish,
+      finishes: form.finishes,
 
       thickness: parseFloat(form.thickness),
       unit: form.unit as MetallicProductInput["unit"],
@@ -310,18 +327,37 @@ export default function ProductModal({ mode, product, onClose, onSuccess }: Prod
             </div>
 
             <div>
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">
-                Acabado
+              <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1 block">
+                Acabado(s) <span className="text-red-500">*</span>
               </label>
-              <select
-                value={form.finish}
-                onChange={(e) => set("finish", e.target.value)}
-                className={`w-full p-3 border rounded-xl font-bold outline-none focus:border-zinc-500 ${errors.finish ? "bg-red-50 border-red-300" : isLegacyFinish && form.finish === product?.finish ? "bg-amber-50 border-amber-300 text-amber-900" : "bg-gray-50 border-gray-200"}`}
-              >
-                <option value="">— Seleccionar —</option>
-                {isLegacyFinish && <option value={product.finish}>{product.finish} (heredado)</option>}
-                {metallicFinishIds.map((f) => <option key={f} value={f}>{f}</option>)}
-              </select>
+              
+              {finishesLoading ? (
+                <div className="p-3 text-center text-zinc-400 text-sm">Cargando acabados...</div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {finishes.filter(f => f.active && f.lines.includes("metallic-roofing")).map((f) => {
+                    const isSelected = (form.finishes || []).includes(f.id);
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => handleToggleFinish(f.id)}
+                        className={`px-3 py-2.5 rounded-xl text-[10px] font-bold transition border text-left flex flex-col justify-between h-full ${
+                          isSelected
+                            ? "bg-zinc-800 border-zinc-900 text-white shadow-md shadow-zinc-300/50 ring-2 ring-zinc-400 ring-offset-1"
+                            : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100 hover:border-slate-200"
+                        }`}
+                      >
+                        <span className="leading-tight flex items-center justify-between w-full">
+                          {f.label}
+                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-zinc-300" />}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {errors.finishes && <p className="text-red-500 text-xs mt-1">{errors.finishes}</p>}
               {errors.finish && <p className="text-red-500 text-xs mt-1">{errors.finish}</p>}
             </div>
           </div>

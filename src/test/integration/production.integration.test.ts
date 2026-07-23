@@ -101,12 +101,11 @@ describe('produceFromCoils Integration Tests', () => {
   });
 
 
-  it('2. feliz multi-coil (3 bobinas, densityFactor distintos)', async () => {
+  it('2. feliz multi-coil (3 bobinas, MISMO acabado F-1, pasa normal anti-regresión)', async () => {
     await db.collection('coil_finishes').doc('F-1').set({ label: 'F-1', active: true, lines: ['metallic-roofing'], densityFactor: 0.00785 });
-    await db.collection('coil_finishes').doc('F-2').set({ label: 'F-2', active: true, lines: ['metallic-roofing'], densityFactor: 0.00800 });
     
     await db.collection('coils').doc('COIL-A').set({ id: 'COIL-A', status: 'AVAILABLE', finish: 'F-1', masterWidth: 1200, thickness: 0.3, pricePerKg: 3.5, currentWeight: 1000, initialWeight: 1000 });
-    await db.collection('coils').doc('COIL-B').set({ id: 'COIL-B', status: 'IN_PROGRESS', finish: 'F-2', masterWidth: 1220, thickness: 0.4, pricePerKg: 4.0, currentWeight: 1500, initialWeight: 1500 });
+    await db.collection('coils').doc('COIL-B').set({ id: 'COIL-B', status: 'IN_PROGRESS', finish: 'F-1', masterWidth: 1220, thickness: 0.4, pricePerKg: 4.0, currentWeight: 1500, initialWeight: 1500 });
     await db.collection('coils').doc('COIL-C').set({ id: 'COIL-C', status: 'AVAILABLE', finish: 'F-1', masterWidth: 1000, thickness: 0.5, pricePerKg: 3.8, currentWeight: 2000, initialWeight: 2000 });
 
     const request = {
@@ -129,14 +128,14 @@ describe('produceFromCoils Integration Tests', () => {
     expect(res.cantidadProducida).toBe(350);
 
     // COIL-A: 100 * 0.3 * 1200 * 0.00785 = 282.6 kg. Cost: 282.6 * 3.5 = 989.1
-    // COIL-B: 50 * 0.4 * 1220 * 0.00800 = 195.2 kg. Cost: 195.2 * 4.0 = 780.8
+    // COIL-B: 50 * 0.4 * 1220 * 0.00785 = 191.54 kg. Cost: 191.54 * 4.0 = 766.16
     // COIL-C: 200 * 0.5 * 1000 * 0.00785 = 785 kg. Cost: 785 * 3.8 = 2983
-    // Total Cost = 4752.9. Unit Cost = 4752.9 / 350 = 13.579714...
+    // Total Cost = 4738.26. Unit Cost = 4738.26 / 350 = 13.537885...
 
     const stockSnap = await db.collection('metallic_roofing_stock').doc('CALAMINA-MULTI').get();
     const stock = stockSnap.data()!;
     expect(stock.quantity).toBe(350);
-    expect(stock.avgCost).toBeCloseTo(13.579714, 5);
+    expect(stock.avgCost).toBeCloseTo(13.537885, 5);
 
     const logSnap = await db.collection('production_logs').get();
     const log = logSnap.docs[0].data();
@@ -145,6 +144,100 @@ describe('produceFromCoils Integration Tests', () => {
     // Kardex
     const kardexSnaps = await db.collection('kardex_movements').where('type', '==', 'OUT').get();
     expect(kardexSnaps.size).toBe(3);
+  });
+
+  it('2b. RED: produceFromCoils con 2 bobinas de DISTINTO finish -> HttpsError failed-precondition, cero escrituras', async () => {
+    await db.collection('coil_finishes').doc('F-1').set({ label: 'F-1', active: true, lines: ['metallic-roofing'], densityFactor: 0.00785 });
+    await db.collection('coil_finishes').doc('F-2').set({ label: 'F-2', active: true, lines: ['metallic-roofing'], densityFactor: 0.00800 });
+    
+    await db.collection('coils').doc('COIL-A').set({ id: 'COIL-A', status: 'AVAILABLE', finish: 'F-1', masterWidth: 1200, thickness: 0.3, pricePerKg: 3.5, currentWeight: 1000, initialWeight: 1000 });
+    await db.collection('coils').doc('COIL-B').set({ id: 'COIL-B', status: 'IN_PROGRESS', finish: 'F-2', masterWidth: 1220, thickness: 0.4, pricePerKg: 4.0, currentWeight: 1500, initialWeight: 1500 });
+
+    const request = {
+      data: {
+        targetSku: 'CALAMINA-MULTI-FAIL',
+        productKind: 'COBERTURA_ML',
+        lengthM: null,
+        coilInputs: [
+          { coilId: 'COIL-A', declared: 100 },
+          { coilId: 'COIL-B', declared: 50 }
+        ],
+        requestId: 'req-multi-fail', source: { type: 'QUOTE', id: 'Q1' }
+      },
+      auth: { uid: 'u-1', token: { email: 'e@test.com', role: 'ADMIN' } }
+    };
+
+    // Expect the callable to throw the specific error (mono-RAL guard)
+    await expect(produceFromCoils.run(request as any)).rejects.toThrow(
+      /Todas las bobinas de una corrida deben tener el mismo acabado/
+    );
+
+    // Verify ZERO writes
+    const coilA = await db.collection('coils').doc('COIL-A').get();
+    expect(coilA.data()!.currentWeight).toBe(1000); // Intact
+
+    const coilB = await db.collection('coils').doc('COIL-B').get();
+    expect(coilB.data()!.currentWeight).toBe(1500); // Intact
+
+    const stockSnap = await db.collection('metallic_roofing_stock').doc('CALAMINA-MULTI-FAIL').get();
+    expect(stockSnap.exists).toBe(false); // No stock created
+  });
+
+  it('2c. Densidad: anclá que se lee de coil_finishes por bobina, NUNCA del producto (anti-regresión)', async () => {
+    // Validamos que el cálculo de peso consumido usa exactamente el densityFactor de coil_finishes.
+    await db.collection('coil_finishes').doc('RAL-3002').set({ label: 'Rojo 3002', active: true, lines: ['metallic-roofing'], densityFactor: 0.008 });
+    
+    await db.collection('coils').doc('COIL-RAL').set({ id: 'COIL-RAL', status: 'AVAILABLE', finish: 'RAL-3002', masterWidth: 1000, thickness: 0.5, pricePerKg: 3.5, currentWeight: 1000, initialWeight: 1000 });
+
+    const request = {
+      data: {
+        targetSku: 'CALAMINA-RAL',
+        productKind: 'COBERTURA_ML',
+        lengthM: null,
+        coilInputs: [{ coilId: 'COIL-RAL', declared: 100 }],
+        requestId: 'req-ral', source: { type: 'QUOTE', id: 'Q1' }
+      },
+      auth: { uid: 'u-1', token: { email: 'e@test.com', role: 'ADMIN' } }
+    };
+
+    const res = await produceFromCoils.run(request as any);
+    expect(res.success).toBe(true);
+    
+    // ML = 100, masterWidth = 1000mm, thickness = 0.5mm, densityFactor = 0.008
+    // Peso consumido = 100 * 0.5 * 1000 * 0.008 = 400 kg.
+    const coilSnap = await db.collection('coils').doc('COIL-RAL').get();
+    expect(coilSnap.data()!.currentWeight).toBe(600); // 1000 - 400 = 600 kg.
+  });
+
+  it('2d. RED: bobina sin finish (legacy) en corrida multi-bobina -> FAIL-CLOSED', async () => {
+    await db.collection('coil_finishes').doc('F-1').set({ label: 'F-1', active: true, lines: ['metallic-roofing'], densityFactor: 0.00785 });
+    
+    // COIL-LEGACY no tiene campo finish
+    await db.collection('coils').doc('COIL-A').set({ id: 'COIL-A', status: 'AVAILABLE', finish: 'F-1', masterWidth: 1200, thickness: 0.3, pricePerKg: 3.5, currentWeight: 1000, initialWeight: 1000 });
+    await db.collection('coils').doc('COIL-LEGACY').set({ id: 'COIL-LEGACY', status: 'AVAILABLE', masterWidth: 1220, thickness: 0.4, pricePerKg: 4.0, currentWeight: 1500, initialWeight: 1500 });
+
+    const request = {
+      data: {
+        targetSku: 'CALAMINA-LEGACY-FAIL',
+        productKind: 'COBERTURA_ML',
+        lengthM: null,
+        coilInputs: [
+          { coilId: 'COIL-A', declared: 100 },
+          { coilId: 'COIL-LEGACY', declared: 50 }
+        ],
+        requestId: 'req-legacy-fail', source: { type: 'QUOTE', id: 'Q1' }
+      },
+      auth: { uid: 'u-1', token: { email: 'e@test.com', role: 'ADMIN' } }
+    };
+
+    // Expect the callable to throw failed-precondition
+    await expect(produceFromCoils.run(request as any)).rejects.toThrow(
+      /Todas las bobinas deben tener un acabado registrado/
+    );
+
+    // Verify ZERO writes
+    const coilLegacy = await db.collection('coils').doc('COIL-LEGACY').get();
+    expect(coilLegacy.data()!.currentWeight).toBe(1500); // Intact
   });
 
   it('3. rol: rechaza sin-rol y roles no autorizados', async () => {
