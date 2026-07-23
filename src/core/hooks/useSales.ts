@@ -23,10 +23,13 @@ export function useSales(filters: SalesFilters) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filteredTotal, setFilteredTotal] = useState(0);
+  const [aggregateCount, setAggregateCount] = useState(0);
   const [aggregates, setAggregates] = useState<{ totalAmount: number; totalProfit: number; totalWeight: number } | null>(null);
   const [isAlgolia, setIsAlgolia] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [debouncedSearch, setDebouncedSearch] = useState(filters.searchTerm);
+
+  const [metricLabel, setMetricLabel] = useState<"Vendido" | "Cotizado">("Vendido");
 
   const firstDocRef = useRef<Cursor>(null);
   const lastDocRef = useRef<Cursor>(null);
@@ -56,8 +59,6 @@ export function useSales(filters: SalesFilters) {
         prevFiltersRef.current.endDate !== filters.endDate ||
         prevFiltersRef.current.sunatFilter !== filters.sunatFilter;
 
-      // Skip aggregates if requested, or if filters haven't changed AND we already have them
-      // This applies to both pagination (dir="next"/"prev") and pageSize changes
       const skipAggregates = filters.skipAggregates ? true : 
         forceRefetchAggregates ? false : 
         (!filtersChanged && dir !== "first" ? true : (!filtersChanged && dir === "first" && aggregates !== null));
@@ -89,9 +90,12 @@ export function useSales(filters: SalesFilters) {
         setSales(res.sales as unknown as Sale[]);
         firstDocRef.current = (res.firstDoc ?? null) as Cursor;
         lastDocRef.current = (res.lastDoc ?? null) as Cursor;
+        if (res.metricLabel) setMetricLabel(res.metricLabel);
         
         if (!skipAggregates) {
-          setFilteredTotal(res.totalCount || 0);
+          setFilteredTotal(res.listTotalCount ?? (res.totalCount || 0));
+          setAggregateCount(res.totalCount || 0);
+
           setAggregates(res.aggregates);
           setIsAlgolia(res.isAlgolia);
         }
@@ -101,7 +105,7 @@ export function useSales(filters: SalesFilters) {
         setLoading(false);
       }
     },
-    [debouncedSearch, filters.pageSize, filters.statusFilter, filters.businessLine, filters.startDate, filters.endDate, filters.sunatFilter, filters.skipAggregates],
+    [debouncedSearch, filters.pageSize, filters.statusFilter, filters.businessLine, filters.startDate, filters.endDate, filters.sunatFilter, filters.skipAggregates, aggregates],
   );
 
   useEffect(() => {
@@ -132,5 +136,7 @@ export function useSales(filters: SalesFilters) {
     void loadData("first", true);
   }, [loadData]);
 
-  return { sales, loading, error, filteredTotal, aggregates, isAlgolia, currentPage, hasNextPage, nextPage, prevPage, refresh };
+  return { sales, loading, error, filteredTotal, aggregateCount, aggregates, isAlgolia, currentPage, hasNextPage, nextPage, prevPage, refresh, metricLabel };
 }
+
+

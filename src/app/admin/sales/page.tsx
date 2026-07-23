@@ -70,9 +70,11 @@ export default function SalesPage() {
   const [viewingSale, setViewingSale] = useState<Sale | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const { sales, loading, error, filteredTotal, aggregates, isAlgolia, currentPage, nextPage, prevPage, refresh } = useSales({
+  const { sales, loading, error, filteredTotal, aggregateCount, aggregates, isAlgolia, currentPage, nextPage, prevPage, refresh, metricLabel } = useSales({
     pageSize, statusFilter, businessLine, searchTerm, startDate, endDate, sunatFilter,
   });
+
+
 
   const handleApprove = async (sale: Sale) => {
     if (
@@ -155,9 +157,12 @@ export default function SalesPage() {
         totalRevenue={totalRevenue}
         totalProfit={totalProfit}
         totalWeight={totalWeight}
-        count={filteredTotal}
+        count={aggregateCount}
         isAlgolia={isAlgolia}
+        metricLabel={metricLabel}
       />
+
+
 
       <SalesFilters
         searchTerm={searchTerm}
