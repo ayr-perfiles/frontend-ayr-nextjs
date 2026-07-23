@@ -176,6 +176,8 @@ export interface SaleItem {
   profit?: number;
 }
 
+export type SaleStatus = "QUOTATION" | "COMPLETED" | "CANCELLED" | "CONVERTED" | "VOIDED";
+
 export interface Sale {
   id?: string;
   customerName: string;
@@ -192,7 +194,8 @@ export interface Sale {
   totalAmount: number;
   totalCost: number;
   totalProfit?: number;
-  status: "QUOTATION" | "COMPLETED" | "CANCELLED" | "CONVERTED" | "VOIDED";
+  status: SaleStatus;
+
   validUntil?: any;
   sellerId: string;
   sunat?: {

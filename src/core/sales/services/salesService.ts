@@ -1,5 +1,6 @@
 import { algoliaClient, ALGOLIA_INDICES } from '@/lib/algoliaClient';
 import { db } from '@/lib/firebase/clientApp';
+import { buildAggregateStatusFilter, buildListStatusFilter } from '@/core/sales/salesAggregateLogic';
 import {
   collection,
   doc,
@@ -505,57 +506,87 @@ export const fetchSales = async (params: FetchSalesParams) => {
 
   // ── MOTOR FIRESTORE ───────────────────────────────────────────────────────
   const collRef = collection(db, 'sales');
-  const baseConstraints: QueryConstraint[] = [];
+  const commonConstraints: QueryConstraint[] = [];
   const hasDateFilter = !!startDate && !!endDate;
 
-  if (statusFilter === 'ALL') {
-    if (!customerDoc) {
-      baseConstraints.push(where('status', 'in', ['COMPLETED', 'QUOTATION', 'CONVERTED']));
-    }
-  } else {
-    baseConstraints.push(where('status', '==', statusFilter));
-  }
-
   if (customerDoc) {
-    baseConstraints.push(where('documentNumber', '==', customerDoc));
+    commonConstraints.push(where('documentNumber', '==', customerDoc));
   }
 
   if (businessLine && businessLine !== 'ALL') {
-    baseConstraints.push(where('businessLines', 'array-contains', businessLine));
+    commonConstraints.push(where('businessLines', 'array-contains', businessLine));
   }
 
   if (sunatFilter && sunatFilter !== 'ALL') {
-    baseConstraints.push(where('sunat.estado', '==', sunatFilter));
+    commonConstraints.push(where('sunat.estado', '==', sunatFilter));
   }
 
   if (hasDateFilter) {
-    baseConstraints.push(where('timestamp', '>=', new Date(`${startDate}T00:00:00`)));
-    baseConstraints.push(where('timestamp', '<=', new Date(`${endDate}T23:59:59`)));
+    commonConstraints.push(where('timestamp', '>=', new Date(`${startDate}T00:00:00`)));
+    commonConstraints.push(where('timestamp', '<=', new Date(`${endDate}T23:59:59`)));
   }
 
-  baseConstraints.push(orderBy('timestamp', 'desc'));
+  // 1. Constraints para la LISTA (tabla)
+  const listStatusList = buildListStatusFilter(statusFilter);
+  const listConstraints: QueryConstraint[] = [];
+  if (statusFilter === 'ALL') {
+    if (!customerDoc) {
+      listConstraints.push(where('status', 'in', listStatusList));
+    }
+  } else {
+    listConstraints.push(where('status', '==', statusFilter));
+  }
+  listConstraints.push(...commonConstraints);
+  listConstraints.push(orderBy('timestamp', 'desc'));
+
+  // 2. Constraints para AGREGADOS
+  const { statuses: aggregateStatuses, label: metricLabel } = buildAggregateStatusFilter(statusFilter);
 
   let totalCount = 0;
+  let listTotalCount = 0;
   let aggregates = { totalAmount: 0, totalProfit: 0, totalWeight: 0 };
 
   if (!skipAggregates) {
-    const aggregateSnapshot = await getAggregateFromServer(query(collRef, ...baseConstraints), {
-      count: count(),
-      totalAmount: sum('totalAmount'),
-      totalProfit: sum('totalProfit'),
-      totalWeight: sum('totalWeight'),
-    });
+    // A. Count para la LISTA (tabla / paginación)
+    if (listStatusList.length > 0) {
+      const listCountSnap = await getCountFromServer(query(collRef, ...listConstraints));
+      listTotalCount = listCountSnap.data().count;
+    } else {
+      listTotalCount = 0;
+    }
 
-    const aggregateData = aggregateSnapshot.data();
-    totalCount = aggregateData.count;
-    aggregates = {
-      totalAmount: aggregateData.totalAmount || 0,
-      totalProfit: aggregateData.totalProfit || 0,
-      totalWeight: aggregateData.totalWeight || 0,
-    };
+    // B. Count + Sum para los AGREGADOS (tarjetas de métricas)
+    if (aggregateStatuses.length > 0) {
+      const aggregateConstraints: QueryConstraint[] = [];
+      if (aggregateStatuses.length === 1) {
+        aggregateConstraints.push(where('status', '==', aggregateStatuses[0]));
+      } else {
+        aggregateConstraints.push(where('status', 'in', aggregateStatuses));
+      }
+      aggregateConstraints.push(...commonConstraints);
+
+      const aggregateSnapshot = await getAggregateFromServer(query(collRef, ...aggregateConstraints), {
+        count: count(),
+        totalAmount: sum('totalAmount'),
+        totalProfit: sum('totalProfit'),
+        totalWeight: sum('totalWeight'),
+      });
+
+      const aggregateData = aggregateSnapshot.data();
+      totalCount = aggregateData.count;
+      aggregates = {
+        totalAmount: aggregateData.totalAmount || 0,
+        totalProfit: aggregateData.totalProfit || 0,
+        totalWeight: aggregateData.totalWeight || 0,
+      };
+    } else {
+      totalCount = 0;
+      aggregates = { totalAmount: 0, totalProfit: 0, totalWeight: 0 };
+    }
   }
 
-  const paginationConstraints = [...baseConstraints];
+  const paginationConstraints = [...listConstraints];
+
   if (direction === 'next' && cursorDoc) {
     paginationConstraints.push(startAfter(cursorDoc));
     paginationConstraints.push(limit(pageSize));
@@ -579,9 +610,13 @@ export const fetchSales = async (params: FetchSalesParams) => {
     firstDoc: snapshot.docs.length > 0 ? snapshot.docs[0] : null,
     lastDoc: snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null,
     totalCount,
+    listTotalCount,
     aggregates,
+    metricLabel,
   };
 };
+
+
 
 // ─── updateQuotation ──────────────────────────────────────────────────────────
 

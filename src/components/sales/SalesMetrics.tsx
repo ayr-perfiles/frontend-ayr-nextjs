@@ -6,6 +6,7 @@ interface SalesMetricsProps {
   totalWeight: number;
   count?: number;
   isAlgolia?: boolean;
+  metricLabel?: "Vendido" | "Cotizado";
 }
 
 export function SalesMetrics({
@@ -14,7 +15,15 @@ export function SalesMetrics({
   totalWeight,
   count = 0,
   isAlgolia = false,
+  metricLabel = "Vendido",
 }: SalesMetricsProps) {
+  const isQuotation = metricLabel === "Cotizado";
+
+  const countLabel = isQuotation ? "Cotizaciones" : "Ventas";
+  const revenueLabel = isQuotation ? "Total Cotizado" : "Total Vendido";
+  const profitLabel = isQuotation ? "Utilidad estimada" : "Utilidad Real";
+  const weightLabel = isQuotation ? "Volumen Cotizado" : "Volumen Despachado";
+
   if (isAlgolia) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -24,7 +33,7 @@ export function SalesMetrics({
             Cantidad
           </p>
           <h3 className="text-3xl font-black tracking-tighter relative z-10">
-            {count} <span className="text-lg font-bold">Ventas</span>
+            {count} <span className="text-lg font-bold">{countLabel}</span>
           </h3>
         </div>
         <div className="md:col-span-3 bg-slate-50 border border-slate-200 border-dashed rounded-3xl p-6 flex flex-col items-center justify-center text-center">
@@ -43,13 +52,13 @@ export function SalesMetrics({
           Cantidad
         </p>
         <h3 className="text-3xl font-black tracking-tighter relative z-10">
-          {count} <span className="text-lg font-bold">Ventas</span>
+          {count} <span className="text-lg font-bold">{countLabel}</span>
         </h3>
       </div>
       <div className="bg-gray-900 text-white p-6 rounded-3xl shadow-sm border border-gray-800 relative overflow-hidden">
         <div className="absolute -right-4 -top-4 bg-white/5 w-24 h-24 rounded-full"></div>
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1 relative z-10">
-          <DollarSign size={14} /> Total Facturado
+          <DollarSign size={14} /> {revenueLabel}
         </p>
         <h3 className="text-3xl font-black tracking-tighter relative z-10">
           S/{" "}
@@ -59,7 +68,7 @@ export function SalesMetrics({
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-emerald-100 relative overflow-hidden">
         <div className="absolute -right-4 -top-4 bg-emerald-50 w-24 h-24 rounded-full"></div>
         <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-2 flex items-center gap-1 relative z-10">
-          <TrendingUp size={14} /> Utilidad Total
+          <TrendingUp size={14} /> {profitLabel}
         </p>
         <h3 className="text-3xl font-black text-emerald-700 tracking-tighter relative z-10">
           S/ {totalProfit.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
@@ -68,7 +77,7 @@ export function SalesMetrics({
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-orange-100 relative overflow-hidden">
         <div className="absolute -right-4 -top-4 bg-orange-50 w-24 h-24 rounded-full"></div>
         <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest mb-2 flex items-center gap-1 relative z-10">
-          <Scale size={14} /> Volumen Despachado
+          <Scale size={14} /> {weightLabel}
         </p>
         <h3 className="text-3xl font-black text-orange-700 tracking-tighter relative z-10">
           {totalWeight.toLocaleString("es-PE")}{" "}
