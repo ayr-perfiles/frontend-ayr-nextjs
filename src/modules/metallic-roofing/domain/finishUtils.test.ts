@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getFinishArray } from './finishUtils';
+import { getFinishArray, buildFinishChips } from './finishUtils';
 import type { MetallicProduct } from '../types';
 
 describe('getFinishArray', () => {
@@ -18,3 +18,30 @@ describe('getFinishArray', () => {
     expect(getFinishArray(product)).toEqual([]);
   });
 });
+
+describe('buildFinishChips', () => {
+  it('0 finishes -> visible [], overflow 0', () => {
+    const product = {} as MetallicProduct;
+    expect(buildFinishChips(product)).toEqual({ visible: [], overflow: 0, total: [] });
+  });
+
+  it('1 finish -> visible [1], overflow 0 (sin "+0")', () => {
+    const product = { finish: 'ROJO' } as MetallicProduct;
+    expect(buildFinishChips(product)).toEqual({ visible: ['ROJO'], overflow: 0, total: ['ROJO'] });
+  });
+
+  it('2 finishes -> visible [1,2], overflow 0', () => {
+    const product = { finishes: ['ROJO', 'AZUL'] } as MetallicProduct;
+    expect(buildFinishChips(product)).toEqual({ visible: ['ROJO', 'AZUL'], overflow: 0, total: ['ROJO', 'AZUL'] });
+  });
+
+  it('>2 finishes -> visible [1,2], overflow N', () => {
+    const product = { finishes: ['ROJO', 'AZUL', 'VERDE', 'BLANCO'] } as MetallicProduct;
+    expect(buildFinishChips(product)).toEqual({
+      visible: ['ROJO', 'AZUL'],
+      overflow: 2,
+      total: ['ROJO', 'AZUL', 'VERDE', 'BLANCO']
+    });
+  });
+});
+

@@ -6,3 +6,15 @@ export function getFinishArray(product: MetallicProduct | null | undefined): str
   if (product.finish) return [product.finish];
   return [];
 }
+
+export function buildFinishChips(product: MetallicProduct | null | undefined): { visible: string[], overflow: number, total: string[] } {
+  const all = getFinishArray(product);
+  if (all.length === 0) return { visible: [], overflow: 0, total: [] };
+  if (all.length <= 2) return { visible: all, overflow: 0, total: all };
+  return {
+    visible: all.slice(0, 2),
+    overflow: all.length - 2,
+    total: all
+  };
+}
+
