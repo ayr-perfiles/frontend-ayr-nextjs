@@ -5,6 +5,7 @@ import { Eye, Pencil, PowerOff, Power } from "lucide-react";
 import type { MetallicProduct } from "@/modules/metallic-roofing/types";
 import { DataTable, ColumnDef } from "@/components/ui/DataTable";
 import { RowActionsMenu, RowAction } from "@/components/ui/RowActionsMenu";
+import { buildFinishChips } from "@/modules/metallic-roofing/domain/finishUtils";
 
 const COLOR_DOT: Record<string, string> = {
   ROJO: "bg-red-500",
@@ -113,21 +114,24 @@ export default function ProductCatalogTable({
       render: (product) => <FamilyBadge family={product.family} />,
     },
     {
-      key: "finish",
-      header: "Acabado",
-      render: (product) => (
-        <span className="text-sm font-bold text-gray-600">{product.finish}</span>
-      ),
-    },
-    {
       key: "color",
-      header: "Color",
-      render: (product) =>
-        product.finish ? (
-          <ColorChip color={product.finish} />
-        ) : (
-          <span className="text-gray-400 text-xs">—</span>
-        ),
+      header: "Acabados",
+      render: (product) => {
+        const { visible, overflow, total } = buildFinishChips(product);
+        if (visible.length === 0) return <span className="text-gray-400 text-xs">—</span>;
+        return (
+          <div className="flex flex-wrap items-center gap-1" title={total.join(", ")}>
+            {visible.map((color) => (
+              <ColorChip key={color} color={color} />
+            ))}
+            {overflow > 0 && (
+              <span className="text-xs font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                +{overflow}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "thickness",

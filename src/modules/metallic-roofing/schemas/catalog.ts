@@ -10,6 +10,7 @@ export const MetallicProductSchema = z
     displayName: z.string().trim().min(1).optional(),
     family: z.enum(['COBERTURA', 'PLANCHA']),
     finish: z.string().trim().min(1, 'El acabado es obligatorio (GALV, NATURAL, PREPINTADO...).'),
+    finishes: z.array(z.string()).optional(),
 
     thickness: z.number().positive('El espesor debe ser mayor a 0.'),
     width: z.number().positive().optional(),
@@ -33,8 +34,8 @@ export type MetallicProductInput = z.infer<typeof MetallicProductSchema>;
 
 export const addMetallicProductFormSchema = z.object({
   family: z.enum(['COBERTURA', 'PLANCHA']),
-  finish: z.string().min(1, 'El acabado es obligatorio'),
-
+  finish: z.string().min(1, 'Acabado es requerido'),
+  finishes: z.array(z.string()).optional(),
   thickness: z
     .string()
     .refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) > 0, 'El espesor debe ser mayor a 0'),

@@ -74,7 +74,14 @@ export const produceFromCoils = onCall(async (request) => {
       const coil = coilSnaps[i].data()!;
       if (coil.finish) {
         finishIds.add(coil.finish);
+      } else {
+        throw new HttpsError("failed-precondition", `Todas las bobinas deben tener un acabado registrado. La bobina ${coilInputs[i].coilId} no lo tiene.`);
       }
+    }
+
+    if (finishIds.size > 1) {
+      const finishList = Array.from(finishIds).join(', ');
+      throw new HttpsError("failed-precondition", `Todas las bobinas de una corrida deben tener el mismo acabado. Se encontraron acabados distintos: ${finishList}.`);
     }
 
     const finishesArr = Array.from(finishIds);

@@ -97,6 +97,7 @@ export function buildImportWrites(sale: any, injectedUploadedAt?: any): ImportWr
   if (hasMetallicItem) {
     quotationDoc = {
       status: "QUOTATION",
+      productionStatus: "CONFIRMED",
 
       customerName: sale.customerName,
       documentNumber: sale.documentNumber,

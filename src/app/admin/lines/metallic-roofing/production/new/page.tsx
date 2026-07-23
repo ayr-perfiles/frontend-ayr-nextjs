@@ -6,6 +6,7 @@ import { doc, getDoc, collection, query, where, getDocs } from "firebase/firesto
 import { db } from "@/lib/firebase/clientApp";
 import { useAuth } from "@/context/AuthContext";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
+import { isCoilEligibleForProduct } from "@/modules/metallic-roofing/domain/coilFilter";
 import { listProducts } from "@/modules/metallic-roofing/services/catalogService";
 import { produceFromCoils, getQuoteFulfillmentLogs, getProducedForQuoteLine } from "@/modules/metallic-roofing/services/productionService";
 import { calcProductionFromCoils } from "@/modules/metallic-roofing/domain/coilProduction";
@@ -85,6 +86,7 @@ function MetallicProductionForm() {
     startDate: "",
     endDate: "",
     sunatFilter: "",
+    productionStatusFilter: "CONFIRMED",
     skipAggregates: true,
   });
 
@@ -222,18 +224,14 @@ function MetallicProductionForm() {
     const fetchCoils = async () => {
       setLoadingCoils(true);
       try {
-        const requiredFinish = selectedProduct.finish;
-        
         const qSnap = await getDocs(query(collection(db, "coils"), where("status", "in", ["AVAILABLE", "IN_PROGRESS"])));
-        const validFinishIds = finishes.filter(f => f.lines.includes('metallic-roofing')).map(f => f.id);
         
         const coils = qSnap.docs.map(d => ({ id: d.id, ...d.data() } as Coil)).filter(c =>
           !c.isClosed &&
           c.currentWeight > 0 &&
           c.thickness != null &&
           isThicknessWithinTolerance(c.thickness, selectedProduct.thickness) &&
-          c.finish === requiredFinish &&
-          c.finish && validFinishIds.includes(c.finish)
+          isCoilEligibleForProduct(c.finish, selectedProduct)
         );
         setEligibleCoils(coils);
       } catch (err) {
@@ -340,11 +338,15 @@ function MetallicProductionForm() {
         })(),
     );
 
+  const selectedFinishes = Array.from(new Set(rows.map(r => r.coilData?.finish).filter(Boolean)));
+  const hasMixedFinishes = selectedFinishes.length > 1;
+
   const canSubmit =
     selectedQuoteId !== "" &&
     selectedSku &&
     preview &&
     rows.every((r) => r.coilData && !r.loadError && Number(r.declared) > 0) &&
+    !hasMixedFinishes &&
     !submitting;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -659,6 +661,15 @@ function MetallicProductionForm() {
             </div>
           )}
 
+          {hasMixedFinishes && (
+            <div className="flex items-start gap-2 text-red-600 bg-red-50 border border-red-200 p-3 rounded-lg text-sm">
+              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+              <span className="font-bold">
+                No puedes mezclar bobinas con acabados distintos en la misma corrida ({selectedFinishes.join(", ")}).
+              </span>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={!canSubmit}
@@ -766,7 +777,7 @@ function CoilRowCard({
             </div>
           ) : eligibleCoils.length === 0 ? (
             <div className="w-full border border-red-200 rounded-lg p-2.5 text-sm font-bold text-red-500 bg-red-50">
-              No hay bobinas {selectedProduct.finish} {selectedProduct.thickness} disponibles
+              No hay bobinas compatibles disponibles
             </div>
           ) : (
             <select

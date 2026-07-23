@@ -20,7 +20,8 @@ import {
 } from "lucide-react";
 import { Sale } from "@/types";
 import { useAuth } from "@/context/AuthContext";
-import { annulSale } from "@/services/salesService";
+import { annulSale, confirmQuotationForProduction } from "@/services/salesService";
+import { canConfirmForProduction } from "@/core/sales/productionConfirmationLogic";
 import { getQuoteFulfillmentLogs } from "@/modules/metallic-roofing/services/productionService";
 import toast from "react-hot-toast";
 import { SunatPanel } from "./SunatPanel";
@@ -329,7 +330,12 @@ export function SaleDetailsModal({
 
               {/* FULFILLMENT: Producción contra Cotización */}
               {sale.status === "QUOTATION" && sale.businessLines?.includes("metallic-roofing") && (
-                <ProductionFulfillment sale={sale} role={role || ""} />
+                <ProductionFulfillment
+                  sale={sale}
+                  role={role || ""}
+                  userEmail={user?.email || ""}
+                  onConfirmed={refreshSale}
+                />
               )}
             </div>
 
@@ -464,9 +470,20 @@ export function SaleDetailsModal({
 
 // ─── Sub-Componente de Fulfillment ───────────────────────────────────────────
 
-function ProductionFulfillment({ sale, role }: { sale: Sale; role: string }) {
+function ProductionFulfillment({
+  sale,
+  role,
+  userEmail,
+  onConfirmed,
+}: {
+  sale: Sale;
+  role: string;
+  userEmail: string;
+  onConfirmed?: () => void;
+}) {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirming, setConfirming] = useState(false);
 
   React.useEffect(() => {
     if (!sale.id) return;
@@ -488,6 +505,22 @@ function ProductionFulfillment({ sale, role }: { sale: Sale; role: string }) {
   if (metallicItems.length === 0) return null;
 
   const canProduce = ["ADMIN", "SUPERVISOR", "OPERATOR"].includes(role);
+  const canConfirmProduction = ["ADMIN", "SUPERVISOR"].includes(role);
+  const pendingConfirmation = canConfirmForProduction(sale);
+
+  const handleConfirm = async () => {
+    if (!sale.id) return;
+    setConfirming(true);
+    try {
+      await confirmQuotationForProduction(sale.id, userEmail || "usuario@empresa.com");
+      toast.success("Cotización enviada a producción.");
+      onConfirmed?.();
+    } catch (err: any) {
+      toast.error(err.message || "Error al confirmar producción.");
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   return (
     <div className="mt-6 border-t border-dashed border-gray-200 pt-6">
@@ -498,6 +531,21 @@ function ProductionFulfillment({ sale, role }: { sale: Sale; role: string }) {
       {loading ? (
         <div className="flex items-center gap-2 text-xs text-slate-400">
           <Loader2 size={14} className="animate-spin" /> Cargando producción...
+        </div>
+      ) : pendingConfirmation ? (
+        <div className="bg-orange-50/50 p-4 rounded-xl border border-orange-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-xs font-medium text-gray-600">
+            Esta cotización tiene ítems de metálicas listos para enviar a producción.
+          </p>
+          {canConfirmProduction && (
+            <button
+              onClick={handleConfirm}
+              disabled={confirming}
+              className="text-[10px] shrink-0 bg-orange-500 hover:bg-orange-600 text-white font-black px-3 py-1.5 rounded-lg transition disabled:opacity-50"
+            >
+              {confirming ? "ENVIANDO..." : "Mandar a producción"}
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-4">

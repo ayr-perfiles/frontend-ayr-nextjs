@@ -207,11 +207,46 @@ export const createQuotation = async (
       totalWeight,
       sellerId,
       status: 'QUOTATION',
+      productionStatus: 'PENDING',
       timestamp: serverTimestamp(),
     });
   });
 
   return { success: true, id: generatedId };
+};
+
+// ─── confirmQuotationForProduction ─────────────────────────────────────────────
+
+/**
+ * Confirma una cotización para producción: NO aprueba la venta (eso es
+ * approveQuotation), solo habilita el paso a producción para las líneas
+ * metallic-roofing. Idempotente: si ya está CONFIRMED, no pisa
+ * confirmedForProductionAt/confirmedBy originales (early-return, mismo patrón
+ * que voidCoilScrap/reverseCoilSplit).
+ */
+export const confirmQuotationForProduction = async (
+  quotationId: string,
+  userEmail: string,
+): Promise<{ success: true }> => {
+  const quoteRef = doc(db, 'sales', quotationId);
+
+  await runTransaction(db, async (transaction) => {
+    const quoteDoc = await transaction.get(quoteRef);
+    if (!quoteDoc.exists()) throw new Error('La cotización no existe.');
+
+    const quoteData = quoteDoc.data();
+    if (quoteData.productionStatus === 'CONFIRMED') {
+      return;
+    }
+
+    transaction.update(quoteRef, {
+      productionStatus: 'CONFIRMED',
+      confirmedForProductionAt: serverTimestamp(),
+      confirmedBy: userEmail,
+    });
+  });
+
+  return { success: true };
 };
 
 // ─── approveQuotation ─────────────────────────────────────────────────────────
@@ -460,6 +495,8 @@ export interface FetchSalesParams {
   customerDoc?: string | null;
   businessLine?: BusinessLine | 'ALL' | '';
   sunatFilter?: string;
+  /** Filtro exacto opcional sobre sales.productionStatus (ej. selector de producción metallic). */
+  productionStatusFilter?: string;
   direction?: 'first' | 'next' | 'prev';
   cursorDoc?: QueryDocumentSnapshot<DocumentData> | null;
   page?: number;
@@ -476,6 +513,7 @@ export const fetchSales = async (params: FetchSalesParams) => {
     customerDoc,
     businessLine,
     sunatFilter,
+    productionStatusFilter,
     direction = 'first',
     cursorDoc,
     page = 0,
@@ -520,6 +558,10 @@ export const fetchSales = async (params: FetchSalesParams) => {
 
   if (businessLine && businessLine !== 'ALL') {
     commonConstraints.push(where('businessLines', 'array-contains', businessLine));
+  }
+
+  if (productionStatusFilter) {
+    commonConstraints.push(where('productionStatus', '==', productionStatusFilter));
   }
 
   if (sunatFilter && sunatFilter !== 'ALL') {

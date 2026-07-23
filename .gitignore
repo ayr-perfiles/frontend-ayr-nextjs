@@ -64,3 +64,5 @@ serviceAccount.json
 sales_june_prod_backup_*.json
 sales_test_import_backup_*.json
 sales_test_approval_backup_*.json
+sales_quotation_prod_backup_*.json
+sales_quotation_test_backup_*.json

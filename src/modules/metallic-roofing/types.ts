@@ -20,6 +20,8 @@ export interface MetallicProduct {
   family: MetallicFamily;
   /** Acabado/aleación: GALV, ALUZINC, NATURAL, PREPINTADO */
   finish: string;
+  /** Acabados adicionales (Multi-RAL) */
+  finishes?: string[];
   /** Espesor en mm (0.30, 0.35, 0.40, 0.45, 0.28...) */
   thickness: number;
   /** Ancho útil en m (opcional según familia) */
