@@ -1,5 +1,7 @@
 import { Sale } from "@/types";
 import { isImportedQuotation } from "@/core/import/salesImportLogic";
+import { resolveCustomerDoc } from "@/core/sales/salesDisplayLogic";
+import { TableFilters } from "@/components/ui/TableFilters";
 import { DataTable, ColumnDef } from "@/components/ui/DataTable";
 
 import { RowActionsMenu, RowAction } from "@/components/ui/RowActionsMenu";
@@ -126,16 +128,21 @@ export function SalesTable({
     {
       key: "customer",
       header: "Cliente",
-      render: (sale) => (
-        <div>
-          <p className="font-bold text-slate-700 uppercase text-sm mb-1">
-            {sale.customerName}
-          </p>
-          <p className="text-xs font-medium text-slate-400">
-            Doc: {sale.documentNumber || "---"}
-          </p>
-        </div>
-      ),
+      render: (sale) => {
+        const { comprobante } = resolveCustomerDoc(sale);
+        return (
+          <div>
+            <p className="font-bold text-slate-700 uppercase text-sm mb-1">
+              {sale.customerName}
+            </p>
+            {comprobante && (
+              <p className="text-xs font-medium text-slate-400">
+                Comp: {comprobante}
+              </p>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "status",

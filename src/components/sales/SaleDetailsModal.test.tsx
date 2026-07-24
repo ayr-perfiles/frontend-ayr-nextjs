@@ -102,3 +102,60 @@ describe("SaleDetailsModal - botón Mandar a producción (RED PHASE)", () => {
     expect(screen.queryByText(/mandar a producci[oó]n/i)).not.toBeTruthy();
   });
 });
+
+describe("SaleDetailsModal - rendering Documento y Flags (RED PHASE)", () => {
+  beforeEach(() => {
+    mockAuth.role = "ADMIN";
+  });
+
+  it("RED 4: Venta nueva del POS (customerDocument presente, documentNumber vacío) -> RUC/DNI muestra customerDocument", async () => {
+    const sale = buildQuote("PENDING");
+    sale.customerDocument = "72248284";
+    sale.documentNumber = ""; // Vacio
+    
+    render(<SaleDetailsModal sale={sale} onClose={vi.fn()} />);
+    
+    // Debería mostrar el RUC/DNI extraído de customerDocument
+    expect(screen.getByText("72248284")).toBeTruthy();
+  });
+
+  it("RED 5: Venta legacy (documentNumber presente, SIN customerDocument) -> RUC/DNI muestra fallback legacy", async () => {
+    const sale = buildQuote("PENDING");
+    sale.customerDocument = undefined;
+    sale.documentNumber = "20608931156";
+    
+    render(<SaleDetailsModal sale={sale} onClose={vi.fn()} />);
+    
+    // Debería seguir mostrando el fallback
+    expect(screen.getByText("20608931156")).toBeTruthy();
+  });
+
+  it("RED 6: Venta importada (customerDocument = RUC, documentNumber = BBV1-324) -> Muestra comprobante aparte", async () => {
+    const sale = buildQuote("PENDING");
+    sale.customerDocument = "76334430";
+    sale.documentNumber = "BBV1-324";
+    
+    render(<SaleDetailsModal sale={sale} onClose={vi.fn()} />);
+    
+    // El RUC debe ser 76334430, y "BBV1-324" debe mostrarse rotulado como Comprobante, no como RUC/DNI.
+    // Asumiremos que el label será "Comprobante" o similar
+    const rucElement = screen.getByText("76334430");
+    expect(rucElement).toBeTruthy();
+    
+    const comprobanteElement = screen.getByText("BBV1-324");
+    expect(comprobanteElement).toBeTruthy();
+    
+    // Verificamos que el comprobante se muestre con su respectivo rótulo
+    expect(screen.getByText(/Comprobante/i)).toBeTruthy();
+  });
+
+  it("RED 7: allFlags con 'sin costo' -> se renderiza visible en el modal (chips)", async () => {
+    const sale = buildQuote("PENDING");
+    sale.allFlags = ["sin costo"];
+    
+    render(<SaleDetailsModal sale={sale} onClose={vi.fn()} />);
+    
+    // Debería existir un badge/chip con el texto
+    expect(screen.getByText(/sin costo/i)).toBeTruthy();
+  });
+});
