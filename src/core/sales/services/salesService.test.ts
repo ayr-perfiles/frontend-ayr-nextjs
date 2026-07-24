@@ -42,6 +42,7 @@ describe("createQuotation - productionStatus (RED PHASE)", () => {
     await createQuotation(
       "MADICOP S.A.C.",
       "20601234567",
+      "", // documentNumber is empty for generated quote
       [
         {
           sku: "COB030ROJO",

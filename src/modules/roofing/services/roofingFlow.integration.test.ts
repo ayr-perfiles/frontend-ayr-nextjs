@@ -275,8 +275,7 @@ describe('Flujo completo: crear producto → ajustar stock → vender', () => {
 
     // Fase 3: venta de 3 unidades → stock queda en 7
     const result = await processSale(
-      'Cliente SA', 'RUC-20123456789',
-      [makeCartItem({ quantity: 3 })],
+      'Cliente SA', 'RUC-20123456789', "", [makeCartItem({ quantity: 3 })],
       'seller_01',
     );
 
@@ -287,7 +286,7 @@ describe('Flujo completo: crear producto → ajustar stock → vender', () => {
   it('la venta crea el documento de venta con campos correctos', async () => {
     await createProduct(MIN_PRODUCT_INPUT);
     await adjustStock({ sku: SKU, type: 'ENTRY', quantity: 10, unitCost: 50, reason: 'E', performedBy: 'u' });
-    await processSale('Distribuidora Norte', 'RUC-20999999', [makeCartItem({ quantity: 2, unitPrice: 85 })], 'v01');
+    await processSale('Distribuidora Norte', 'RUC-20999999', "", [makeCartItem({ quantity: 2, unitPrice: 85 })], 'v01');
 
     expect(store.countIn('sales')).toBe(1);
     const sale = store.query('sales')[0].data();
@@ -301,10 +300,10 @@ describe('Flujo completo: crear producto → ajustar stock → vender', () => {
     await createProduct(MIN_PRODUCT_INPUT);
     await adjustStock({ sku: SKU, type: 'ENTRY', quantity: 20, unitCost: 50, reason: 'E', performedBy: 'u' });
 
-    await processSale('A', '001', [makeCartItem({ quantity: 1 })], 'v');
+    await processSale('A', '001', "", [makeCartItem({ quantity: 1 })], 'v');
     expect(store.getDoc('settings', 'general_settings')?.nextSaleNumber).toBe(2);
 
-    await processSale('B', '002', [makeCartItem({ quantity: 1 })], 'v');
+    await processSale('B', '002', "", [makeCartItem({ quantity: 1 })], 'v');
     expect(store.getDoc('settings', 'general_settings')?.nextSaleNumber).toBe(3);
     expect(store.countIn('sales')).toBe(2);
   });
@@ -313,7 +312,7 @@ describe('Flujo completo: crear producto → ajustar stock → vender', () => {
     await createProduct(MIN_PRODUCT_INPUT);
     // Pre-seed stock directamente para evitar el movimiento de ENTRADA que añadiría adjustStock
     seedStock(10, 50);
-    await processSale('Test', '123', [makeCartItem({ quantity: 4 })], 'seller');
+    await processSale('Test', '123', "", [makeCartItem({ quantity: 4 })], 'seller');
 
     expect(store.countIn('roofing_stock_movements')).toBe(1);
     const mov = store.query('roofing_stock_movements')[0].data();
@@ -340,25 +339,25 @@ describe('Stock negativo después de venta sin stock (ADR-005)', () => {
 
   it('no lanza excepción al vender con stock cero', async () => {
     await expect(
-      processSale('Test', 'DOC', [makeCartItem({ quantity: 5 })], 'seller'),
+      processSale('Test', 'DOC', "", [makeCartItem({ quantity: 5 })], 'seller'),
     ).resolves.toMatchObject({ success: true });
   });
 
   it('el stock queda negativo tras la venta', async () => {
-    await processSale('Test', 'DOC', [makeCartItem({ quantity: 5 })], 'seller');
+    await processSale('Test', 'DOC', "", [makeCartItem({ quantity: 5 })], 'seller');
     expect(store.getDoc('roofing_stock', SKU)?.quantity).toBe(-5);
   });
 
   it('la venta queda registrada como COMPLETED aunque el stock sea negativo', async () => {
-    await processSale('Test', 'DOC', [makeCartItem({ quantity: 5 })], 'seller');
+    await processSale('Test', 'DOC', "", [makeCartItem({ quantity: 5 })], 'seller');
     const sale = store.query('sales')[0]?.data();
     expect(sale?.status).toBe('COMPLETED');
     expect(sale?.items).toHaveLength(1);
   });
 
   it('ventas sucesivas acumulan stock negativo', async () => {
-    await processSale('A', '001', [makeCartItem({ quantity: 5 })], 'seller');
-    await processSale('B', '002', [makeCartItem({ quantity: 3 })], 'seller');
+    await processSale('A', '001', "", [makeCartItem({ quantity: 5 })], 'seller');
+    await processSale('B', '002', "", [makeCartItem({ quantity: 3 })], 'seller');
 
     expect(store.getDoc('roofing_stock', SKU)?.quantity).toBe(-8);
     expect(store.countIn('sales')).toBe(2);
@@ -367,7 +366,7 @@ describe('Stock negativo después de venta sin stock (ADR-005)', () => {
   it('si había stock positivo pero insuficiente, también permite negativo', async () => {
     seedStock(3, 50);
 
-    await processSale('Test', 'DOC', [makeCartItem({ quantity: 10 })], 'seller');
+    await processSale('Test', 'DOC', "", [makeCartItem({ quantity: 10 })], 'seller');
 
     expect(store.getDoc('roofing_stock', SKU)?.quantity).toBe(-7);
   });
@@ -525,7 +524,7 @@ describe('Audit logs generados en cada paso del flujo', () => {
   it('processSale escribe movimiento SALIDA en roofing_stock_movements', async () => {
     seedStock(10, 50);
 
-    await processSale('Test', '123', [makeCartItem({ quantity: 2 })], 'seller_01');
+    await processSale('Test', '123', "", [makeCartItem({ quantity: 2 })], 'seller_01');
 
     const movements = store.query('roofing_stock_movements');
     expect(movements).toHaveLength(1);

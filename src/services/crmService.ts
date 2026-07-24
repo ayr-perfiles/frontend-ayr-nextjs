@@ -159,15 +159,36 @@ export const getCustomerProfile = async (documentNumber: string): Promise<Custom
     const contacts = contactsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
     // 🔥 MEJORA ENTERPRISE: Solo traemos las últimas 50 operaciones
-    const salesQuery = query(
-      collection(db, "sales"),
-      where("documentNumber", "==", String(documentNumber).trim()),
-      orderBy("timestamp", "desc"), // Requiere el índice compuesto en Firebase
-      limit(50), 
-    );
+    // DOS mundos coexisten en 'sales' (ver CLAUDE.md v6.27, refactor de processSale/createQuotation):
+    // - LEGACY: el RUC vive en documentNumber (ventas POS creadas antes del refactor).
+    // - NUEVO: el RUC vive en customerDocument, documentNumber queda "" (post-refactor).
+    // Firestore no tiene OR entre campos distintos -> 2 queries, unidas y dedupeadas por id.
+    // Retirar la query legacy solo cuando corra el backfill que migre documentNumber -> customerDocument.
+    const trimmedDoc = String(documentNumber).trim();
+    const [legacySnap, newSnap] = await Promise.all([
+      getDocs(query(
+        collection(db, "sales"),
+        where("documentNumber", "==", trimmedDoc),
+        orderBy("timestamp", "desc"),
+        limit(50),
+      )),
+      getDocs(query(
+        collection(db, "sales"),
+        where("customerDocument", "==", trimmedDoc),
+        orderBy("timestamp", "desc"), // Requiere índice compuesto sales(customerDocument ASC, timestamp DESC) — NO desplegado aún
+        limit(50),
+      )),
+    ]);
 
-    const salesSnap = await getDocs(salesQuery);
-    const salesHistory = salesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const salesById = new Map<string, any>();
+    for (const d of [...legacySnap.docs, ...newSnap.docs]) {
+      salesById.set(d.id, { id: d.id, ...d.data() });
+    }
+
+    const toMillis = (ts: any) => ts?.toMillis?.() ?? (ts instanceof Date ? ts.getTime() : 0);
+    const salesHistory = Array.from(salesById.values())
+      .sort((a, b) => toMillis(b.timestamp) - toMillis(a.timestamp))
+      .slice(0, 50);
 
     return { customerData, contacts, salesHistory };
   } catch (error) {

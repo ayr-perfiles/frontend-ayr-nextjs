@@ -35,10 +35,13 @@ export type CartItem = SaleItem;
 
 const SETTINGS_DOC_ID = 'general_settings';
 
+import { buildSaleDoc, buildQuotationDoc } from '../domain/saleDocBuilder';
+
 // ─── processSale ──────────────────────────────────────────────────────────────
 
 export const processSale = async (
   customerName: string,
+  customerDocument: string,
   documentNumber: string,
   cart: CartItem[],
   sellerId: string,
@@ -133,24 +136,18 @@ export const processSale = async (
       }
     }
 
-    const skusArray = Array.from(new Set(cart.map((i) => i.sku)));
-    transaction.set(saleRef, {
+    const saleDocData = buildSaleDoc({
       customerName,
+      customerDocument,
       documentNumber,
-      customerAddress,
       contactName,
       contactPhone,
+      customerAddress,
       items: cart,
-      skus: skusArray,
-      businessLines: Array.from(businessLines),
-      totalAmount,
-      totalCost,
-      totalProfit: totalAmount - totalCost,
-      totalWeight,
       sellerId,
-      status: 'COMPLETED',
-      timestamp: serverTimestamp(),
-    });
+    }, serverTimestamp());
+
+    transaction.set(saleRef, saleDocData);
   });
 
   return { success: true, id: generatedSaleId };
@@ -160,6 +157,7 @@ export const processSale = async (
 
 export const createQuotation = async (
   customerName: string,
+  customerDocument: string,
   documentNumber: string,
   cart: CartItem[],
   sellerId: string,
@@ -192,24 +190,19 @@ export const createQuotation = async (
     const skusArray = Array.from(new Set(cart.map((i) => i.sku)));
 
     transaction.set(settingsRef, { nextQuotationNumber: nextNum + 1 }, { merge: true });
-    transaction.set(doc(db, 'sales', quoteId), {
+
+    const quoteDocData = buildQuotationDoc({
       customerName,
+      customerDocument,
       documentNumber,
-      customerAddress,
       contactName,
       contactPhone,
+      customerAddress,
       items: cart,
-      skus: skusArray,
-      businessLines: Array.from(businessLines),
-      totalAmount,
-      totalCost,
-      totalProfit: totalAmount - totalCost,
-      totalWeight,
       sellerId,
-      status: 'QUOTATION',
-      productionStatus: 'PENDING',
-      timestamp: serverTimestamp(),
-    });
+    }, serverTimestamp());
+
+    transaction.set(doc(db, 'sales', quoteId), quoteDocData);
   });
 
   return { success: true, id: generatedId };

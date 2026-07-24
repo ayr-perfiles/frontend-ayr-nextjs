@@ -369,6 +369,7 @@ export default function NewSalePage() {
         await createQuotation(
           customerName,
           documentNumber,
+          "", // documentNumber for quote is empty or generated
           cart,
           sellerId,
           customerAddress,
@@ -380,6 +381,7 @@ export default function NewSalePage() {
         await processSale(
           customerName,
           documentNumber,
+          "", // documentNumber is empty for standard sales
           cart,
           sellerId,
           customerAddress,
