@@ -222,7 +222,7 @@ describe('Services Module: Flujo completo (NO-OP Strategy)', () => {
     expect(store.countIn('services_catalog')).toBe(1);
 
     // Vender 5 toneladas de servicio
-    const result = await processSale('Cliente', '123', [makeCartItem({ quantity: 5 })], 'seller');
+    const result = await processSale('Cliente', '123', "", [makeCartItem({ quantity: 5 })], 'seller');
     expect(result.success).toBe(true);
 
     // Verificamos que no se escribió nada en "_noop_stock" ni en ningún otro lado raro

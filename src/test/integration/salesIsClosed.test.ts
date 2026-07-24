@@ -37,6 +37,7 @@ describe('Sales Service with isClosed', () => {
     const result = await processSale(
       'Test Customer',
       '12345678',
+      '',
       [{
         sku: 'BOB-VENTA-CLOSED',
         name: 'Bobina Venta Closed',

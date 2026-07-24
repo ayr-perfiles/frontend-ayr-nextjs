@@ -34,7 +34,7 @@ describe("buildImportWrites - Cotización Aluzinc en Importador (RED PHASE)", ()
     ],
     totalAmount: 1200,
     totalCost: 0,
-    totalProfit: 1016.9,
+    totalProfit: 0, // sin costo -> profit 0 (no asumir 100% margen), no 10.169*100
     totalWeight: 0,
     paymentStatus: "PAID",
     businessLines: ["metallic-roofing"],
@@ -86,7 +86,7 @@ describe("buildImportWrites - Cotización Aluzinc en Importador (RED PHASE)", ()
     ],
     totalAmount: 860,
     totalCost: 250,
-    totalProfit: 473.5,
+    totalProfit: 173.5, // drywall (8.47-5)*50=173.5 + aluzinc sin costo 0
     totalWeight: 60,
     paymentStatus: "PAID",
     businessLines: ["drywall", "metallic-roofing"],

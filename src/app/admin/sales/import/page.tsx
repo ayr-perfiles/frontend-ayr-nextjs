@@ -406,7 +406,12 @@ export default function SalesImportPage() {
         const { weight: weightKg, flag: umFlag } = calcPesoKg(rawUnitMeasure, cantidad, catalogWeight);
         if (umFlag) flags.push(umFlag);
 
-        if (baseCost === 0 && bLine !== "services" && targetLine !== "coil") flags.push("sin costo");
+        const hasUnknownCost = baseCost === 0 && bLine !== "services" && targetLine !== "coil";
+        if (hasUnknownCost) flags.push("sin costo");
+
+        // Costo desconocido -> profit 0 (no asumir 100% margen), mismo criterio que el builder.
+        // Firmado con multiplier (NC = negativo): reportes por SKU no deben mentir en NC.
+        const itemProfit = hasUnknownCost ? 0 : (valorVentaSoles - ((cantidad * baseCost) * multiplier));
 
         const saleItem = {
           sku: sku,
@@ -415,6 +420,7 @@ export default function SalesImportPage() {
           unitPrice: cantidad > 0 ? (precioVentaSoles / multiplier) / cantidad : 0,
           unitValue: cantidad > 0 ? (valorVentaSoles / multiplier) / cantidad : 0,
           baseCost: baseCost,
+          profit: itemProfit,
           unitWeight: catalogWeight,
           calculatedWeight: weightKg,
           unitOfMeasure: rawUnitMeasure,
@@ -455,7 +461,7 @@ export default function SalesImportPage() {
         sale.items.push(saleItem);
         sale.totalAmount += precioVentaSoles;
         sale.totalCost += (cantidad * baseCost) * multiplier;
-        sale.totalProfit += valorVentaSoles - ((cantidad * baseCost) * multiplier);
+        sale.totalProfit += itemProfit;
         const weightMult = docType !== 'NOTA CRÉDITO' ? 1 : (ncStockAction === 'RETURNS_STOCK' ? -1 : 0);
         sale.totalWeight += weightKg * weightMult;
         sale.businessLines.add(bLine);

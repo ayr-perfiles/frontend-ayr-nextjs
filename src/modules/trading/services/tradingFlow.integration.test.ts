@@ -238,7 +238,7 @@ describe('Trading Module: Flujo completo', () => {
     });
     expect(store.getDoc('trading_stock', SKU)?.quantity).toBe(10);
 
-    const result = await processSale('Cliente', '123', [makeCartItem({ quantity: 2 })], 'seller');
+    const result = await processSale('Cliente', '123', "", [makeCartItem({ quantity: 2 })], 'seller');
     expect(result.success).toBe(true);
     expect(store.getDoc('trading_stock', SKU)?.quantity).toBe(8);
     expect(store.countIn('trading_stock_movements')).toBe(2); // ENTRY + SALIDA
@@ -246,7 +246,7 @@ describe('Trading Module: Flujo completo', () => {
 
   it('permite stock negativo (ADR-005)', async () => {
     seedCatalog();
-    await processSale('Cliente', '123', [makeCartItem({ quantity: 5 })], 'seller');
+    await processSale('Cliente', '123', "", [makeCartItem({ quantity: 5 })], 'seller');
     expect(store.getDoc('trading_stock', SKU)?.quantity).toBe(-5);
   });
 
