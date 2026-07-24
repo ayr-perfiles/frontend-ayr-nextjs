@@ -29,6 +29,7 @@ import { doc, getDoc, collection, query, where, getDocs } from "firebase/firesto
 import { db } from "@/lib/firebase/clientApp";
 import Link from "next/link";
 
+import { resolveCustomerDoc } from "@/core/sales/salesDisplayLogic";
 import { useConfirm } from "@/context/ConfirmContext";
 
 interface SaleDetailsModalProps {
@@ -61,9 +62,11 @@ export function SaleDetailsModal({
     }
   };
 
-  // Configuración y cálculos financieros
   const IGV_RATE = 0.18;
   const items = sale.items || [];
+
+  // 🚀 Lógica de RUC/DNI y Comprobante compartida
+  const { rucDni, comprobante } = resolveCustomerDoc(sale);
 
   // 🚀 Lógica de Metadatos de Dólares (USD)
   const isConverted = (sale as any).metadata?.currency === "USD";
@@ -208,6 +211,17 @@ export function SaleDetailsModal({
             </div>
           )}
 
+          {/* 🚀 FLAGS (Si los hay) */}
+          {sale.allFlags && sale.allFlags.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {sale.allFlags.map((f: string) => (
+                <span key={f} className="text-[10px] px-2 py-1 rounded bg-amber-50 text-amber-600 font-bold border border-amber-100 flex items-center gap-1 italic">
+                  ⚠ {f}
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* SECCIÓN 1: DATOS DEL CLIENTE */}
           <div className="bg-slate-50/80 rounded-xl p-5 border border-slate-200">
             <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4 border-b border-slate-200 pb-2">
@@ -224,8 +238,16 @@ export function SaleDetailsModal({
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
                   Documento (RUC/DNI)
                 </p>
-                <p className="font-bold text-gray-800">{sale.documentNumber}</p>
+                <p className="font-bold text-gray-800">{rucDni}</p>
               </div>
+              {comprobante && (
+                <div>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                    <FileText size={12} /> Comprobante
+                  </p>
+                  <p className="font-bold text-gray-800">{comprobante}</p>
+                </div>
+              )}
               <div className="md:col-span-2">
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 flex items-center gap-1">
                   <MapPin size={12} /> Dirección de Despacho

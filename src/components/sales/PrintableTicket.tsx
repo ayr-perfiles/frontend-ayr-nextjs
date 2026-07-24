@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Sale } from "@/types";
 import { Zap } from "lucide-react";
 import { getSystemSettings, SystemSettings } from "@/services/settingsService";
+import { resolveCustomerDoc } from "@/core/sales/salesDisplayLogic";
 
 interface PrintableTicketProps {
   sale: Sale;
@@ -45,6 +46,8 @@ export const PrintableTicket = ({ sale }: PrintableTicketProps) => {
   const isQuotation = sale.status === "QUOTATION";
   const documentTitle = isQuotation ? "COTIZACIÓN" : "TICKET DE VENTA";
   const documentNumber = sale.id ? sale.id.slice(-8).toUpperCase() : "00000000";
+
+  const { rucDni, comprobante } = resolveCustomerDoc(sale);
 
   const dateStr = sale.timestamp?.toDate
     ? sale.timestamp.toDate().toLocaleDateString("es-PE", {
@@ -130,7 +133,7 @@ export const PrintableTicket = ({ sale }: PrintableTicketProps) => {
               RUC / DNI
             </p>
             <p className="text-xs font-bold text-gray-900">
-              {sale.documentNumber || "---"}
+              {rucDni}
             </p>
           </div>
           <div className="md:col-span-1">

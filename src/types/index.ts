@@ -182,6 +182,8 @@ export interface Sale {
   id?: string;
   customerName: string;
   documentNumber?: string;
+  customerDocument?: string;
+  allFlags?: string[];
 
   customerAddress?: string;
   contactName?: string;
