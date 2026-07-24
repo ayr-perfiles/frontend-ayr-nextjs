@@ -1,5 +1,5 @@
 # MÓDULO: ventas (sales) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-07-22 (frente importador COT- + fix agregados, ambos en master).
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-07-23 (builder canónico, semántica documentNumber/customerDocument y 3 backfills, en master).
 > ⚠️ SE PUDRE. Antes de tocar lógica/costeo/writes de ventas: verificá (checklist §7). No confíes si la fecha está vieja.
 
 ## 1. Escritores vivos de `sales` (5)
@@ -73,3 +73,9 @@ importar factura → nace venta COMPLETED + cotización COT-{documentNumber}
 3. Guard de array vacío en cualquier `where(...,'in', arr)` nuevo sobre `status`.
 4. Cotización importada (`relatedSaleId` presente) → nunca debe ofrecer aprobar/editar como si fuera pendiente real (§5).
 5. Mapeo de doc Firestore → objeto JS: `id` SIEMPRE al final del spread (§8).
+
+## 12. Refactor v6.28 y Backfills (2026-07-23)
+- **BUILDER CANÓNICO de sales** (`src/core/sales/domain/saleDocBuilder.ts`): `buildSaleDoc`/`buildQuotationDoc` consumidos por los 3 escritores. El builder normaliza la FORMA, no los VALORES (respeta totales del input cuando vienen, PROHIBIDO el spread dentro del builder).
+- **SEMÁNTICA SEPARADA:** `documentNumber` = comprobante o `""` (NUNCA RUC); `customerDocument` = RUC/DNI. Fallback legacy con flag "documento reubicado".
+- **BACKFILLS EN PROD:** 114 docs con `businessLines` derivado por `classifyLine`; 3 docs con RUC reubicado de `documentNumber` a `customerDocument`; 33 docs con `totalProfit` -> 0 con flag "sin costo".
+- **crmService.getCustomerProfile:** DOBLE query (`documentNumber` legacy + `customerDocument`) deduplicada por id. Índice `sales[customerDocument, timestamp]` READY en prod y test.
