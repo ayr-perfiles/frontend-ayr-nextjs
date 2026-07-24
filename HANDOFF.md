@@ -7,6 +7,13 @@
 > backend en prod antes que master.
 
 ## DEUDAS
+- **SalesHistoryTable (perfil de cliente):** estado BINARIO, pinta VOIDED como "Cotización". El perfil de 3AAMSEQ aparenta S/357k cotizados con 2 anuladas.
+- **PrintableTicket HUÉRFANO** (cero importadores) + botón "Imprimir Ticket" en `/admin/sales:201` abre `/admin/sales/{id}/print` → ruta INEXISTENTE → 404 en prod. El fix de RUC que se le hizo está sin ejercitar.
+- **fetchSales param customerDoc:** mismo bug de semántica, código muerto (0 callers).
+- **reportFunctions.ts:381:** muestra documentNumber como "Doc" (vacío en ventas POS).
+- **CustomersReportTab.tsx** huérfano.
+- **La regla "sin costo → profit 0"** ya NO la garantiza el builder para quien pasa totales (consecuencia aceptada de separar forma/valor). Hoy funciona porque el POS no los pasa y el importador tiene guard propio.
+- **Query legacy de crmService:** borrable post-backfill.
 - **metallicProduction.test.ts:** 7-8 fixtures rotos desde v6.22 (nunca les pasaron `source: {type:'QUOTE'}` al HARD GATE). Causa identificada, fix conocido. Son parte de los 13 rojos preexistentes.
 - **confirmQuotationForProduction** sin guard de rol interno (defensa = UI + isStaff, que incluye OPERATOR). Se cierra en Frente 2.
 - **`(input as any).length = deleteField()`** escapa el tipado en ProductModal.
