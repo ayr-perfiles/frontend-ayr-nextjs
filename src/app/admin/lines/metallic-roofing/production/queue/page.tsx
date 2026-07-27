@@ -13,19 +13,21 @@ import { RowActionsMenu } from "@/components/ui/RowActionsMenu";
 import { Factory, Eye, Loader2 } from "lucide-react";
 import { SaleDetailsModal } from "@/components/sales/SaleDetailsModal";
 import { Sale } from "@/types";
+import { PRODUCTION_QUEUE_FILTER } from "@/core/sales/services/salesService";
+
 
 export default function ProductionQueuePage() {
   const router = useRouter();
   
   const { sales: quotes, loading: loadingQuotes } = useSales({
     pageSize: 100,
-    statusFilter: "QUOTATION",
-    businessLine: "metallic-roofing",
+    statusFilter: PRODUCTION_QUEUE_FILTER.status,
+    businessLine: PRODUCTION_QUEUE_FILTER.businessLine,
     searchTerm: "",
     startDate: "",
     endDate: "",
     sunatFilter: "",
-    productionStatusFilter: "CONFIRMED",
+    productionStatusFilter: PRODUCTION_QUEUE_FILTER.productionStatus,
     skipAggregates: true,
   });
 
