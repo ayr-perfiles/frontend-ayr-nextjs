@@ -95,8 +95,8 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
         { coilId: coilIdA, declared: 50 },
         { coilId: coilIdB, declared: 80 },
       ],
-      
-          });
+      source: { type: 'QUOTE', id: 'COT-TEST-1' }
+    });
 
     expect(result.success).toBe(true);
     expect(result.cantidadProducida).toBe(130);
@@ -163,8 +163,8 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
       productKind: 'COBERTURA_ML',
       lengthM: null,
       coilInputs: [{ coilId, declared: 48 }],
-      
-          });
+      source: { type: 'QUOTE', id: 'COT-TEST-2' }
+    });
 
     const snap = await getDoc(doc(db, 'coils', coilId));
     expect(snap.data()!.currentWeight).toBeLessThanOrEqual(0);
@@ -184,8 +184,8 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
       productKind: 'COBERTURA_ML',
       lengthM: null,
       coilInputs: [{ coilId, declared: 200 }],
-      
-          });
+      source: { type: 'QUOTE', id: 'COT-TEST-3' }
+    });
 
     expect(result.success).toBe(true);
     expect(result.hasNegativeCoilWarning).toBe(true);
@@ -220,8 +220,8 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
       productKind: 'COBERTURA_ML',
       lengthM: null,
       coilInputs: [{ coilId, declared: 100 }],
-      
-          });
+      source: { type: 'QUOTE', id: 'COT-TEST-4' }
+    });
 
     const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'SKU-WAC'));
     expect(stockSnap.data()!.quantity).toBe(120);
@@ -249,8 +249,8 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
         productKind: 'COBERTURA_ML',
         lengthM: null,
         coilInputs: [{ coilId, declared: 50 }],
-        
-              }),
+        source: { type: 'QUOTE', id: 'COT-TEST-5' }
+      }),
     ).rejects.toThrow('factor de densidad');
   });
 
@@ -266,8 +266,8 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
         productKind: 'COBERTURA_ML',
         lengthM: null,
         coilInputs: [{ coilId: 'BOB-NO-EXISTE', declared: 50 }],
-        
-              }),
+        source: { type: 'QUOTE', id: 'COT-TEST-6' }
+      }),
     ).rejects.toThrow('no existe');
   });
 
@@ -284,8 +284,8 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
         productKind: 'COBERTURA_ML',
         lengthM: null,
         coilInputs: [{ coilId, declared: 50 }],
-        
-              }),
+        source: { type: 'QUOTE', id: 'COT-TEST-7' }
+      }),
     ).rejects.toThrow('SOLD');
   });
 
@@ -305,8 +305,8 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
           { coilId, declared: 50 },
           { coilId: 'BOB-INEXISTENTE', declared: 30 },
         ],
-        
-              }),
+        source: { type: 'QUOTE', id: 'COT-TEST-8' }
+      }),
     ).rejects.toThrow();
 
     // La bobina real no debe haber cambiado (rollback)
@@ -317,6 +317,24 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     // Stock también sin cambios
     const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'COB045ALU'));
     expect(stockSnap.data()!.quantity).toBe(0);
+  });
+
+  // ── 9. Validación source obligatoria (Guard v6.22) ──────────────────────
+
+  it('rechaza si falta source o no es de type QUOTE (Guard v6.22)', async () => {
+    const coilId = await seedAluzincCoil({ id: 'BOB-NO-SOURCE', currentWeight: 1000 });
+    await seedStock(db, 'metallic_roofing_stock', 'COB045ALU', { quantity: 0, avgCost: 0 });
+
+    await expect(
+      produceFromCoils({
+        targetSku: 'COB045ALU',
+        requestId: "req-" + Math.random().toString(),
+        productKind: 'COBERTURA_ML',
+        lengthM: null,
+        coilInputs: [{ coilId, declared: 50 }],
+        // source intentionally omitted
+      }),
+    ).rejects.toThrow('Es obligatorio proveer una cotización para producir.');
   });
 });
 
