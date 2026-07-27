@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import * as admin from '../../../functions/node_modules/firebase-admin';
 
 const TEST_PROJECT_ID = "ayrsteel-test";
 vi.stubEnv('NEXT_PUBLIC_FIREBASE_PROJECT_ID', TEST_PROJECT_ID);
@@ -24,6 +25,9 @@ vi.unmock('@/lib/firebase/clientApp');
 
 describe('E2E Flows (Integration)', () => {
   beforeAll(async () => {
+    if (!admin.apps.length) {
+      admin.initializeApp({ projectId: TEST_PROJECT_ID });
+    }
     await setupIntegrationTest();
   });
 
@@ -77,7 +81,7 @@ describe('E2E Flows (Integration)', () => {
 
     // 5. Revertir Producción
     const logsSnap = await getDocs(collection(db, 'production_logs'));
-    await callableRevertProductionLog({
+    await callableRevertProductionLog.run({
       data: { logId: logsSnap.docs[0].id },
       auth: { uid: 'admin-123', token: { email: 'admin@test.com', role: 'ADMIN' } }
     } as any);
