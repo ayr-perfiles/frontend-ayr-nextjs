@@ -6,6 +6,7 @@ import { usePathname, useParams, useRouter } from "next/navigation";
 import { useAuth, UserRole } from "@/context/AuthContext";
 import { businessLines } from "@/core/registry/businessLineRegistry";
 import type { BusinessLineModule, MenuItem } from "@/core/contracts";
+import { getProductionQueueCount } from "@/core/sales/services/salesService";
 import {
   LayoutDashboard,
   Factory,
@@ -35,6 +36,7 @@ import {
   UserCog,
   ScrollText,
   PanelLeft,
+  ListChecks,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -67,6 +69,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   UserCog,
   ScrollText,
   PanelLeft,
+  ListChecks,
 };
 
 function getIcon(name: string): LucideIcon {
@@ -308,6 +311,25 @@ export default function Sidebar({
     return allowedRoles.includes(role || "");
   };
 
+  // Cola de Producción: link + badge visibles solo para ADMIN/SUPERVISOR (mismo gate que el fetch de abajo).
+  const canSeeProductionQueue = role === "ADMIN" || role === "SUPERVISOR";
+  const [productionQueueCount, setProductionQueueCount] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (!canSeeProductionQueue) return;
+    let isMounted = true;
+    getProductionQueueCount()
+      .then((count) => {
+        if (isMounted) setProductionQueueCount(count);
+      })
+      .catch((err) => {
+        console.warn("No se pudo obtener el conteo de la cola de producción:", err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [canSeeProductionQueue]);
+
   return (
     <aside
       className={`
@@ -398,7 +420,16 @@ export default function Sidebar({
                 collapsed={collapsed}
               />
             ))}
-
+          {canSeeProductionQueue && (
+            <NavItem
+              icon="ListChecks"
+              label="Cola de Producción"
+              href="/admin/lines/metallic-roofing/production/queue"
+              active={pathname === "/admin/lines/metallic-roofing/production/queue"}
+              badge={productionQueueCount}
+              collapsed={collapsed}
+            />
+          )}
         </Group>
 
         {/* ABASTECIMIENTO */}

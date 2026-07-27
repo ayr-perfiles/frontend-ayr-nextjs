@@ -659,6 +659,32 @@ export const fetchSales = async (params: FetchSalesParams) => {
 
 
 
+// ─── getProductionQueueCount ──────────────────────────────────────────────────
+
+/**
+ * Criterio único de la cola de producción (ETAPA 1, /production/queue).
+ * Fuente compartida para que el count del badge nunca diverja del filtro real de la página.
+ */
+export const PRODUCTION_QUEUE_FILTER = {
+  status: 'QUOTATION',
+  productionStatus: 'CONFIRMED',
+  businessLine: 'metallic-roofing',
+} as const;
+
+/** Count barato (agregación, cero lectura de docs) de cotizaciones en la cola de producción. */
+export const getProductionQueueCount = async (): Promise<number> => {
+  const collRef = collection(db, 'sales');
+  const snap = await getCountFromServer(
+    query(
+      collRef,
+      where('status', '==', PRODUCTION_QUEUE_FILTER.status),
+      where('productionStatus', '==', PRODUCTION_QUEUE_FILTER.productionStatus),
+      where('businessLines', 'array-contains', PRODUCTION_QUEUE_FILTER.businessLine),
+    ),
+  );
+  return snap.data().count;
+};
+
 // ─── updateQuotation ──────────────────────────────────────────────────────────
 
 export const updateQuotation = async (

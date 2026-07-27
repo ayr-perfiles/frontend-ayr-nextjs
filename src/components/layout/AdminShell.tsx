@@ -128,6 +128,7 @@ function HeaderComponent({
     new: "Nuevo",
     operator: "Operador",
     "bulk-import": "Importación masiva",
+    queue: "Cola de Producción",
   };
 
   const pathSegments = pathname.split("/").filter(Boolean);
