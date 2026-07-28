@@ -176,35 +176,47 @@ export const produceFromCoils = onCall(async (request) => {
 
     // 5. ESCRITURAS
 
-    // a) Actualizar bobinas y kardex
+    // a) Actualizar bobinas y kardex (con saldo acumulado)
+    const currentWeights = new Map<string, number>();
     for (let i = 0; i < coilInputs.length; i++) {
-      const coilRef = coilRefs[i];
-      const coil = coilSnaps[i].data()!;
+      const coilId = coilInputs[i].coilId;
+      if (!currentWeights.has(coilId)) {
+        currentWeights.set(coilId, coilSnaps[i].data()!.currentWeight);
+      }
+    }
+
+    for (let i = 0; i < coilInputs.length; i++) {
+      const coilId = coilInputs[i].coilId;
       const breakdown = result.perCoilBreakdown[i];
+      const coil = coilSnaps[i].data()!;
 
-      const newWeight = Number((coil.currentWeight - breakdown.weightConsumedKg).toFixed(4));
-      if (newWeight < 0) hasNegativeCoilWarning = true;
-
-      const newStatus = newWeight <= 0 ? "PROCESSED" : "IN_PROGRESS";
-
-      tx.update(coilRef, {
-        currentWeight: newWeight,
-        status: newStatus,
-        updatedAt: now,
-      });
+      let runningWeight = currentWeights.get(coilId)!;
+      runningWeight = Number((runningWeight - breakdown.weightConsumedKg).toFixed(4));
+      if (runningWeight < 0) hasNegativeCoilWarning = true;
+      currentWeights.set(coilId, runningWeight);
 
       const kardexRef = db.collection("kardex_movements").doc();
       tx.set(kardexRef, {
-        sku: coilInputs[i].coilId,
+        sku: coilId,
         date: now,
         type: "OUT",
         quantity: 1,
         weightKg: breakdown.weightConsumedKg,
         costPerKg: coil.pricePerKg || 0,
-        balance: newWeight,
+        balance: runningWeight,
         reference: targetSku,
         description: `Conformado → ${targetSku} (${breakdown.mlFromCoil.toFixed(2)} ML / ${breakdown.weightConsumedKg.toFixed(2)} kg)`,
         user: email,
+      });
+    }
+
+    for (const [coilId, finalWeight] of currentWeights.entries()) {
+      const newStatus = finalWeight <= 0 ? "PROCESSED" : "IN_PROGRESS";
+      const coilRef = db.collection("coils").doc(coilId);
+      tx.update(coilRef, {
+        currentWeight: finalWeight,
+        status: newStatus,
+        updatedAt: now,
       });
     }
 
@@ -356,69 +368,94 @@ export const voidProductionFromCoils = onCall(async (request) => {
     }
   }
 
+  let hasOverRestoreWarning = false;
+
   return await db.runTransaction(async (tx) => {
     // 1. LECTURAS
     const coilRefs = log.perCoilBreakdown.map((b: any) => db.collection("coils").doc(b.coilId));
     const stockRef = db.collection("metallic_roofing_stock").doc(log.sku);
+    const scrapRefs = log.scrapIds ? log.scrapIds.map((id: string) => db.collection("scrap_logs").doc(id)) : [];
 
-    const [stockSnap, ...coilSnaps] = await Promise.all([
-      tx.get(stockRef),
-      ...coilRefs.map((ref: admin.firestore.DocumentReference) => tx.get(ref)),
-    ]);
+    const refs = [...coilRefs, stockRef, ...scrapRefs];
+    const snaps = await tx.getAll(...refs);
 
-    for (let i = 0; i < coilSnaps.length; i++) {
-      if (!coilSnaps[i].exists) {
-        throw new HttpsError("not-found", `La bobina '${log.perCoilBreakdown[i].coilId}' referenciada no existe.`);
-      }
-    }
+    const coilSnaps = snaps.slice(0, coilRefs.length);
+    const stockSnap = snaps[coilRefs.length];
 
-    if (!stockSnap.exists) {
-      throw new HttpsError("not-found", `El stock del producto '${log.sku}' no existe.`);
-    }
+    // Verificar que todas existan
+    coilSnaps.forEach((snap, i) => {
+      if (!snap.exists) throw new HttpsError("not-found", `Bobina no encontrada para revertir: ${coilRefs[i].id}`);
+    });
+    if (!stockSnap.exists) throw new HttpsError("not-found", `Stock de PT no encontrado para revertir: ${log.sku}`);
 
     const now = FieldValue.serverTimestamp();
 
     // 2. ESCRITURAS
 
-    // a) LOG
+    // a) PRODUCTION_LOG (marcar como VOIDED)
+    const logRef = db.collection("production_logs").doc(logId);
     tx.update(logRef, {
       status: "VOIDED",
+      updatedAt: now,
       voidedAt: now,
       voidedBy: email,
     });
 
     // b) BOBINAS + kardex (costo congelado)
+    const currentWeights = new Map<string, number>();
+    const initialWeights = new Map<string, number>();
+
+    for (let i = 0; i < log.perCoilBreakdown.length; i++) {
+      const coilId = log.perCoilBreakdown[i].coilId;
+      if (!currentWeights.has(coilId)) {
+        const coil = coilSnaps[i].data()! as any;
+        currentWeights.set(coilId, coil.currentWeight);
+        initialWeights.set(coilId, coil.initialWeight);
+      }
+    }
+
     for (let i = 0; i < log.perCoilBreakdown.length; i++) {
       const breakdown = log.perCoilBreakdown[i];
-      const coilRef = coilRefs[i];
-      const coil = coilSnaps[i].data()!;
+      const coilId = breakdown.coilId;
 
-      const newWeight = Number((coil.currentWeight + breakdown.weightConsumedKg).toFixed(4));
-      const newStatus = determineCoilStatusAfterReversal(newWeight, coil.initialWeight);
+      let runningWeight = currentWeights.get(coilId)!;
+      runningWeight = Number((runningWeight + breakdown.weightConsumedKg).toFixed(4));
+      currentWeights.set(coilId, runningWeight);
+
       const costPerKgCongelado = breakdown.costPEN / breakdown.weightConsumedKg;
 
-      tx.update(coilRef, {
-        currentWeight: newWeight,
-        status: newStatus,
-        updatedAt: now,
-      });
-
       tx.set(db.collection("kardex_movements").doc(), {
-        sku: coilRef.id,
+        sku: coilId,
         date: now,
         type: "IN",
         quantity: 1,
         weightKg: breakdown.weightConsumedKg,
         costPerKg: costPerKgCongelado,
-        balance: newWeight,
+        balance: runningWeight,
         reference: logId,
         description: `Devolución MP por anulación de producción ${logId}`,
         user: email,
       });
     }
 
+    for (const [coilId, finalWeight] of currentWeights.entries()) {
+      const initialW = initialWeights.get(coilId)!;
+      if (finalWeight > initialW) {
+        hasOverRestoreWarning = true;
+      }
+      
+      const newStatus = determineCoilStatusAfterReversal(finalWeight, initialW);
+      const coilRef = db.collection("coils").doc(coilId);
+      
+      tx.update(coilRef, {
+        currentWeight: finalWeight,
+        status: newStatus,
+        updatedAt: now,
+      });
+    }
+
     // c) PRODUCTO TERMINADO (metallic_roofing_stock)
-    const stockData = stockSnap.data()!;
+    const stockData = stockSnap.data()! as any;
     const currentQty = (stockData.quantity as number) || 0;
     const currentTotalValue = (stockData.totalValue as number) || 0;
 
@@ -454,6 +491,6 @@ export const voidProductionFromCoils = onCall(async (request) => {
       timestamp: now,
     });
 
-    return { success: true };
+    return { success: true, hasOverRestoreWarning };
   });
 });
