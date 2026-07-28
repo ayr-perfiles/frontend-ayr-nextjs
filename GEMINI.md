@@ -1,8 +1,13 @@
 <!-- ⚠️ AUTO-GENERADO desde CLAUDE.md. NO editar a mano — editá CLAUDE.md y corré sync-context. -->
-# CLAUDE.md — AYR Steel ERP (v6.26)
+# CLAUDE.md — AYR Steel ERP (v6.29)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
-> **Estado:** Build 🟢 | tsc limpio | 32 unit (bulkUploadLogic) + 14 unit (parseCoilDescription) + 3 unit (coilId) + 14 unit (salesImportLogic) + 4 component (SalesTable) + integración serializada verde | Functions v2 operativa.
+> **Estado:** Build 🟢 | tsc limpio | test:emu saneado (0 rojos) | Borón masivo ejecutado | Functions v2 operativa.
+> **v6.29:** (Cerrado en PROD)
+> - **Cola de producción ETAPA 1+2 CERRADA en prod:** `/admin/lines/metallic-roofing/production/queue` + link sidebar (icono ListChecks, gate inline ADMIN+SUPERVISOR) + badge ámbar (`getProductionQueueCount`, count barato). Lógica pura en `src/core/production/queueLogic.ts`. Fulfillment AGREGADO POR SKU (TR4/TR5 comparten SKU a propósito). `PRODUCTION_QUEUE_FILTER` = fuente única del criterio.
+> - **FIX BUG DOBLE de peso multicorte DEPLOYADO a prod+test:** `produceFromCoils` + `voidProductionFromCoils` agrupan por `coilId`, acumulan saldo en memoria, un `tx.update` por bobina, kardex progresivo, status desde saldo final. Reversa usa `determineCoilStatusAfterReversal` (`scrap.ts`). Guard `hasOverRestoreWarning` permisivo. Commit `c8685a9a`.
+> - **test:emu SANEADO a 0 rojos** (192 passed). Los 13 rojos eran fixtures viejos vs guards v6.22/v6.25, cero bug real.
+> - **BORÓN MASIVO en prod:** borrado físico de todo transaccional >= 1-jun-2026 (por IDs, con backup afuera + restore probado en test). Estado prod HOY: coils 38, sales 114 (COMPLETED, 0 QUOTATION), production_logs 143, kardex 507, audit_logs 382 intacto, 3 mov-collections en 0, stocks reseteados a 0 (docs vivos), catálogo intacto, cola vacía.
 > **v6.28:** (Cerrado en PROD)
 > - **BUILDER CANÓNICO de `sales`** (`src/core/sales/domain/saleDocBuilder.ts`): `buildSaleDoc`/`buildQuotationDoc` consumidos por los 3 escritores (`processSale`, `createQuotation`, `buildImportWrites`). PRINCIPIO: el builder normaliza la FORMA, no los VALORES — respeta totales del input cuando vienen (el comprobante es la verdad legal; recalcular rompía el signo de las NOTAS DE CRÉDITO) y solo calcula si faltan. PROHIBIDO el spread dentro del builder (era la causa raíz: heredaba lo que el caller le pasara).
 > - **SEMÁNTICA SEPARADA:** `documentNumber` = comprobante o `""` (NUNCA RUC); `customerDocument` = RUC/DNI. El POS escribía el RUC en `documentNumber`. Fallback legacy con flag "documento reubicado" (no silencioso).
@@ -322,7 +327,12 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 
 ## 11. Deuda Técnica Menor (Backlog)
 
-- ⚠️ **CRÍTICO WRITE 7 drywall:** `revertProductionLog` en develop+master + front thin-client, PERO callable NO en prod (solo test) y NO runtime-validado. Si el thin-client está en prod → anular producción drywall ROTA (404). [En proceso de verificación y despliegue a PROD en sesión actual].
+- ⚠️ **PENDIENTE INMEDIATO:** Reimportación masiva (bobinas + ventas + transacciones >= junio 2026) tras borrado. Operación grande por lotes con gate.
+- ⚠️ **PENDIENTE INMEDIATO (UI):** Mejorar importación masiva de ventas — cuando hay varios registros con el mismo n° de comprobante, mostrar el DETALLE (actualmente muestra solo el total consolidado).
+- **`getProducedForQuoteLine`:** indexa por SKU → duplica en `/production/new` y `SaleDetailsModal` (la cola ya lo resuelve).
+- **BUG SOMBRA `ROUTE_PERMISSIONS`:** `/admin/lines` sombrea rutas OPERATOR (`Object.keys().find()`). Decisión: acceso actual OK (OPERATOR fuera) → fix = limpiar declaración muerta, NO reordenar.
+- **`production_log`:** no graba perfil TR4/TR5.
+
 - **Vercel APIS_PERU_TOKEN (TC):** pendiente manual en prod.
 - **Verificar rules counters en prod:** deploy de rules se saltó en v6.22 (verificar si requires update).
 - **Rotar token decolecta:** quedó expuesto en un chat.
@@ -385,6 +395,9 @@ Runtime: lookup desde `coil_finishes`, throw si falta.
 - **Tests:** `fileParallelism: false` (los de integración comparten emulador; en paralelo colisionan). Correr serializado para verde real (463/463).
 - **Build de Vercel = build SIN credenciales** (serviceAccountKey gitignored). Scripts de migración EXCLUIDOS del build Next (tsconfig exclude) — importan serviceAccountKey que no existe en Vercel. Verificar build renombrando la credencial localmente.
 - **Git:** push directo a `develop`. Push dispara Vercel. Credenciales (serviceAccountKey*, .env*) y \*.log en .gitignore.
+- ⚠️ **REGLA DE ORO (Functions Deploy):** Deploy con `--only functions:A,functions:B` **DEBE** repetir el prefijo `functions:` en cada target. La CLI ignora silenciosamente los que no lo tienen. Verificar `functions:list` post-deploy.
+- ⚠️ **REGLA DE ORO (Operaciones Destructivas y Lotes):** En operaciones destructivas por lotes, SE DEBE usar un GATE: correr UN lote → reportar → ESPERAR OK del usuario antes de seguir. NUNCA correr todo de corrido.
+- ⚠️ **REGLA DE ORO (Backups y Borrados):** Antes de un borrado físico, hacer backup JSON fuera del entorno y PROBAR EL RESTORE en `test` (asegurando el mapeo `_id` → `doc.id`) antes de tocar prod.
 - ⚠️ **REGLA DE ORO (Functions):** Functions ACTIVE en functions:list = desplegada, NO validada. Como tsc verde. Validar runtime (invocar real en prod) antes de cerrar. Esta sesión: deploy bloqueado por secretos SUNAT acoplados; NUNCA secreto dummy en prod (rompe Algolia/APIs/SUNAT en runtime silenciosamente); NUNCA index.ts mutilado temporal; separar codebases es el fix correcto.
 - ⚠️ **`npm run build` LOCAL obligatorio antes de merge a master.** `tsc` verde + `test:emu` verde NO atrapan fallos de `next build` (test-only code que entra al bundle, imports server-only, paths crudos a `node_modules` anidados). Incidente v6.11: `firestore-helpers.ts` importaba `firebase-admin` con path crudo a `functions/node_modules` → `next build` roto, invisible en `develop` (Vercel solo buildea `master`). Fix: `"src/test"` en `exclude` de `tsconfig.json`. Tests fuera del bundle de prod siempre. Los 5 callable test files conservan path crudo a `functions/node_modules/firebase-admin` a propósito (identidad de módulo con los callables que prueban).
 - ⚠️ **firestore.indexes.json = fuente de verdad declarativa de edición MANUAL ADITIVA.** NUNCA sobrescribir con volcado de `firebase firestore:indexes` — el volcado pisa direcciones (ASC→DESC) y omite índices, causando deploys que BORRAN índices vivos. Incidente v6.10: un commit de 'formateo' sobrescribió el archivo → perdió `sales[status ASC,timestamp ASC]` → TUMBÓ todos los reportes de prod (`getProductSalesReport`, `reportFunctions sales-kpi/by-line`) con `FAILED_PRECONDITION`. El re-diff atrapó que el deploy correctivo además iba a borrar `coils[status ASC,createdAt ASC]` huérfano. SIEMPRE: `--dry-run` antes de deploy de índices, revisar sección `DELETE`, y `grep` del consumidor antes de dejar morir cualquier índice. OJO trampa Firestore: where de rango sin orderBy explícito → exige índice ASC implícito.
