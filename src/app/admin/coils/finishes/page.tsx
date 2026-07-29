@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
-import { createFinish, updateFinish, migrateFinishDensityFactors, CoilFinish } from "@/core/coils/services/finishService";
+import { createFinish, updateFinish, migrateFinishDensityFactors, CoilFinish, formatFinishChip } from "@/core/coils/services/finishService";
 import { Plus, Edit2, Tag, Check, X, Loader2, Zap } from "lucide-react";
 import toast from "react-hot-toast";
 import { BusinessLine } from "@/types";
@@ -21,11 +21,17 @@ export default function FinishesPage() {
     active: true,
     lines: [],
     densityFactor: undefined,
+    tipo: undefined,
+    color: undefined,
   });
 
   const handleSave = async () => {
     if (!formData.id || !formData.label) {
       toast.error("ID y Etiqueta son obligatorios");
+      return;
+    }
+    if (!formData.tipo || !formData.color) {
+      toast.error("Tipo y Color son obligatorios");
       return;
     }
     if (formData.lines.length !== 1) {
@@ -77,7 +83,7 @@ export default function FinishesPage() {
             onClick={() => {
               setIsAdding(true);
               setEditingId(null);
-              setFormData({ id: "", label: "", active: true, lines: [], densityFactor: undefined });
+              setFormData({ id: "", label: "", active: true, lines: [], densityFactor: undefined, tipo: undefined, color: undefined });
             }}
             className="bg-blue-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-blue-700 transition font-black shadow-md shadow-blue-200"
           >
@@ -111,6 +117,37 @@ export default function FinishesPage() {
                 value={formData.label}
                 onChange={e => setFormData({ ...formData, label: e.target.value.toUpperCase() })}
               />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Tipo de Acabado</label>
+              <select
+                className="w-full p-2.5 border rounded-lg font-bold outline-none focus:border-blue-500 bg-white"
+                value={formData.tipo || ""}
+                onChange={e => setFormData({ ...formData, tipo: e.target.value as any })}
+              >
+                <option value="" disabled>Seleccione...</option>
+                <option value="Natural">Natural</option>
+                <option value="Prepintado">Prepintado</option>
+                <option value="Galvanizado">Galvanizado</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Color</label>
+              <select
+                className="w-full p-2.5 border rounded-lg font-bold outline-none focus:border-blue-500 bg-white"
+                value={formData.color || ""}
+                onChange={e => setFormData({ ...formData, color: e.target.value as any })}
+              >
+                <option value="" disabled>Seleccione...</option>
+                <option value="-">- (Ninguno)</option>
+                <option value="Rojo">Rojo</option>
+                <option value="Azul">Azul</option>
+                <option value="Blanco">Blanco</option>
+                <option value="Gris">Gris</option>
+                <option value="Verde">Verde</option>
+              </select>
             </div>
           </div>
           <div>
@@ -198,6 +235,11 @@ export default function FinishesPage() {
                     {l}
                   </span>
                 ))}
+                {formatFinishChip(f.tipo, f.color) && (
+                  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px] font-bold uppercase tracking-tighter border border-indigo-100">
+                    {formatFinishChip(f.tipo, f.color)}
+                  </span>
+                )}
               </div>
               <div className="flex items-center justify-between">
                 {f.active ? (

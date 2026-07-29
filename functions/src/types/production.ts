@@ -9,12 +9,17 @@ export type BusinessLine =
   | "trading"
   | "services";
 
+export type FinishType = 'Natural' | 'Prepintado' | 'Galvanizado';
+export type FinishColor = 'Rojo' | 'Azul' | 'Blanco' | 'Gris' | 'Verde' | '-';
+
 export interface CoilFinish {
   id: string;
   label: string;
   active: boolean;
   densityFactor?: number;
   lines: BusinessLine[];
+  tipo?: FinishType;
+  color?: FinishColor;
 }
 
 export interface DomainError {
