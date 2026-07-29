@@ -26,8 +26,8 @@
 - **Menú de cotización importada** aún ofrece "Editar Cotización" y "Duplicar Operación" — editar desincroniza la percha (`COT-{documentNumber}`) de la boleta real ya facturada. Frente chico, mismo helper que `isImportedQuotation` (`src/core/import/salesImportLogic.ts:8`).
 
 ## PENDIENTE INMEDIATO
-- **1. REIMPORTACIÓN MASIVA:** Reimportar bobinas, ventas y transacciones desde junio 2026 tras el borrón. Operación grande y cuidadosa (por lotes, con gate).
-- **2. UI IMPORTACIÓN DE VENTAS:** Mejorar importación masiva — cuando hay varios registros con el mismo n° de comprobante, mostrar el DETALLE (hoy muestra el total consolidado).
+- **MetallicProductionHistory — CERRADO** (validado runtime, confirmar merge a master): columna Cotización con link al modal (`QuoteDetailsModalLoader` nuevo → fetchea por `source.id`=doc id Firestore y monta `SaleDetailsModal` SIN tocar su contrato; error limpio 'Cotización no disponible'). Unidad por `family` vía helper puro `src/core/production/unitLogic.ts` (COBERTURA→`mlProduced`+'ML', PLANCHA→`piecesProduced`+'piezas', null→'—'). Header 'Costo x Unidad'. Polish: nowrap Costo x Unidad y Costo Corrida, fecha 1 línea, paréntesis sin 'ML' en piezas. `production_log.source` faltaba en el type, se agregó. Prod no tiene logs metallic → runtime solo en test.
+- **Prefill bobinas /production/new — CERRADO** (pendiente runtime+merge): cobertura pending-aware (longitud=`pieceLengthM`, cantidad=`pending/pieceLengthM`, `declared`=pending sin tocar; guard `pieceLengthM>0 && piecesCount`). Lógica testeada limpia con helper puro `computeCoberturaPrefill`. Plancha NO se tocó (ya prefilea `declared`=pending). Alineación grid con `items-end`.
 
 ## HORIZONTE (candidatos próximo frente)
 - **Frente 2 rol VENDEDOR:** recon hecho (isStaff, ROUTE_PERMISSIONS único guard vivo, isRoleAllowed/mod.routes.roles son código muerto, sellerId en prod es NOMBRE no email → hace falta sellerUid forward-only, agregados scopeados).
@@ -37,10 +37,10 @@
 - **forward-fix** `coilWeightConsumedKg` en `consumeCoil` (drywall, mata `approximateWeight` de logs nuevos).
 - **WRITE 8 cutOrder** (monstruo prorrateo, modelo flejes real + lote-por-bobina).
 - **WRITE 9 salesService**.
+- **Drawer de detalle por bobina en MetallicProductionHistory** (piezas/longitud por bobina en filas multi-bobina) — arranca con recon de `perCoilBreakdown`: si solo guarda costo por bobina (no piezas/ML), es forward-fix del WRITER (`produceFromCoils`), frente aparte.
 
 ## PENDIENTES OPERATIVOS
 - **Smoke check Algolia en prod:** `/admin/sales` con búsqueda de texto activa → verificar que las 3 tarjetas de dinero se ocultan y el pie de tabla queda coherente (mensaje "Totales no disponibles en búsqueda por texto"). Test (`ayrsteel-test`) no tiene Algolia, solo verificable en prod.
-- **Importación real de ventas a prod:** operación de curación (§14 CLAUDE.md), sesión dedicada. Backup de `sales` prod ANTES de correrla.
 
 ## REGLAS GRABADAS (aprendidas)
 - Ejecutor **PARA y espera OK** antes de tocar prod (no ejecutar-y-reportar).

@@ -12,6 +12,7 @@ import { produceFromCoils, getQuoteFulfillmentLogs, getProducedForQuoteLine } fr
 import { calcProductionFromCoils } from "@/modules/metallic-roofing/domain/coilProduction";
 import { isThicknessWithinTolerance } from "@/modules/metallic-roofing/domain/thicknessMatch";
 import { parsePositiveNumberInput, computeCoverageDeclaredMl } from "@/modules/metallic-roofing/domain/coverageProductionInput";
+import { computeCoberturaPrefill } from "@/core/production/coberturaPrefill";
 import type { MetallicProduct } from "@/modules/metallic-roofing/types";
 import type { Coil, Sale, SaleItem } from "@/types";
 import type { CoilFinish } from "@/core/coils/services/finishService";
@@ -494,6 +495,15 @@ function MetallicProductionForm() {
                           setQuoteItemPending(pending);
                           const newR = newRow(prod?.length ?? null);
                           newR.declared = pending > 0 ? String(pending) : "0";
+                          
+                          if (prod?.family !== "PLANCHA") {
+                            const prefill = computeCoberturaPrefill(pending, item.pieceLengthM ?? 0, item.piecesCount);
+                            if (prefill) {
+                              newR.longitud = prefill.longitud;
+                              newR.cantidad = prefill.cantidad;
+                            }
+                          }
+                          
                           setRows([newR]);
                         }}
                         className={`text-left p-3 rounded-lg border text-sm font-bold transition ${selectedSku === item.sku ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-slate-700 hover:border-orange-300 border-slate-200'}`}
@@ -766,7 +776,7 @@ function CoilRowCard({
         )}
       </div>
 
-      <div className={`grid grid-cols-2 ${isCobertura ? "md:grid-cols-4" : "md:grid-cols-3"} gap-3`}>
+      <div className={`grid grid-cols-2 ${isCobertura ? "md:grid-cols-4" : "md:grid-cols-3"} gap-3 items-end`}>
         <div>
           <label className="block text-[10px] font-black text-slate-500 uppercase mb-1">
             ID Bobina *

@@ -1,11 +1,45 @@
 "use client";
 
-import React, { Suspense } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { Factory, Plus, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { MetallicProductionHistory } from "@/modules/metallic-roofing/components/production/MetallicProductionHistory";
+import { listProducts } from "@/modules/metallic-roofing/services/catalogService";
+import { QuoteDetailsModalLoader } from "@/components/sales/QuoteDetailsModalLoader";
 
+function ProductionHistoryWrapper() {
+  const [skuToFamily, setSkuToFamily] = useState<Record<string, string>>({});
+  const [openQuoteId, setOpenQuoteId] = useState<string | null>(null);
 
+  useEffect(() => {
+    let isMounted = true;
+    listProducts({ active: true })
+      .then((products) => {
+        if (!isMounted) return;
+        const mapping: Record<string, string> = {};
+        for (const p of products) {
+          mapping[p.sku] = p.family;
+        }
+        setSkuToFamily(mapping);
+      })
+      .catch((err) => console.error("Error loading products:", err));
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  return (
+    <>
+      <MetallicProductionHistory skuToFamily={skuToFamily} onOpenQuote={setOpenQuoteId} />
+      {openQuoteId && (
+        <QuoteDetailsModalLoader 
+          quoteId={openQuoteId} 
+          onClose={() => setOpenQuoteId(null)} 
+        />
+      )}
+    </>
+  );
+}
 
 // ─── Export (con Suspense por useSearchParams) ─────────────────────────────────
 
@@ -43,7 +77,7 @@ export default function MetallicProductionPage() {
           </div>
         </div>
 
-        <MetallicProductionHistory />
+        <ProductionHistoryWrapper />
       </div>
     </Suspense>
   );

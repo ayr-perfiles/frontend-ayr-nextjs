@@ -251,6 +251,7 @@ export interface ProductionLog {
     piecesCount?: number;
     pieceLengthM?: number;
   }[];
+  source?: { type: "QUOTE"; id: string; label?: string } | null;
 }
 
 export interface AuditLog {

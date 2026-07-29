@@ -322,6 +322,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Token semántico vs llave BD (v6.13):** `parseCoilDescription` emite TOKEN semántico (`GALV|NATURAL|AZUL|...`), desacoplado de la llave viva de `coil_finishes` (`GALV|ALU-NATURAL|ALU-AZUL|...`). El mapeo token→llave (`TOKEN_TO_FINISH`) vive en la UI SOLO para preseleccionar; el dropdown se puebla de `coil_finishes` VIVO (single source of truth). NO reescribir el parser para emitir llaves — la separación de capas es intencional.
 - **Guard de rango como robustez de formato (v6.13):** `parseNumValue` interpreta el punto como decimal o miles según si coexiste una coma (heurística ambigua: `"11.214"` sin coma → 11.214, PERO `"3.708,"` → 3708). Para bobinas el guard de peso [2000-7000] kg atrapa cualquier mal-parseo (un peso de 11 kg o 11 millones cae fuera → fila inválida). El guard es la robustez real, no confiar en el parseo. Guard en UI (validate), NO en callable (bobina legítima atípica no debe hard-blockearse; callable mantiene weight>0).
 - **Emulador opt-out (v6.13):** `clientApp.ts` usa `NEXT_PUBLIC_USE_EMULATOR !== "false" && (NODE_ENV dev|test)`. Default = emulador (preserva todos los flujos). `"false"` en `.env.local` → `npm run dev` apunta a TEST-nube (para runtime local contra callable real). `test:emu` (emulators:exec) setea sus propios HOST, ignora la var. Scripts node puros NO cargan dotenv → van a nube vía serviceAccountKey directo.
+- **test:emu SANEADO a 0 rojos** (192 passed). Los 13 rojos eran fixtures viejos vs guards v6.22/v6.25, cero bug real.
 
 ---
 

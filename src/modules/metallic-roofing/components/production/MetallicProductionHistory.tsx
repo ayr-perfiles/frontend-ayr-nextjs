@@ -13,8 +13,15 @@ import { useConfirm } from "@/context/ConfirmContext";
 import toast from "react-hot-toast";
 import { voidProductionFromCoils } from "@/modules/metallic-roofing/services/productionService";
 import { useMetallicProductionLogs } from "@/modules/metallic-roofing/hooks/useMetallicProductionLogs";
+import { getProductionUnitAndValue } from "@/core/production/unitLogic";
+import { formatQuoteDisplayId } from "@/core/production/queueLogic";
 
-export function MetallicProductionHistory() {
+interface MetallicProductionHistoryProps {
+  skuToFamily: Record<string, string>;
+  onOpenQuote?: (quoteId: string) => void;
+}
+
+export function MetallicProductionHistory({ skuToFamily, onOpenQuote }: MetallicProductionHistoryProps) {
   const { role } = useAuth();
   const confirm = useConfirm();
   const { logs, loading, refresh } = useMetallicProductionLogs();
@@ -79,11 +86,12 @@ export function MetallicProductionHistory() {
       key: "timestamp",
       header: "Fecha",
       render: (log) => (
-        <span className="text-sm font-medium text-slate-600">
+        <span className="text-sm font-medium text-slate-600 whitespace-nowrap">
           {log.timestamp?.toDate
             ? log.timestamp.toDate().toLocaleString("es-PE", {
                 day: "2-digit",
                 month: "short",
+                year: "numeric",
                 hour: "2-digit",
                 minute: "2-digit",
               })
@@ -136,6 +144,30 @@ export function MetallicProductionHistory() {
       },
     },
     {
+      key: "quote",
+      header: "Cotización",
+      render: (log) => {
+        if (log.source && log.source.type === "QUOTE" && log.source.id) {
+          if (onOpenQuote) {
+            return (
+              <button
+                onClick={() => onOpenQuote(log.source!.id)}
+                className="font-black px-2.5 py-1 rounded-md text-xs border tracking-wider bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-colors whitespace-nowrap"
+              >
+                {formatQuoteDisplayId(log.source.id)}
+              </button>
+            );
+          }
+          return (
+            <span className="font-bold text-slate-600 whitespace-nowrap">
+              {formatQuoteDisplayId(log.source.id)}
+            </span>
+          );
+        }
+        return <span className="text-slate-400">—</span>;
+      },
+    },
+    {
       key: "product",
       header: "Producto",
       render: (log) => (
@@ -159,19 +191,22 @@ export function MetallicProductionHistory() {
             </div>
           );
         }
+        
+        const { value, unitLabel } = getProductionUnitAndValue(log, skuToFamily);
+
         return (
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <Activity size={16} className="text-emerald-500" />
-              <span className="text-emerald-600 font-black">
-                +{log.piecesProduced} pzas
+              <span className="text-emerald-600 font-black whitespace-nowrap">
+                {value === null ? "—" : `+${value} ${unitLabel}`}
               </span>
             </div>
-            {log.mlProduced && (
-              <span className="text-slate-400 text-[10px] font-bold">
-                ({log.mlProduced} ML / {log.reportedWeight?.toLocaleString()} kg)
+            {log.reportedWeight ? (
+              <span className="text-slate-400 text-[10px] font-bold whitespace-nowrap">
+                ({log.reportedWeight.toLocaleString()} kg)
               </span>
-            )}
+            ) : null}
           </div>
         );
       },
@@ -189,13 +224,14 @@ export function MetallicProductionHistory() {
 
         return (
           <span
-            className={`font-mono text-sm font-bold ${
+            className={`font-mono text-sm font-bold whitespace-nowrap ${
               log.status === "VOIDED" ? "text-slate-400 line-through" : "text-slate-600"
             }`}
           >
             S/{" "}
             {totalCost.toLocaleString("es-PE", {
               minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
             })}
           </span>
         );
@@ -203,11 +239,11 @@ export function MetallicProductionHistory() {
     },
     {
       key: "costPerPiece",
-      header: "Costo x Pieza",
+      header: "Costo x Unidad",
       align: "right",
       render: (log) => (
         <span
-          className={`font-mono font-black px-2.5 py-1 rounded border tracking-wide ${
+          className={`font-mono font-black px-2.5 py-1 rounded border tracking-wide whitespace-nowrap ${
             log.status === "VOIDED"
               ? "text-slate-400 bg-slate-50 border-slate-200 line-through"
               : "text-emerald-700 bg-emerald-50 border-emerald-200"
