@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseImportRows } from "@/core/import/parseImportRows";
+import { parseImportRows, skipReasonLabel } from "@/core/import/parseImportRows";
 import { BusinessLine } from "@/types";
 
 describe("parseImportRows", () => {
@@ -102,5 +102,17 @@ describe("parseImportRows", () => {
       documentNumber: "F001-004",
       reason: "UNRECOGNIZED_PRODUCT"
     });
+  });
+});
+
+describe("skipReasonLabel", () => {
+  it("should return correct labels for known reasons", () => {
+    expect(skipReasonLabel("NO_DOC_NUMBER")).toBe("Sin n° de comprobante");
+    expect(skipReasonLabel("INVALID_STATUS")).toBe("Comprobante anulado / baja / no declarado");
+    expect(skipReasonLabel("UNRECOGNIZED_PRODUCT")).toBe("Producto no reconocido (no importable)");
+  });
+
+  it("should return fallback label for unknown reasons", () => {
+    expect(skipReasonLabel("UNKNOWN_REASON" as any)).toBe("Motivo desconocido");
   });
 });

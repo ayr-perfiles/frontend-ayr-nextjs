@@ -55,6 +55,19 @@ export interface SkippedRow {
   reason: SkipReason;
 }
 
+export function skipReasonLabel(reason: SkipReason): string {
+  switch (reason) {
+    case "NO_DOC_NUMBER":
+      return "Sin n° de comprobante";
+    case "INVALID_STATUS":
+      return "Comprobante anulado / baja / no declarado";
+    case "UNRECOGNIZED_PRODUCT":
+      return "Producto no reconocido (no importable)";
+    default:
+      return "Motivo desconocido";
+  }
+}
+
 export interface ParseImportRowsOptions {
   catalogRef: CatalogRef[];
   stockRef: StockRef[];

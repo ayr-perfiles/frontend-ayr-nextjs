@@ -22,6 +22,8 @@ import {
   Calendar,
   AlertTriangle,
   TrendingUp,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { db } from "@/lib/firebase/clientApp";
 import {
@@ -51,7 +53,7 @@ import {
   NcStockAction
 } from "@/utils/importHelpers";
 import { buildImportWrites } from "@/core/import/salesImportLogic";
-import { parseImportRows, SkippedRow, MissingSku, CatalogRef, StockRef } from "@/core/import/parseImportRows";
+import { parseImportRows, SkippedRow, MissingSku, CatalogRef, StockRef, skipReasonLabel } from "@/core/import/parseImportRows";
 
 // ── Types & Constants ─────────────────────────────────────────────────────
 
@@ -96,6 +98,17 @@ export default function SalesImportPage() {
   const [skippedRows, setSkippedRows] = useState<SkippedRow[]>([]);
   const [exchangeRatesCache, setExchangeRatesCache] = useState<Record<string, number>>({});
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [showSkippedRows, setShowSkippedRows] = useState(false);
+
+  const toggleRow = (id: string) => {
+    setExpandedRows(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  };
 
   const [catalogRef, setCatalogRef] = useState<CatalogRef[]>([]);
   const [stockRef, setStockRef] = useState<StockRef[]>([]);
@@ -794,7 +807,7 @@ export default function SalesImportPage() {
                 {/* TABLE ACTIONS */}
                 <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
                   <div>
-                    <span className="text-sm font-black text-slate-700">{kpis.totalItems} Ítems en lote</span>
+                    <span className="text-sm font-black text-slate-700">{kpis.totalItems} líneas · {parsedSales.length} comprobantes</span>
                     <div className="flex items-center gap-2 mt-0.5">
                        <Calendar size={12} className="text-slate-400" />
                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{kpis.dateRange}</p>
@@ -814,6 +827,43 @@ export default function SalesImportPage() {
                   </button>
                 </div>
 
+                {/* SKIPPED ROWS BANNER */}
+                {skippedRows.length > 0 && (
+                  <div className="border-b border-slate-200 bg-amber-50">
+                    <button
+                      onClick={() => setShowSkippedRows(!showSkippedRows)}
+                      className="w-full flex items-center justify-between p-3 text-amber-700 hover:bg-amber-100 transition-colors"
+                    >
+                      <span className="text-xs font-black flex items-center gap-2">
+                        <AlertTriangle size={14} /> {skippedRows.length} filas no importadas
+                      </span>
+                      {showSkippedRows ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                    {showSkippedRows && (
+                      <div className="p-4 pt-0 max-h-40 overflow-y-auto custom-scrollbar bg-amber-50/50 border-t border-amber-100/50">
+                        <table className="w-full text-left border-collapse mt-2">
+                          <thead className="text-[9px] font-black text-amber-600 uppercase">
+                            <tr>
+                              <th className="p-2 w-24">Doc. Número</th>
+                              <th className="p-2 w-48">Descripción</th>
+                              <th className="p-2">Motivo</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-amber-100/50">
+                            {skippedRows.map((row, i) => (
+                              <tr key={`skip-${i}`}>
+                                <td className="p-2 text-[11px] font-black text-amber-800">{row.documentNumber || "—"}</td>
+                                <td className="p-2 text-[11px] text-amber-700 font-medium truncate max-w-xs">{row.description}</td>
+                                <td className="p-2 text-[11px] font-bold text-amber-700">{skipReasonLabel(row.reason)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* TABLE CONTENT */}
                 <div className="overflow-x-auto flex-1 custom-scrollbar">
                   <table className="w-full text-left border-collapse">
@@ -829,89 +879,148 @@ export default function SalesImportPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-50 bg-white">
                       {parsedSales.map((sale, i) => (
-                        <tr key={sale.documentNumber} className="hover:bg-slate-50/80 transition-colors group">
-                          <td className="p-4">
-                            <p className="text-[13px] font-black text-slate-900 leading-none">{sale.documentNumber}</p>
-                            <p className="text-[11px] text-slate-500 mt-1 truncate max-w-[120px] font-medium">{sale.customerName}</p>
-                          </td>
-                          <td className="p-4">
-                            <span className={`text-[9px] px-2 py-0.5 rounded-full font-black border ${
-                              sale.documentType === 'NOTA CRÉDITO' ? 'bg-purple-50 text-purple-600 border-purple-100' :
-                              sale.documentType === 'NOTA DÉBITO' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                              'bg-blue-50 text-blue-600 border-blue-100'
-                            }`}>
-                              {sale.documentType}
-                            </span>
-                          </td>
-                          <td className="p-4">
-                            <div className="flex flex-wrap gap-1 mb-1">
-                              {sale.businessLines.map((bl: string) => (
-                                <span key={bl} className="text-[9px] font-black text-slate-400">{bl}</span>
-                              ))}
-                            </div>
-                            {sale.allFlags.length > 0 && (
-                              <div className="flex flex-wrap gap-1">
-                                {sale.allFlags.map((f: string) => (
-                                  <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-bold border border-amber-100 flex items-center gap-1 italic">
-                                    ⚠ {f}
-                                  </span>
+                        <React.Fragment key={sale.documentNumber}>
+                          <tr onClick={() => toggleRow(sale.documentNumber)} className="hover:bg-slate-50/80 transition-colors group cursor-pointer">
+                            <td className="p-4">
+                              <p className="text-[13px] font-black text-slate-900 leading-none flex items-center gap-2">
+                                {expandedRows.has(sale.documentNumber) ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
+                                {sale.documentNumber}
+                              </p>
+                              <p className="text-[11px] text-slate-500 mt-1 truncate max-w-[120px] font-medium ml-5">{sale.customerName}</p>
+                            </td>
+                            <td className="p-4">
+                              <span className={`text-[9px] px-2 py-0.5 rounded-full font-black border ${
+                                sale.documentType === 'NOTA CRÉDITO' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                                sale.documentType === 'NOTA DÉBITO' ? 'bg-orange-50 text-orange-600 border-orange-100' :
+                                'bg-blue-50 text-blue-600 border-blue-100'
+                              }`}>
+                                {sale.documentType}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <div className="flex flex-wrap gap-1 mb-1">
+                                {sale.businessLines.map((bl: string) => (
+                                  <span key={bl} className="text-[9px] font-black text-slate-400">{bl}</span>
                                 ))}
                               </div>
-                            )}
-                          </td>
-                          <td className="p-4 text-right">
-                            <p className="text-[13px] font-black text-slate-700">
-                              {sale.totalWeight.toLocaleString("es-PE", { minimumFractionDigits: 3 })}
-                            </p>
-                          </td>
-                          <td className="p-4 text-right">
-                            {sale.currency === 'USD' ? (
-                               <div className="flex flex-col items-end">
-                                  <p className="text-[11px] text-slate-500 font-bold">$ {sale.originalCurrencyAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
-                                  <p className="text-[13px] font-black text-emerald-600">
-                                    S/ {sale.totalAmount.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
-                                  </p>
-                                  {sale.exchangeRateApplied > 0 ? (
-                                    <p className="text-[9px] text-blue-500 font-bold bg-blue-50 inline-block px-1 rounded mt-0.5">TC {sale.exchangeRateApplied.toFixed(3)}</p>
-                                  ) : (
-                                    <p className="text-[9px] text-red-500 font-bold bg-red-50 border border-red-200 inline-block px-1 rounded mt-0.5" title="Tipo de cambio no encontrado">TC ?</p>
-                                  )}
-                               </div>
-                            ) : (
-                               <div className="flex flex-col items-end">
-                                  <p className="text-[9px] text-slate-400 font-bold bg-slate-100 inline-block px-1.5 rounded mb-0.5">PEN</p>
-                                  <p className="text-[13px] font-black text-emerald-600">
-                                    S/ {sale.totalAmount.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
-                                  </p>
-                               </div>
-                            )}
-                          </td>
-                          <td className="p-4 text-center align-top">
-                            <div className="flex flex-col items-center gap-2">
-                              {sale.documentType === 'NOTA CRÉDITO' && sale.allFlags.includes("NC: acción de stock no decidida") && (
-                                 <div className="flex flex-col gap-1 w-[130px]">
-                                    <span className="text-[9px] font-black text-red-500 uppercase leading-none text-left">¿Afecta stock?</span>
-                                    <select
-                                       className="text-[10px] p-1 border border-red-200 bg-red-50 text-red-700 rounded outline-none font-bold w-full"
-                                       onChange={(e) => handleUpdateNcAction(sale.documentNumber, e.target.value as NcStockAction)}
-                                       value={sale.ncStockAction === 'UNDECIDED' ? '' : sale.ncStockAction}
-                                    >
-                                       <option value="" disabled>Seleccione...</option>
-                                       <option value="RETURNS_STOCK">Devuelve stock (SI)</option>
-                                       <option value="MONEY_ONLY">Solo dinero (NO)</option>
-                                    </select>
+                              {sale.allFlags.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {sale.allFlags.map((f: string) => (
+                                    <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-bold border border-amber-100 flex items-center gap-1 italic">
+                                      ⚠ {f}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-4 text-right">
+                              <p className="text-[13px] font-black text-slate-700">
+                                {sale.totalWeight.toLocaleString("es-PE", { minimumFractionDigits: 3 })}
+                              </p>
+                            </td>
+                            <td className="p-4 text-right">
+                              {sale.currency === 'USD' ? (
+                                 <div className="flex flex-col items-end">
+                                    <p className="text-[11px] text-slate-500 font-bold">$ {sale.originalCurrencyAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+                                    <p className="text-[13px] font-black text-emerald-600">
+                                      S/ {sale.totalAmount.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                                    </p>
+                                    {sale.exchangeRateApplied > 0 ? (
+                                      <p className="text-[9px] text-blue-500 font-bold bg-blue-50 inline-block px-1 rounded mt-0.5">TC {sale.exchangeRateApplied.toFixed(3)}</p>
+                                    ) : (
+                                      <p className="text-[9px] text-red-500 font-bold bg-red-50 border border-red-200 inline-block px-1 rounded mt-0.5" title="Tipo de cambio no encontrado">TC ?</p>
+                                    )}
+                                 </div>
+                              ) : (
+                                 <div className="flex flex-col items-end">
+                                    <p className="text-[9px] text-slate-400 font-bold bg-slate-100 inline-block px-1.5 rounded mb-0.5">PEN</p>
+                                    <p className="text-[13px] font-black text-emerald-600">
+                                      S/ {sale.totalAmount.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                                    </p>
                                  </div>
                               )}
-                              <button
-                                onClick={() => setParsedSales(prev => prev.filter((_, idx) => idx !== i))}
-                                className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition self-center"
-                                title="Eliminar fila"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                            </td>
+                            <td className="p-4 text-center align-top" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex flex-col items-center gap-2">
+                                {sale.documentType === 'NOTA CRÉDITO' && sale.allFlags.includes("NC: acción de stock no decidida") && (
+                                   <div className="flex flex-col gap-1 w-[130px]">
+                                      <span className="text-[9px] font-black text-red-500 uppercase leading-none text-left">¿Afecta stock?</span>
+                                      <select
+                                         className="text-[10px] p-1 border border-red-200 bg-red-50 text-red-700 rounded outline-none font-bold w-full"
+                                         onChange={(e) => handleUpdateNcAction(sale.documentNumber, e.target.value as NcStockAction)}
+                                         value={sale.ncStockAction === 'UNDECIDED' ? '' : sale.ncStockAction}
+                                      >
+                                         <option value="" disabled>Seleccione...</option>
+                                         <option value="RETURNS_STOCK">Devuelve stock (SI)</option>
+                                         <option value="MONEY_ONLY">Solo dinero (NO)</option>
+                                      </select>
+                                   </div>
+                                )}
+                                <button
+                                  onClick={() => setParsedSales(prev => prev.filter((_, idx) => idx !== i))}
+                                  className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition self-center"
+                                  title="Eliminar fila"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {expandedRows.has(sale.documentNumber) && (
+                            <tr className="bg-slate-50/50">
+                              <td colSpan={6} className="p-0 border-t border-slate-100 shadow-inner">
+                                <div className="p-4 pl-12 overflow-x-auto">
+                                  <table className="w-full text-left text-[11px]">
+                                    <thead className="text-[9px] text-slate-400 uppercase font-black">
+                                      <tr>
+                                        <th className="pb-2">SKU</th>
+                                        <th className="pb-2">Producto</th>
+                                        <th className="pb-2">Línea</th>
+                                        <th className="pb-2 text-right">Cant+UM</th>
+                                        <th className="pb-2 text-right">P.Unit</th>
+                                        <th className="pb-2 text-right">Valor</th>
+                                        <th className="pb-2 text-right">Peso</th>
+                                        <th className="pb-2 text-right">Costo (U)</th>
+                                        <th className="pb-2 text-right">Profit</th>
+                                        <th className="pb-2 pl-4">Alertas</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {sale.items.map((item: any, idx: number) => (
+                                        <tr key={`${item.sku}-${idx}`} className="hover:bg-slate-100/50 transition-colors">
+                                          <td className="py-2 font-black text-slate-700">{item.sku}</td>
+                                          <td className="py-2 text-slate-600 font-medium truncate max-w-[200px]" title={item.productName}>{item.productName}</td>
+                                          <td className="py-2">
+                                            <span className="text-[9px] font-black text-slate-400 uppercase">{item.businessLine}</span>
+                                          </td>
+                                          <td className="py-2 text-right font-bold text-slate-700">{item.quantity} <span className="text-[9px] text-slate-400 uppercase">{item.unitOfMeasure}</span></td>
+                                          <td className="py-2 text-right font-medium text-slate-600">S/ {(item.amount / (item.quantity || 1)).toLocaleString("es-PE", {minimumFractionDigits:2})}</td>
+                                          <td className="py-2 text-right font-black text-emerald-600">S/ {item.amount.toLocaleString("es-PE", {minimumFractionDigits:2})}</td>
+                                          <td className="py-2 text-right font-bold text-slate-600">{item.calculatedWeight.toLocaleString("es-PE", {minimumFractionDigits:3})} <span className="text-[9px] text-slate-400">KG</span></td>
+                                          <td className="py-2 text-right font-medium text-slate-500">S/ {(item.baseCost || 0).toLocaleString("es-PE", {minimumFractionDigits:2})}</td>
+                                          <td className="py-2 text-right font-black text-slate-700">S/ {item.profit.toLocaleString("es-PE", {minimumFractionDigits:2})}</td>
+                                          <td className="py-2 pl-4">
+                                            {item.flags && item.flags.length > 0 ? (
+                                              <div className="flex flex-wrap gap-1">
+                                                {item.flags.map((f: string) => (
+                                                  <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-bold border border-amber-100 italic flex items-center gap-1">
+                                                    ⚠ {f}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            ) : (
+                                              <span className="text-slate-300">—</span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>
