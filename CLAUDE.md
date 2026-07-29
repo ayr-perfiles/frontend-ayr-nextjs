@@ -1,7 +1,9 @@
-# CLAUDE.md — AYR Steel ERP (v6.29)
+# CLAUDE.md — AYR Steel ERP (v6.30)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | test:emu saneado (0 rojos) | Borón masivo ejecutado | Functions v2 operativa.
+> **v6.30:** (Cerrado en develop)
+> - **Frente UI Metallic & Coils:** Drawer de detalle por bobina en MetallicProductionHistory (helper puro `coilBreakdownRows`); fix canónico de chip cotización (`formatQuoteDisplayId` importado de queueLogic); refactor `InventoryTable` (eliminado `≈ ML` de stock, agregado `ML Disponible` y `Fecha Factura`, revertido a `table-auto` sin width forzado `table-fixed`).
 > **v6.29:** (Cerrado en PROD)
 > - **Cola de producción ETAPA 1+2 CERRADA en prod:** `/admin/lines/metallic-roofing/production/queue` + link sidebar (icono ListChecks, gate inline ADMIN+SUPERVISOR) + badge ámbar (`getProductionQueueCount`, count barato). Lógica pura en `src/core/production/queueLogic.ts`. Fulfillment AGREGADO POR SKU (TR4/TR5 comparten SKU a propósito). `PRODUCTION_QUEUE_FILTER` = fuente única del criterio.
 > - **FIX BUG DOBLE de peso multicorte DEPLOYADO a prod+test:** `produceFromCoils` + `voidProductionFromCoils` agrupan por `coilId`, acumulan saldo en memoria, un `tx.update` por bobina, kardex progresivo, status desde saldo final. Reversa usa `determineCoilStatusAfterReversal` (`scrap.ts`). Guard `hasOverRestoreWarning` permisivo. Commit `c8685a9a`.
