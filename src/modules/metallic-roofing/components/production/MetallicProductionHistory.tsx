@@ -15,6 +15,8 @@ import { voidProductionFromCoils } from "@/modules/metallic-roofing/services/pro
 import { useMetallicProductionLogs } from "@/modules/metallic-roofing/hooks/useMetallicProductionLogs";
 import { getProductionUnitAndValue } from "@/core/production/unitLogic";
 import { formatQuoteDisplayId } from "@/core/production/queueLogic";
+import { QuoteDetailsModalLoader } from "@/components/sales/QuoteDetailsModalLoader";
+import { ProductionCoilBreakdownDrawer } from "./ProductionCoilBreakdownDrawer";
 
 interface MetallicProductionHistoryProps {
   skuToFamily: Record<string, string>;
@@ -28,6 +30,8 @@ export function MetallicProductionHistory({ skuToFamily, onOpenQuote }: Metallic
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [breakdownLog, setBreakdownLog] = useState<any>(null);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
 
   const {
     pageItems,
@@ -119,26 +123,23 @@ export function MetallicProductionHistory({ skuToFamily, onOpenQuote }: Metallic
         return (
           <div className="flex flex-col gap-1 items-start">
             <div className="flex items-center gap-2">
-              <span
-                className={`font-black px-2.5 py-1 rounded-md text-xs border tracking-wider ${
+              <button
+                type="button"
+                onClick={() => setBreakdownLog(log)}
+                className={`font-black px-2.5 py-1 rounded-md text-xs border tracking-wider transition-colors hover:brightness-95 ${
                   isVoided
-                    ? "text-red-400 border-red-200 line-through bg-red-50"
-                    : "text-blue-900 bg-blue-50 border-blue-200"
+                    ? "text-red-400 border-red-200 line-through bg-red-50 hover:bg-red-100"
+                    : "text-blue-900 bg-blue-50 border-blue-200 hover:bg-blue-100"
                 }`}
               >
                 {isMulti ? `${totalCoils} Bobinas` : (log.parentCoilId || "Desconocido")}
-              </span>
+              </button>
               {isVoided && (
                 <span className="text-[10px] font-black text-red-500 uppercase tracking-widest bg-red-100 px-2 py-0.5 rounded-full">
                   Anulado
                 </span>
               )}
             </div>
-            {isMulti && (
-              <div className="text-[10px] text-slate-400 font-bold leading-tight">
-                {log.perCoilBreakdown?.map((b) => b.coilId).join(", ")}
-              </div>
-            )}
           </div>
         );
       },
@@ -334,6 +335,14 @@ export function MetallicProductionHistory({ skuToFamily, onOpenQuote }: Metallic
         totalItems={totalFiltered}
         onPageChange={setCurrentPage}
       />
+
+      {breakdownLog && (
+        <ProductionCoilBreakdownDrawer
+          log={breakdownLog}
+          productName={breakdownLog.sku ? (skuToFamily[breakdownLog.sku] || breakdownLog.sku) : ""}
+          onClose={() => setBreakdownLog(null)}
+        />
+      )}
     </section>
   );
 }
