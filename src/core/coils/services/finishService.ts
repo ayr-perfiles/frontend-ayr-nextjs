@@ -15,6 +15,9 @@ import { BusinessLine } from "@/types";
 
 // ⚠️ SYNC MARKER: existe copia de este tipo en functions/src/types/production.ts.
 // Si cambias esto, replica los cambios allá para mantener paridad en Callables.
+export type FinishType = 'Natural' | 'Prepintado' | 'Galvanizado';
+export type FinishColor = 'Rojo' | 'Azul' | 'Blanco' | 'Gris' | 'Verde' | '-';
+
 export interface CoilFinish {
   id: string;
   label: string;
@@ -22,6 +25,25 @@ export interface CoilFinish {
   lines: BusinessLine[];
   /** Factor densidad para conformado metallic-roofing (kg/mm²·m). 0.008 aluzinc (natural o prepintado) · 0.00785 galvanizado/drywall. */
   densityFactor?: number;
+  tipo?: FinishType;
+  color?: FinishColor;
+}
+
+export function getFinishMeta(finishId: string | undefined | null, finishes: CoilFinish[]): { tipo: FinishType | 'Desconocido', color: FinishColor | 'Desconocido' } {
+  if (!finishId) return { tipo: 'Desconocido', color: 'Desconocido' };
+  const finish = finishes.find(f => f.id === finishId);
+  if (!finish) return { tipo: 'Desconocido', color: 'Desconocido' };
+  
+  return {
+    tipo: finish.tipo || 'Desconocido',
+    color: finish.color || 'Desconocido',
+  };
+}
+
+export function formatFinishChip(tipo?: FinishType | 'Desconocido', color?: FinishColor | 'Desconocido'): string | null {
+  if (!tipo || !color || tipo === 'Desconocido' || color === 'Desconocido') return null;
+  if (color === '-') return tipo;
+  return `${tipo} · ${color}`;
 }
 
 const COLLECTION_NAME = "coil_finishes";
