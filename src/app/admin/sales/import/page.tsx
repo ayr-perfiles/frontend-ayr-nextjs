@@ -51,51 +51,9 @@ import {
   NcStockAction
 } from "@/utils/importHelpers";
 import { buildImportWrites } from "@/core/import/salesImportLogic";
+import { parseImportRows, SkippedRow, MissingSku, CatalogRef, StockRef } from "@/core/import/parseImportRows";
 
 // ── Types & Constants ─────────────────────────────────────────────────────
-
-
-interface CatalogRef {
-  sku: string;
-  businessLine: BusinessLine;
-  standardWeight?: number;
-  weight?: number;
-  displayName: string;
-}
-
-interface StockRef {
-  sku: string;
-  businessLine: BusinessLine;
-  totalQuantity?: number;
-  quantity?: number;
-  lastCostPerPiece?: number;
-  avgCost?: number;
-}
-
-interface MissingSku {
-  sku: string;
-  productName: string;
-  suggestedLine: BusinessLine | "coil" | "skip" | "unclassified";
-  unitOfMeasure: string;
-  standardWeight: number;
-  initialCost: number;
-  
-  // Dynamic fields
-  family?: string;
-  finish?: string;
-  color?: string;
-  thickness?: number;
-  width?: number;
-  length?: number;
-  material?: string;
-  spec?: string;
-  category?: string;
-  description?: string;
-  stripWidth?: number;
-
-  resolved: boolean;
-  omitted: boolean;
-}
 
 type ImportStatus = 'IMPORTED' | 'REPLACED' | 'SKIPPED_ACTIVE' | 'ERROR';
 
@@ -135,6 +93,7 @@ export default function SalesImportPage() {
   const [parsedSales, setParsedSales] = useState<any[]>([]);
   const [parsedCustomers, setParsedCustomers] = useState<any[]>([]);
   const [missingSkus, setMissingSkus] = useState<MissingSku[]>([]);
+  const [skippedRows, setSkippedRows] = useState<SkippedRow[]>([]);
   const [exchangeRatesCache, setExchangeRatesCache] = useState<Record<string, number>>({});
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -308,178 +267,20 @@ export default function SalesImportPage() {
       }
       setExchangeRatesCache(newRates);
 
-      const salesMap = new Map<string, any>();
-      const customersMap = new Map<string, any>();
-      const tempMissingSkus = new Map<string, MissingSku>();
-
-      jsonData.forEach((row: any) => {
-        const docNumber = row["SERIE - NÚMERO"];
-        if (!docNumber) return;
-
-        const estadoStr = String(row["ESTADO COMPROBANTE"] || "").toUpperCase();
-        if (
-          !estadoStr.includes("DECLARADO") ||
-          estadoStr.includes("ANULAD") ||
-          estadoStr.includes("BAJA")
-        )
-          return;
-
-        const sku = String(row["CÓDIGO PRODUCTO"] || "GENERIC").trim().toUpperCase();
-        const productName = String(row["NOMBRE PRODUCTO"] || "Sin nombre").trim();
-        const targetLine = classifyLine(sku, productName);
-
-        if (targetLine === "skip") return;
-
-        const rawCustomer = String(row["CLIENTE"] || "");
-        let rucStr = "00000000000";
-        let nameStr = "Consumidor Final";
-
-        if (rawCustomer.includes(" - ")) {
-          const parts = rawCustomer.split(" - ");
-          rucStr = parts[0].trim();
-          nameStr = parts.slice(1).join(" - ").trim();
-        } else {
-          nameStr = rawCustomer.trim() || "Consumidor Final";
-        }
-
-        if (!customersMap.has(rucStr) && rucStr !== "00000000000") {
-          customersMap.set(rucStr, {
-            documentNumber: rucStr,
-            name: nameStr,
-            customerType: rucStr.length === 11 ? "RUC" : "DNI",
-          });
-        }
-
-        const moneda = String(row["MONEDA"] || "").toLowerCase();
-        const isUSD = moneda.includes("dólar") || moneda.includes("usd");
-        const apiDate = formatDateForApi(row["F. EMISIÓN"]);
-        const exchangeRate = isUSD ? newRates[apiDate] : 1;
-        const hasExchangeRateError = isUSD && (!exchangeRate || exchangeRate === 0);
-
-        const rawDocType = row["TIPO COMPROBANTE"] || "Factura";
-        const docType = normalizeDocType(rawDocType);
-        const adjustedDoc = row["DOCUMENTO AJUSTADO"] || "";
-        const ncStockAction: NcStockAction = docType === 'NOTA CRÉDITO' ? classifyNCStockAction(row["AFECTA_STOCK"] || "") : 'MONEY_ONLY';
-
-        const multiplier = docType === 'NOTA CRÉDITO' ? -1 : 1;
-
-        const rawValorVenta = parseNum(row["VALOR DE VENTA"]);
-        const rawPrecioVenta = parseNum(row["PRECIO DE VENTA"]);
-        const valorVentaSoles = rawValorVenta * (exchangeRate || 1) * multiplier;
-        const precioVentaSoles = rawPrecioVenta * (exchangeRate || 1) * multiplier;
-        const cantidad = parseNum(row["CANTIDAD"]);
-
-        let bLine: BusinessLine = "drywall";
-        if (["drywall", "roofing", "metallic-roofing", "trading", "services"].includes(targetLine)) {
-          bLine = targetLine as BusinessLine;
-        }
-
-        const productInfo = catalogRef.find((p) => p.sku === sku && p.businessLine === bLine);
-        const stockInfo = stockRef.find((s) => s.sku === sku && s.businessLine === bLine);
-
-        const flags: string[] = [];
-        if (!productInfo && targetLine !== "coil") {
-          flags.push("sin catálogo");
-          if (!tempMissingSkus.has(sku)) {
-            tempMissingSkus.set(sku, {
-              sku,
-              productName,
-              suggestedLine: bLine,
-              unitOfMeasure: row["UNIDAD MEDIDA"] || "UNIDAD",
-              standardWeight: 0,
-              initialCost: 0,
-              resolved: false,
-              omitted: false,
-            });
-          }
-        }
-        if (targetLine === "coil") flags.push("bobina (requiere ajuste manual)");
-        if (hasExchangeRateError) flags.push(`TC no obtenido para ${apiDate}`);
-        if (docType === 'NOTA CRÉDITO' && ncStockAction === 'UNDECIDED') {
-          flags.push("NC: acción de stock no decidida");
-        }
-        
-        const catalogWeight = productInfo?.standardWeight || productInfo?.weight || 0;
-        const baseCost = stockInfo?.lastCostPerPiece || stockInfo?.avgCost || 0;
-        
-        const rawUnitMeasure = row["UNIDAD MEDIDA"] || "UNIDAD";
-        const { weight: weightKg, flag: umFlag } = calcPesoKg(rawUnitMeasure, cantidad, catalogWeight);
-        if (umFlag) flags.push(umFlag);
-
-        const hasUnknownCost = baseCost === 0 && bLine !== "services" && targetLine !== "coil";
-        if (hasUnknownCost) flags.push("sin costo");
-
-        // Costo desconocido -> profit 0 (no asumir 100% margen), mismo criterio que el builder.
-        // Firmado con multiplier (NC = negativo): reportes por SKU no deben mentir en NC.
-        const itemProfit = hasUnknownCost ? 0 : (valorVentaSoles - ((cantidad * baseCost) * multiplier));
-
-        const saleItem = {
-          sku: sku,
-          productName: productName,
-          quantity: cantidad,
-          unitPrice: cantidad > 0 ? (precioVentaSoles / multiplier) / cantidad : 0,
-          unitValue: cantidad > 0 ? (valorVentaSoles / multiplier) / cantidad : 0,
-          baseCost: baseCost,
-          profit: itemProfit,
-          unitWeight: catalogWeight,
-          calculatedWeight: weightKg,
-          unitOfMeasure: rawUnitMeasure,
-          businessLine: bLine,
-          isCoil: targetLine === "coil",
-          flags
-        };
-
-        if (!salesMap.has(docNumber)) {
-          salesMap.set(docNumber, {
-            customerName: nameStr,
-            customerDocument: rucStr,
-            documentNumber: docNumber,
-            status: "COMPLETED",
-            sellerId: row["VENDEDOR"] || "SISTEMA",
-            currency: isUSD ? "USD" : "PEN",
-            exchangeRateApplied: exchangeRate || 0,
-            documentType: docType,
-            adjustedDocument: adjustedDoc,
-            ncStockAction,
-            originalCurrencyAmount: 0,
-            timestamp:
-              row["F. EMISIÓN"] instanceof Date
-                ? new Date(row["F. EMISIÓN"].setHours(12, 0, 0))
-                : new Date(`${apiDate}T12:00:00`),
-            items: [],
-            totalAmount: 0,
-            totalCost: 0,
-            totalProfit: 0,
-            totalWeight: 0,
-            paymentStatus: "PAID",
-            businessLines: new Set<BusinessLine>(),
-            allFlags: new Set<string>()
-          });
-        }
-
-        const sale = salesMap.get(docNumber);
-        sale.items.push(saleItem);
-        sale.totalAmount += precioVentaSoles;
-        sale.totalCost += (cantidad * baseCost) * multiplier;
-        sale.totalProfit += itemProfit;
-        const weightMult = docType !== 'NOTA CRÉDITO' ? 1 : (ncStockAction === 'RETURNS_STOCK' ? -1 : 0);
-        sale.totalWeight += weightKg * weightMult;
-        sale.businessLines.add(bLine);
-        saleItem.flags.forEach(f => sale.allFlags.add(f));
-
-        if (isUSD) {
-          sale.originalCurrencyAmount += rawPrecioVenta * multiplier;
-        }
+      const { parsedSales, parsedCustomers, missingSkus, skippedRows } = parseImportRows(jsonData, {
+        catalogRef,
+        stockRef,
+        exchangeRates: newRates
       });
 
-      setParsedSales(Array.from(salesMap.values()).map(s => ({
-        ...s,
-        businessLines: Array.from(s.businessLines),
-        allFlags: Array.from(s.allFlags)
-      })).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()));
-      
-      setParsedCustomers(Array.from(customersMap.values()));
-      setMissingSkus(Array.from(tempMissingSkus.values()));
+      setParsedSales(parsedSales);
+      setParsedCustomers(parsedCustomers);
+      setMissingSkus(missingSkus);
+      setSkippedRows(skippedRows);
+      // We will store skippedRows in state later when UI is built, for now just to avoid unused var warning if needed, 
+      // but React state needs it. The prompt says: 
+      // "Guardá skippedRows en estado, AÚN SIN RENDERIZAR (UI = etapa 2). El preview visible NO cambia."
+      // I will add the state above.
       toast.success(`Archivo procesado.`);
     } catch (error) {
       toast.error("Error al analizar el Excel.");
