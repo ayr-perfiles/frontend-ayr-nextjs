@@ -53,7 +53,7 @@ import {
   NcStockAction
 } from "@/utils/importHelpers";
 import { buildImportWrites } from "@/core/import/salesImportLogic";
-import { parseImportRows, SkippedRow, MissingSku, CatalogRef, StockRef, skipReasonLabel } from "@/core/import/parseImportRows";
+import { parseImportRows, SkippedRow, MissingSku, CatalogRef, StockRef, skipReasonLabel, ParsedSale, ParsedSaleItem } from "@/core/import/parseImportRows";
 
 // ── Types & Constants ─────────────────────────────────────────────────────
 
@@ -92,7 +92,7 @@ export default function SalesImportPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
-  const [parsedSales, setParsedSales] = useState<any[]>([]);
+  const [parsedSales, setParsedSales] = useState<ParsedSale[]>([]);
   const [parsedCustomers, setParsedCustomers] = useState<any[]>([]);
   const [missingSkus, setMissingSkus] = useState<MissingSku[]>([]);
   const [skippedRows, setSkippedRows] = useState<SkippedRow[]>([]);
@@ -986,34 +986,37 @@ export default function SalesImportPage() {
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                      {sale.items.map((item: any, idx: number) => (
-                                        <tr key={`${item.sku}-${idx}`} className="hover:bg-slate-100/50 transition-colors">
-                                          <td className="py-2 font-black text-slate-700">{item.sku}</td>
-                                          <td className="py-2 text-slate-600 font-medium truncate max-w-[200px]" title={item.productName}>{item.productName}</td>
-                                          <td className="py-2">
-                                            <span className="text-[9px] font-black text-slate-400 uppercase">{item.businessLine}</span>
-                                          </td>
-                                          <td className="py-2 text-right font-bold text-slate-700">{item.quantity} <span className="text-[9px] text-slate-400 uppercase">{item.unitOfMeasure}</span></td>
-                                          <td className="py-2 text-right font-medium text-slate-600">S/ {(item.amount / (item.quantity || 1)).toLocaleString("es-PE", {minimumFractionDigits:2})}</td>
-                                          <td className="py-2 text-right font-black text-emerald-600">S/ {item.amount.toLocaleString("es-PE", {minimumFractionDigits:2})}</td>
-                                          <td className="py-2 text-right font-bold text-slate-600">{item.calculatedWeight.toLocaleString("es-PE", {minimumFractionDigits:3})} <span className="text-[9px] text-slate-400">KG</span></td>
-                                          <td className="py-2 text-right font-medium text-slate-500">S/ {(item.baseCost || 0).toLocaleString("es-PE", {minimumFractionDigits:2})}</td>
-                                          <td className="py-2 text-right font-black text-slate-700">S/ {item.profit.toLocaleString("es-PE", {minimumFractionDigits:2})}</td>
-                                          <td className="py-2 pl-4">
-                                            {item.flags && item.flags.length > 0 ? (
-                                              <div className="flex flex-wrap gap-1">
-                                                {item.flags.map((f: string) => (
-                                                  <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-bold border border-amber-100 italic flex items-center gap-1">
-                                                    ⚠ {f}
-                                                  </span>
-                                                ))}
-                                              </div>
-                                            ) : (
-                                              <span className="text-slate-300">—</span>
-                                            )}
-                                          </td>
-                                        </tr>
-                                      ))}
+                                      {sale.items.map((item: ParsedSaleItem, idx: number) => {
+                                        const valorLinea = (item.unitPrice ?? 0) * (item.quantity ?? 0) * (sale.documentType === 'NOTA CRÉDITO' ? -1 : 1);
+                                        return (
+                                          <tr key={`${item.sku}-${idx}`} className="hover:bg-slate-100/50 transition-colors">
+                                            <td className="py-2 font-black text-slate-700">{item.sku}</td>
+                                            <td className="py-2 text-slate-600 font-medium truncate max-w-[200px]" title={item.productName}>{item.productName}</td>
+                                            <td className="py-2">
+                                              <span className="text-[9px] font-black text-slate-400 uppercase">{item.businessLine}</span>
+                                            </td>
+                                            <td className="py-2 text-right font-bold text-slate-700">{item.quantity ?? 0} <span className="text-[9px] text-slate-400 uppercase">{item.unitOfMeasure}</span></td>
+                                            <td className="py-2 text-right font-medium text-slate-600">S/ {(item.unitPrice ?? 0).toLocaleString("es-PE", {minimumFractionDigits:2})}</td>
+                                            <td className="py-2 text-right font-black text-emerald-600">S/ {valorLinea.toLocaleString("es-PE", {minimumFractionDigits:2})}</td>
+                                            <td className="py-2 text-right font-bold text-slate-600">{(item.calculatedWeight ?? 0).toLocaleString("es-PE", {minimumFractionDigits:3})} <span className="text-[9px] text-slate-400">KG</span></td>
+                                            <td className="py-2 text-right font-medium text-slate-500">S/ {(item.baseCost ?? 0).toLocaleString("es-PE", {minimumFractionDigits:2})}</td>
+                                            <td className="py-2 text-right font-black text-slate-700">S/ {(item.profit ?? 0).toLocaleString("es-PE", {minimumFractionDigits:2})}</td>
+                                            <td className="py-2 pl-4">
+                                              {item.flags && item.flags.length > 0 ? (
+                                                <div className="flex flex-wrap gap-1">
+                                                  {item.flags.map((f: string) => (
+                                                    <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-bold border border-amber-100 italic flex items-center gap-1">
+                                                      ⚠ {f}
+                                                    </span>
+                                                  ))}
+                                                </div>
+                                              ) : (
+                                                <span className="text-slate-300">—</span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
                                     </tbody>
                                   </table>
                                 </div>

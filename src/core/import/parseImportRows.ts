@@ -68,6 +68,46 @@ export function skipReasonLabel(reason: SkipReason): string {
   }
 }
 
+export interface ParsedSaleItem {
+  sku: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  unitValue: number;
+  baseCost: number;
+  profit: number;
+  unitWeight: number;
+  calculatedWeight: number;
+  unitOfMeasure: string;
+  businessLine: BusinessLine;
+  isCoil: boolean;
+  flags: string[];
+}
+
+export interface ParsedSale {
+  customerName: string;
+  customerDocument: string;
+  documentNumber: string;
+  status: string;
+  sellerId: string;
+  currency: string;
+  exchangeRateApplied: number;
+  documentType: string;
+  adjustedDocument: string;
+  ncStockAction: string;
+  originalCurrencyAmount: number;
+  timestamp: Date;
+  items: ParsedSaleItem[];
+  totalAmount: number;
+  totalCost: number;
+  totalProfit: number;
+  totalWeight: number;
+  paymentStatus: string;
+  businessLines: string[];
+  allFlags: string[];
+  manuallyResolvedNC?: boolean;
+}
+
 export interface ParseImportRowsOptions {
   catalogRef: CatalogRef[];
   stockRef: StockRef[];
@@ -75,7 +115,7 @@ export interface ParseImportRowsOptions {
 }
 
 export interface ParseImportRowsResult {
-  parsedSales: any[];
+  parsedSales: ParsedSale[];
   parsedCustomers: any[];
   missingSkus: MissingSku[];
   skippedRows: SkippedRow[];
@@ -100,9 +140,14 @@ const parseNum = (val: any) =>
     ? parseFloat(val.replace(/,/g, ""))
     : parseFloat(val) || 0;
 
+interface InternalParsedSale extends Omit<ParsedSale, 'businessLines' | 'allFlags'> {
+  businessLines: Set<BusinessLine>;
+  allFlags: Set<string>;
+}
+
 export function parseImportRows(jsonData: any[], opts: ParseImportRowsOptions): ParseImportRowsResult {
   const { catalogRef, stockRef, exchangeRates } = opts;
-  const salesMap = new Map<string, any>();
+  const salesMap = new Map<string, InternalParsedSale>();
   const customersMap = new Map<string, any>();
   const tempMissingSkus = new Map<string, MissingSku>();
   const skippedRows: SkippedRow[] = [];
@@ -277,7 +322,7 @@ export function parseImportRows(jsonData: any[], opts: ParseImportRowsOptions): 
       });
     }
 
-    const sale = salesMap.get(docNumber);
+    const sale = salesMap.get(docNumber)!;
     sale.items.push(saleItem);
     sale.totalAmount += precioVentaSoles;
     sale.totalCost += (cantidad * baseCost) * multiplier;
