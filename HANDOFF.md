@@ -7,6 +7,7 @@
 > backend en prod antes que master.
 
 ## DEUDAS
+- **guard avgCost>0 puede existir en inventarios de otras líneas — verificar/unificar:** (trading catalog L295, roofing catalog L342, roofing inventory L156/L166).
 - **getProducedForQuoteLine:** indexa por SKU → duplica en `/production/new` y `SaleDetailsModal` (la cola ya lo resuelve).
 - **BUG SOMBRA ROUTE_PERMISSIONS:** `/admin/lines` sombrea rutas OPERATOR (`Object.keys().find()`). Decisión: acceso actual OK (OPERATOR fuera) → fix = limpiar declaración muerta, NO reordenar.
 - **production_log:** no graba perfil TR4/TR5.
@@ -26,13 +27,13 @@
 - **Menú de cotización importada** aún ofrece "Editar Cotización" y "Duplicar Operación" — editar desincroniza la percha (`COT-{documentNumber}`) de la boleta real ya facturada. Frente chico, mismo helper que `isImportedQuotation` (`src/core/import/salesImportLogic.ts:8`).
 
 ## PENDIENTE INMEDIATO
-- **MetallicProductionHistory — CERRADO Y MERGEADOS (29-jul)** (validado runtime, confirmar merge a master): columna Cotización con link al modal (`QuoteDetailsModalLoader` nuevo → fetchea por `source.id`=doc id Firestore y monta `SaleDetailsModal` SIN tocar su contrato; error limpio 'Cotización no disponible'). Unidad por `family` vía helper puro `src/core/production/unitLogic.ts` (COBERTURA→`mlProduced`+'ML', PLANCHA→`piecesProduced`+'piezas', null→'—'). Header 'Costo x Unidad'. Polish: nowrap Costo x Unidad y Costo Corrida, fecha 1 línea, paréntesis sin 'ML' en piezas. `production_log.source` faltaba en el type, se agregó. Prod no tiene logs metallic → runtime solo en test.
-- **Prefill bobinas /production/new — CERRADO Y MERGEADOS (29-jul)** (pendiente runtime+merge): cobertura pending-aware (longitud=`pieceLengthM`, cantidad=`pending/pieceLengthM`, `declared`=pending sin tocar; guard `pieceLengthM>0 && piecesCount`). Lógica testeada limpia con helper puro `computeCoberturaPrefill`. Plancha NO se tocó (ya prefilea `declared`=pending). Alineación grid con `items-end`.
-- **Drawer de detalle por bobina metallic — CERRADO Y MERGEADOS (29-jul):** helper puro `coilBreakdownRows`, componente `ProductionCoilBreakdownDrawer`, trigger en celda BOBINAS ORIGEN del history.
-- **Fix chip cotización drawer — CERRADO Y MERGEADOS (29-jul):** matada función pirata local que anteponía 'C-' a ids ya prefijados; drawer ahora importa el `formatQuoteDisplayId` canónico de `queueLogic`.
-- **Inventario bobinas (InventoryTable) — CERRADO Y MERGEADOS (29-jul):** quitado sub-texto '≈ ML' de STOCK DISPONIBLE, nueva columna 'ML Disponible' (helper puro `mlFromWeight`, ancla mm-directo v6.24), nueva columna 'Fecha Factura' (`metadata.invoiceDate` con `formatDate`). Retirado `table-fixed` de la tabla y del WeightIndicator (revert truncate) → tabla vuelve a `table-auto` como el resto del sistema; `whitespace-nowrap` mantenido.
+- **Fix inventario metallic** (`d56f9a9c` en develop): pendiente merge a master y validación runtime del usuario (prod aún muestra COB030ROJO S/7.86 hasta mergear).
+- **Validar runtime prod del merge e67b29d:** (acabados 9 chips + importador accordion/banner).
+- **(CERRADOS Y MERGEADOS 29-jul):** Drawer de detalle por bobina metallic, Fix chip cotización drawer, Inventario bobinas (InventoryTable, nueva col 'Fecha Factura'), Prefill bobinas /production/new, MetallicProductionHistory.
 
 ## HORIZONTE (candidatos próximo frente)
+- **Slice 2 (reporte costeo) primero:** reporte de costeo read-only (group-WAC + margen por tipo/color/espesor).
+- **Slice 3 DIFERIDO:** capa de costo variable/conversión.
 - **Frente 2 rol VENDEDOR:** recon hecho (isStaff, ROUTE_PERMISSIONS único guard vivo, isRoleAllowed/mod.routes.roles son código muerto, sellerId en prod es NOMBRE no email → hace falta sellerUid forward-only, agregados scopeados).
 - **Reporte por RAL** (frente aparte).
 - **PT inflado** por producciones contra cotizaciones importadas (venta histórica no descuenta stock, producción sí suma) → ajuste manual al cerrar el período. Ver `docs/modules/ventas.md` §9.

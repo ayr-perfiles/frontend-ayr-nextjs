@@ -1,5 +1,5 @@
 # MÓDULO: ventas (sales) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-07-23 (builder canónico, semántica documentNumber/customerDocument y 3 backfills, en master).
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-07-29 (importador detalle).
 > ⚠️ SE PUDRE. Antes de tocar lógica/costeo/writes de ventas: verificá (checklist §7). No confíes si la fecha está vieja.
 
 ## 1. Escritores vivos de `sales` (5)
@@ -79,3 +79,8 @@ importar factura → nace venta COMPLETED + cotización COT-{documentNumber}
 - **SEMÁNTICA SEPARADA:** `documentNumber` = comprobante o `""` (NUNCA RUC); `customerDocument` = RUC/DNI. Fallback legacy con flag "documento reubicado".
 - **BACKFILLS EN PROD:** 114 docs con `businessLines` derivado por `classifyLine`; 3 docs con RUC reubicado de `documentNumber` a `customerDocument`; 33 docs con `totalProfit` -> 0 con flag "sin costo".
 - **crmService.getCustomerProfile:** DOBLE query (`documentNumber` legacy + `customerDocument`) deduplicada por id. Índice `sales[customerDocument, timestamp]` READY en prod y test.
+
+## 13. Importador Masivo de Ventas (Detalle)
+- **Vista de Detalle:** El importador masivo en `/admin/sales/import` fue enriquecido con una vista de detalle por comprobante (acordeón por boleta) en lugar de un mero total consolidado. También incluye un panel para las filas descartadas/ignoradas (`skipReasonLabel`).
+- **Helper puro `parseImportRows`:** Función que procesa los datos del CSV (con tipado estricto `ParsedSaleItem`, sin `any`) devolviendo un objeto estructurado `{ parsedSales, skippedRows }`.
+- **Typing fuerte:** El tipado `ParsedSaleItem` erradicó bugs silenciosos (como el campo fantasma `item.amount` que antes pasaba por `any`). La lección arquitectónica: tipar desde la capa de parsing para que falle en BUILD y no en runtime.
