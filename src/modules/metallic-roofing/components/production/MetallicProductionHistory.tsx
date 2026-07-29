@@ -13,14 +13,25 @@ import { useConfirm } from "@/context/ConfirmContext";
 import toast from "react-hot-toast";
 import { voidProductionFromCoils } from "@/modules/metallic-roofing/services/productionService";
 import { useMetallicProductionLogs } from "@/modules/metallic-roofing/hooks/useMetallicProductionLogs";
+import { getProductionUnitAndValue } from "@/core/production/unitLogic";
+import { formatQuoteDisplayId } from "@/core/production/queueLogic";
+import { QuoteDetailsModalLoader } from "@/components/sales/QuoteDetailsModalLoader";
+import { ProductionCoilBreakdownDrawer } from "./ProductionCoilBreakdownDrawer";
 
-export function MetallicProductionHistory() {
+interface MetallicProductionHistoryProps {
+  skuToFamily: Record<string, string>;
+  onOpenQuote?: (quoteId: string) => void;
+}
+
+export function MetallicProductionHistory({ skuToFamily, onOpenQuote }: MetallicProductionHistoryProps) {
   const { role } = useAuth();
   const confirm = useConfirm();
   const { logs, loading, refresh } = useMetallicProductionLogs();
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [breakdownLog, setBreakdownLog] = useState<any>(null);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
 
   const {
     pageItems,
@@ -79,11 +90,12 @@ export function MetallicProductionHistory() {
       key: "timestamp",
       header: "Fecha",
       render: (log) => (
-        <span className="text-sm font-medium text-slate-600">
+        <span className="text-sm font-medium text-slate-600 whitespace-nowrap">
           {log.timestamp?.toDate
             ? log.timestamp.toDate().toLocaleString("es-PE", {
                 day: "2-digit",
                 month: "short",
+                year: "numeric",
                 hour: "2-digit",
                 minute: "2-digit",
               })
@@ -111,28 +123,49 @@ export function MetallicProductionHistory() {
         return (
           <div className="flex flex-col gap-1 items-start">
             <div className="flex items-center gap-2">
-              <span
-                className={`font-black px-2.5 py-1 rounded-md text-xs border tracking-wider ${
+              <button
+                type="button"
+                onClick={() => setBreakdownLog(log)}
+                className={`font-black px-2.5 py-1 rounded-md text-xs border tracking-wider transition-colors hover:brightness-95 ${
                   isVoided
-                    ? "text-red-400 border-red-200 line-through bg-red-50"
-                    : "text-blue-900 bg-blue-50 border-blue-200"
+                    ? "text-red-400 border-red-200 line-through bg-red-50 hover:bg-red-100"
+                    : "text-blue-900 bg-blue-50 border-blue-200 hover:bg-blue-100"
                 }`}
               >
                 {isMulti ? `${totalCoils} Bobinas` : (log.parentCoilId || "Desconocido")}
-              </span>
+              </button>
               {isVoided && (
                 <span className="text-[10px] font-black text-red-500 uppercase tracking-widest bg-red-100 px-2 py-0.5 rounded-full">
                   Anulado
                 </span>
               )}
             </div>
-            {isMulti && (
-              <div className="text-[10px] text-slate-400 font-bold leading-tight">
-                {log.perCoilBreakdown?.map((b) => b.coilId).join(", ")}
-              </div>
-            )}
           </div>
         );
+      },
+    },
+    {
+      key: "quote",
+      header: "Cotización",
+      render: (log) => {
+        if (log.source && log.source.type === "QUOTE" && log.source.id) {
+          if (onOpenQuote) {
+            return (
+              <button
+                onClick={() => onOpenQuote(log.source!.id)}
+                className="font-black px-2.5 py-1 rounded-md text-xs border tracking-wider bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-colors whitespace-nowrap"
+              >
+                {formatQuoteDisplayId(log.source.id)}
+              </button>
+            );
+          }
+          return (
+            <span className="font-bold text-slate-600 whitespace-nowrap">
+              {formatQuoteDisplayId(log.source.id)}
+            </span>
+          );
+        }
+        return <span className="text-slate-400">—</span>;
       },
     },
     {
@@ -159,19 +192,22 @@ export function MetallicProductionHistory() {
             </div>
           );
         }
+        
+        const { value, unitLabel } = getProductionUnitAndValue(log, skuToFamily);
+
         return (
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <Activity size={16} className="text-emerald-500" />
-              <span className="text-emerald-600 font-black">
-                +{log.piecesProduced} pzas
+              <span className="text-emerald-600 font-black whitespace-nowrap">
+                {value === null ? "—" : `+${value} ${unitLabel}`}
               </span>
             </div>
-            {log.mlProduced && (
-              <span className="text-slate-400 text-[10px] font-bold">
-                ({log.mlProduced} ML / {log.reportedWeight?.toLocaleString()} kg)
+            {log.reportedWeight ? (
+              <span className="text-slate-400 text-[10px] font-bold whitespace-nowrap">
+                ({log.reportedWeight.toLocaleString()} kg)
               </span>
-            )}
+            ) : null}
           </div>
         );
       },
@@ -189,13 +225,14 @@ export function MetallicProductionHistory() {
 
         return (
           <span
-            className={`font-mono text-sm font-bold ${
+            className={`font-mono text-sm font-bold whitespace-nowrap ${
               log.status === "VOIDED" ? "text-slate-400 line-through" : "text-slate-600"
             }`}
           >
             S/{" "}
             {totalCost.toLocaleString("es-PE", {
               minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
             })}
           </span>
         );
@@ -203,11 +240,11 @@ export function MetallicProductionHistory() {
     },
     {
       key: "costPerPiece",
-      header: "Costo x Pieza",
+      header: "Costo x Unidad",
       align: "right",
       render: (log) => (
         <span
-          className={`font-mono font-black px-2.5 py-1 rounded border tracking-wide ${
+          className={`font-mono font-black px-2.5 py-1 rounded border tracking-wide whitespace-nowrap ${
             log.status === "VOIDED"
               ? "text-slate-400 bg-slate-50 border-slate-200 line-through"
               : "text-emerald-700 bg-emerald-50 border-emerald-200"
@@ -298,6 +335,14 @@ export function MetallicProductionHistory() {
         totalItems={totalFiltered}
         onPageChange={setCurrentPage}
       />
+
+      {breakdownLog && (
+        <ProductionCoilBreakdownDrawer
+          log={breakdownLog}
+          productName={breakdownLog.sku ? (skuToFamily[breakdownLog.sku] || breakdownLog.sku) : ""}
+          onClose={() => setBreakdownLog(null)}
+        />
+      )}
     </section>
   );
 }

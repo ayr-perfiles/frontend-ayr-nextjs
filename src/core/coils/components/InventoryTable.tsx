@@ -5,6 +5,7 @@ import { Timestamp } from "firebase/firestore";
 import { Coil } from "@/types";
 import { WeightIndicator } from "./WeightIndicator";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
+import { computeMlFromWeight } from "@/core/coils/mlFromWeight";
 import Link from "next/link";
 import { DataTable, ColumnDef } from "@/components/ui/DataTable";
 import { RowActionsMenu, RowAction } from "@/components/ui/RowActionsMenu";
@@ -211,6 +212,16 @@ export default function InventoryTable({
       )
     },
     {
+      key: "invoiceDate",
+      header: "Fecha Factura",
+      width: "w-28",
+      render: (coil) => (
+        <span className="text-xs text-gray-500 font-medium">
+          {formatDate(coil.metadata?.invoiceDate)}
+        </span>
+      )
+    },
+    {
       key: "finish",
       header: "Acabado",
       width: "w-40",
@@ -265,7 +276,22 @@ export default function InventoryTable({
     {
       key: "stock",
       header: "Stock Disponible",
-      width: "w-56",
+      width: "w-32",
+      render: (coil) => {
+        return (
+          <div className={`flex flex-col gap-1 justify-center ${coil.status === "VOIDED" ? "opacity-50 grayscale" : ""}`}>
+            <WeightIndicator
+              current={coil.currentWeight || 0}
+              initial={coil.initialWeight || 0}
+            />
+          </div>
+        );
+      }
+    },
+    {
+      key: "mlAvailable",
+      header: "ML Disponible",
+      width: "w-28",
       render: (coil) => {
         let density = coil.densityFactor;
         if (!density && coil.finish) {
@@ -277,33 +303,16 @@ export default function InventoryTable({
         
         const thickness = coil.thickness || 0;
         const masterWidth = coil.masterWidth || 0;
-        const factor = density && density > 0 ? masterWidth * thickness * density : 0;
         
-        const mlCurrent = factor > 0 ? (coil.currentWeight || 0) / factor : 0;
-        const mlInitial = factor > 0 ? (coil.initialWeight || 0) / factor : 0;
-        const isSplit = !!coil.parentCoilId;
+        const mlAvailable = computeMlFromWeight(coil.currentWeight || 0, masterWidth, thickness, density || 0);
 
         return (
-          <div className={`flex flex-col gap-1 ${coil.status === "VOIDED" ? "opacity-50 grayscale" : ""}`}>
-            <WeightIndicator
-              current={coil.currentWeight || 0}
-              initial={coil.initialWeight || 0}
-            />
-            <div className="flex justify-between items-center text-[10px] text-gray-400 font-medium mt-[-2px]">
-              {factor > 0 ? (
-                <>
-                  <span>≈ {Math.round(mlCurrent)} ML</span>
-                  <span 
-                    className={isSplit ? "text-amber-500 font-bold" : ""} 
-                    title={isSplit ? "ML total aproximado por split (masterWidth influye)" : ""}
-                  >
-                    / {isSplit ? "≈" : ""} {Math.round(mlInitial)} ML
-                  </span>
-                </>
-              ) : (
-                <span className="w-full text-center text-[10px] text-gray-400" title="Densidad no disponible para calcular ML">s/densidad</span>
-              )}
-            </div>
+          <div className={`flex flex-col justify-center ${coil.status === "VOIDED" ? "opacity-50 grayscale" : ""}`}>
+            {mlAvailable === null ? (
+              <span className="text-[10px] text-gray-400" title="Densidad no disponible para calcular ML">s/densidad</span>
+            ) : (
+              <span className="text-xs font-black text-slate-700">≈ {Math.round(mlAvailable)} ML</span>
+            )}
           </div>
         );
       }
@@ -468,7 +477,7 @@ export default function InventoryTable({
       currentPage={currentPage}
       pageSize={pageSize}
       showRowNumber={true}
-      minWidth="w-full table-fixed"
+      minWidth="w-full"
       emptyState={{
         icon: "Search",
         title: "No hay resultados",
