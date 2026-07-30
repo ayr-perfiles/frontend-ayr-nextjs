@@ -9,7 +9,7 @@ import {
 } from "firebase/firestore";
 import { getSystemSettings } from "@/services/settingsService";
 import { ReportResult } from "../types";
-import { Sale, SaleItem } from "@/types";
+import { Sale, SaleItem, ProductionLog, ScrapLog, Coil } from "@/types";
 import {
   buildAluzincSalesReport,
   type AluzincSaleInput,
@@ -19,6 +19,8 @@ import {
   buildAluzincProfitSummary,
   type AluzincCostSaleInput,
 } from "@/modules/metallic-roofing/domain/aluzincCostReport";
+import { calculateCosteoAluzinc } from "../costeoAluzincLogic";
+import { mapCosteoAluzincToReportRows } from "../costeoAluzincReportMapper";
 
 /**
  * UTILS
@@ -964,4 +966,55 @@ export const runAluzincResumen = async (params: {
       },
     ],
   };
+};
+
+// ─── SLICE 2: COSTEO ALUZINC POR TIPO (Natural / Prepintado) ────────────────
+
+/** Wrapper fino: fetch + adapta calculateCosteoAluzinc (src/core/reports/costeoAluzincLogic.ts) al shape ReportResult. La lógica de agregación vive únicamente en el helper puro. */
+export const runCosteoAluzincTipo = async (params: {
+  period: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<ReportResult> => {
+  const { period, startDate, endDate } = params;
+  const { start, end } = getPeriodDates(period, startDate, endDate);
+
+  const [prodSnap, salesSnap, scrapSnap, coilsSnap, catalogSnap, finishesSnap] = await Promise.all([
+    getDocs(collection(db, "production_logs")),
+    getDocs(query(collection(db, "sales"), where("status", "==", "COMPLETED"))),
+    getDocs(collection(db, "scrap_logs")),
+    getDocs(collection(db, "coils")),
+    getDocs(collection(db, "metallic_roofing_catalog")),
+    getDocs(collection(db, "coil_finishes")),
+  ]);
+
+  const productionLogs = prodSnap.docs.map((d) => d.data() as ProductionLog);
+  const sales = salesSnap.docs.map((d) => d.data() as Sale);
+  const scrapLogs = scrapSnap.docs.map((d) => d.data() as ScrapLog);
+  const coils = coilsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Coil));
+
+  const metallicCatalog: Record<string, { finish?: string }> = {};
+  catalogSnap.forEach((d) => {
+    metallicCatalog[d.id] = d.data();
+  });
+
+  const finishesMap: Record<string, { tipo?: string; color?: string }> = {};
+  finishesSnap.forEach((d) => {
+    const data = d.data();
+    finishesMap[d.id] = { tipo: data.tipo, color: data.color };
+  });
+
+  const range = period === "HISTORICO" ? undefined : { from: start.getTime(), to: end.getTime() };
+
+  const costeoRows = calculateCosteoAluzinc({
+    productionLogs,
+    sales,
+    scrapLogs,
+    coils,
+    metallicCatalog,
+    finishesMap,
+    range,
+  });
+
+  return { rows: mapCosteoAluzincToReportRows(costeoRows) };
 };

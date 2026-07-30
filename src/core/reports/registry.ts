@@ -305,6 +305,30 @@ export const REPORT_REGISTRY: ReportDefinition[] = [
     exports: ['xlsx', 'csv'],
   },
 
+  // --- SLICE 2: ALUZINC COSTEO POR TIPO ---
+  {
+    id: 'costeo-aluzinc-tipo',
+    title: 'Costeo Aluzinc — Natural vs Prepintado',
+    category: 'EJECUTIVO',
+    description: 'Actuals de producción, venta y merma por tipo (Natural/Prepintado).',
+    icon: Scale,
+    filters: [
+      { id: 'period', label: 'Período', type: 'PERIOD', defaultValue: 'HISTORICO' },
+    ],
+    run: functions.runCosteoAluzincTipo,
+    columns: [
+      { label: 'Tipo', key: 'tipo', format: 'string' },
+      { label: 'Peso Producción (Kg)', key: 'pesoProduccionKg', format: 'number' },
+      { label: 'Costo (S/)', key: 'costoPEN', format: 'currency' },
+      { label: 'Costo x Kg (S/)', key: 'costoPorKg', format: 'currency' },
+      { label: 'Venta (S/)', key: 'ventaPEN', format: 'currency' },
+      { label: 'Kg Vendidos', key: 'ventaKg', format: 'number' },
+      { label: 'Merma (Kg)', key: 'mermaKg', format: 'number' },
+    ],
+    chart: { type: 'bar', xKey: 'tipo', yKeys: ['costoPEN', 'ventaPEN'] },
+    exports: ['xlsx', 'csv'],
+  },
+
   // --- P2 PLACEHOLDERS ---
   {
     id: 'ventas-por-producto',
