@@ -9,7 +9,7 @@ import {
 } from "firebase/firestore";
 import { getSystemSettings } from "@/services/settingsService";
 import { ReportResult } from "../types";
-import { Sale, SaleItem } from "@/types";
+import { Sale, SaleItem, ProductionLog, ScrapLog, Coil } from "@/types";
 import {
   buildAluzincSalesReport,
   type AluzincSaleInput,
@@ -19,6 +19,10 @@ import {
   buildAluzincProfitSummary,
   type AluzincCostSaleInput,
 } from "@/modules/metallic-roofing/domain/aluzincCostReport";
+import { calculateCosteoAluzinc } from "../costeoAluzincLogic";
+import { mapCosteoAluzincToReportRows } from "../costeoAluzincReportMapper";
+import { calculateStockBobinas, CoilInput as StockBobinaCoilInput, FinishMetaInput as StockBobinaFinishMetaInput } from "../stockBobinasLogic";
+import { mapStockBobinasToReportRows } from "../stockBobinasReportMapper";
 
 /**
  * UTILS
@@ -964,4 +968,108 @@ export const runAluzincResumen = async (params: {
       },
     ],
   };
+};
+
+// ─── SLICE 2: COSTEO ALUZINC POR TIPO (Natural / Prepintado) ────────────────
+
+/** Wrapper fino: fetch + adapta calculateCosteoAluzinc (src/core/reports/costeoAluzincLogic.ts) al shape ReportResult. La lógica de agregación vive únicamente en el helper puro. */
+export const runCosteoAluzincTipo = async (params: {
+  period: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<ReportResult> => {
+  const { period, startDate, endDate } = params;
+  const { start, end } = getPeriodDates(period, startDate, endDate);
+
+  const [prodSnap, salesSnap, scrapSnap, coilsSnap, catalogSnap, finishesSnap] = await Promise.all([
+    getDocs(collection(db, "production_logs")),
+    getDocs(query(collection(db, "sales"), where("status", "==", "COMPLETED"))),
+    getDocs(collection(db, "scrap_logs")),
+    getDocs(collection(db, "coils")),
+    getDocs(collection(db, "metallic_roofing_catalog")),
+    getDocs(collection(db, "coil_finishes")),
+  ]);
+
+  const productionLogs = prodSnap.docs.map((d) => d.data() as ProductionLog);
+  const sales = salesSnap.docs.map((d) => d.data() as Sale);
+  const scrapLogs = scrapSnap.docs.map((d) => d.data() as ScrapLog);
+  const coils = coilsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Coil));
+
+  const metallicCatalog: Record<string, { finish?: string }> = {};
+  catalogSnap.forEach((d) => {
+    metallicCatalog[d.id] = d.data();
+  });
+
+  const finishesMap: Record<string, { tipo?: string; color?: string }> = {};
+  finishesSnap.forEach((d) => {
+    const data = d.data();
+    finishesMap[d.id] = { tipo: data.tipo, color: data.color };
+  });
+
+  const range = period === "HISTORICO" ? undefined : { from: start.getTime(), to: end.getTime() };
+
+  const costeoRows = calculateCosteoAluzinc({
+    productionLogs,
+    sales,
+    scrapLogs,
+    coils,
+    metallicCatalog,
+    finishesMap,
+    range,
+  });
+
+  return { rows: mapCosteoAluzincToReportRows(costeoRows) };
+};
+
+// ─── STOCK DE BOBINAS (inventario agrupado, estilo PDF del cliente) ────────
+
+/** Wrapper fino: fetch coils + coil_finishes, deriva acabado (color+RAL) del label del finish (coil_finishes no tiene campo ral separado), adapta calculateStockBobinas (src/core/reports/stockBobinasLogic.ts) al shape ReportResult. Sin filtro de Tipo: ReportFilters (contrato compartido) no soporta MULTISELECT genérico fuera de colorFilter/espesorFilter — distinguible vía columna Tipo. */
+export const runStockBobinas = async (): Promise<ReportResult> => {
+  const [coilsSnap, finishesSnap] = await Promise.all([
+    getDocs(collection(db, "coils")),
+    getDocs(collection(db, "coil_finishes")),
+  ]);
+
+  const finishesMap: Record<string, StockBobinaFinishMetaInput> = {};
+  finishesSnap.forEach((d) => {
+    const data = d.data();
+    const tipo = data.tipo as string | undefined;
+    const acabado =
+      tipo === "Prepintado" && typeof data.label === "string"
+        ? data.label.replace(/^ALUZINC\s+/i, "").trim()
+        : null;
+    finishesMap[d.id] = { tipo, acabado, densityFactor: data.densityFactor };
+  });
+
+  const coils: StockBobinaCoilInput[] = coilsSnap.docs.map((d) => {
+    const data = d.data() as Coil;
+    return {
+      id: d.id,
+      status: data.status,
+      isClosed: data.isClosed,
+      finish: data.finish,
+      thickness: data.thickness,
+      masterWidth: data.masterWidth,
+      currentWeight: data.currentWeight,
+      provider: data.metadata?.provider ?? null,
+    };
+  });
+
+  const { rows, negativeCoils } = calculateStockBobinas({ coils, finishesMap });
+
+  const totals: Record<string, number> = {
+    numBobinas: rows.reduce((acc, r) => acc + r.numBobinas, 0),
+    pesoKg: rows.reduce((acc, r) => acc + r.pesoKg, 0),
+    metrajeML: rows.reduce((acc, r) => acc + r.metrajeML, 0),
+  };
+
+  const finalRows = mapStockBobinasToReportRows(rows);
+  const warnings: string[] = [];
+
+  if (negativeCoils.length > 0) {
+    const idsText = negativeCoils.map(c => `${c.id} (${c.currentWeight}kg)`).join(', ');
+    warnings.push(`Bobinas con peso negativo excluidas de totales: ${idsText}`);
+  }
+
+  return { rows: finalRows, totals, ...(warnings.length > 0 && { warnings }) };
 };

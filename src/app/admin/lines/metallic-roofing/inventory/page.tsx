@@ -11,6 +11,7 @@ import {
   Clock,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { hasStockPosition } from "./stockDisplayLogic";
 import type { InventoryItem } from "@/modules/metallic-roofing/services/inventoryService";
 import { useMetallicStock } from "@/modules/metallic-roofing/hooks/useMetallicStock";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -156,7 +157,7 @@ export default function MetallicRoofingInventoryPage() {
       align: "right",
       render: (item) => (
         <span className="font-bold text-gray-700 tabular-nums">
-          {item.avgCost > 0 ? `S/ ${item.avgCost.toFixed(2)}` : "—"}
+          {hasStockPosition(item.quantity) ? `S/ ${item.avgCost.toFixed(2)}` : "—"}
         </span>
       ),
     },
@@ -166,7 +167,7 @@ export default function MetallicRoofingInventoryPage() {
       align: "right",
       render: (item) => (
         <span className={`font-bold tabular-nums ${item.quantity < 0 ? "text-red-600" : "text-gray-700"}`}>
-          {item.avgCost > 0 ? `S/ ${item.totalValue.toFixed(2)}` : "—"}
+          {hasStockPosition(item.quantity) ? `S/ ${item.totalValue.toFixed(2)}` : "—"}
         </span>
       ),
     },

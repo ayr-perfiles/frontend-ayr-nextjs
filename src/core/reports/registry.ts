@@ -305,6 +305,53 @@ export const REPORT_REGISTRY: ReportDefinition[] = [
     exports: ['xlsx', 'csv'],
   },
 
+  // --- SLICE 2: ALUZINC COSTEO POR TIPO ---
+  {
+    id: 'costeo-aluzinc-tipo',
+    title: 'Costeo Aluzinc — Natural vs Prepintado',
+    category: 'EJECUTIVO',
+    description: 'Actuals de producción, venta y merma por tipo (Natural/Prepintado).',
+    icon: Scale,
+    filters: [
+      { id: 'period', label: 'Período', type: 'PERIOD', defaultValue: 'HISTORICO' },
+    ],
+    run: functions.runCosteoAluzincTipo,
+    columns: [
+      { label: 'Tipo', key: 'tipo', format: 'string' },
+      { label: 'Peso Producción (Kg)', key: 'pesoProduccionKg', format: 'number' },
+      { label: 'Costo (S/)', key: 'costoPEN', format: 'currency' },
+      { label: 'Costo x Kg (S/)', key: 'costoPorKg', format: 'currency' },
+      { label: 'Venta (S/)', key: 'ventaPEN', format: 'currency' },
+      { label: 'Kg Vendidos', key: 'ventaKg', format: 'number' },
+      { label: 'Merma (Kg)', key: 'mermaKg', format: 'number' },
+    ],
+    chart: { type: 'bar', xKey: 'tipo', yKeys: ['costoPEN', 'ventaPEN'] },
+    exports: ['xlsx', 'csv'],
+  },
+
+  // --- STOCK DE BOBINAS (inventario agrupado, estilo PDF cliente) ---
+  {
+    id: 'stock-bobinas',
+    title: 'Stock de Bobinas',
+    category: 'INVENTARIO',
+    description: 'Inventario de bobinas agrupado por tipo, estado, espesor, acabado y proveedor (Prepintado) o solo estado+espesor (Natural).',
+    icon: Layers,
+    filters: [],
+    run: functions.runStockBobinas,
+    columns: [
+      { label: 'Tipo', key: 'tipo', format: 'string' },
+      { label: 'Estado', key: 'estado', format: 'badge', badgeStyle: (v) => v === 'CERRADA' ? 'bg-slate-100 text-slate-700' : 'bg-green-100 text-green-700' },
+      { label: 'Espesor (mm)', key: 'espesor', format: 'number' },
+      { label: 'Acabado', key: 'acabado', format: 'string' },
+      { label: 'Proveedor', key: 'proveedor', format: 'string' },
+      { label: 'N° Bobinas', key: 'numBobinas', format: 'number' },
+      { label: 'Peso (Kg)', key: 'pesoKg', format: 'number' },
+      { label: 'Metraje (ML)', key: 'metrajeML', format: 'number' },
+    ],
+    chart: { type: 'bar', xKey: 'acabado', yKeys: ['pesoKg'] },
+    exports: ['xlsx', 'csv'],
+  },
+
   // --- P2 PLACEHOLDERS ---
   {
     id: 'ventas-por-producto',

@@ -3,6 +3,15 @@
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | test:emu saneado (0 rojos) | Borón masivo ejecutado | Functions v2 operativa.
+> **v6.31:** (Cierre de Sesión)
+> - **CIERRES mergeados a master e67b29d (LIVE prod):**
+>   · **Importador ventas — vista de detalle:** helper puro `parseImportRows => {parsedSales, skippedRows}`; type `ParsedSaleItem` (mató el crash de campo fantasma `item.amount` — lección: nunca `any` en items parseados, tipar para que falle en BUILD no en runtime); accordion inline + panel 'N filas no importadas' (`skipReasonLabel`) + header 'N líneas · M comprobantes'. Frontend puro; write path client-side intacto (WRITE 9 sigue pendiente).
+>   · **Slice 1 costeo aluzinc:** `coil_finishes` con `tipo` (Natural|Prepintado|Galvanizado) + `color` (Rojo|Azul|Blanco|Gris|Verde|'-') como FUENTE ÚNICA; helpers `getFinishMeta` + `formatFinishChip`; UI finishes con selects requeridos; functions type sync (production.ts, erasable, sin deploy). Backfill 9 `coil_finishes` (test+prod) por `update()` field-merge, densityFactor/label/lines intactos.
+> - **CIERRE en develop (SIN merge):** Fix display inventario metallic — guard `avgCost>0` => `hasStockPosition(quantity!==0)` en `stockDisplayLogic.ts` (Costo prom/Valor total => '—' con stock 0; negativo anómalo SÍ se muestra). Commit `d56f9a9c`. PENDIENTE merge+runtime del usuario.
+> - **MODELO DE COSTEO ALUZINC (decisión):** el CSV del cliente (WAC agrupado por Tipo+Color+Espesor + costo variable de planta) es objetivo de REPORTE/referencia, NO cambia el costeo operativo (per-bobina congelado, ADR-009 intacto).
+>   · Slice 2 (próximo frente): reporte de costeo read-only — group-WAC + margen por tipo/color/espesor, reflejando el CSV.
+>   · Slice 3 DIFERIDO: capa de costo variable/conversión (no es petición del cliente). Si algún día, columna manual-mensual en ese reporte.
+> - **LEARNINGS/NEAR-MISSES:** campo fantasma `item.amount` (tipar); flakes de emu (drywallRevert/metallicMultiCut timeout — probar AISLADO, no asumir 'ajeno'); lectura de prod SIEMPRE por admin SDK/service account (client fetch = 403).
 > **v6.30:** (Cerrado en develop)
 > - **Frente UI Metallic & Coils:** Drawer de detalle por bobina en MetallicProductionHistory (helper puro `coilBreakdownRows`); fix canónico de chip cotización (`formatQuoteDisplayId` importado de queueLogic); refactor `InventoryTable` (eliminado `≈ ML` de stock, agregado `ML Disponible` y `Fecha Factura`, revertido a `table-auto` sin width forzado `table-fixed`).
 > **v6.29:** (Cerrado en PROD)
@@ -330,7 +339,6 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 
 ## 11. Deuda Técnica Menor (Backlog)
 
-- ⚠️ **PENDIENTE INMEDIATO:** Reimportación masiva (bobinas + ventas + transacciones >= junio 2026) tras borrado. Operación grande por lotes con gate.
 - ⚠️ **PENDIENTE INMEDIATO (UI):** Mejorar importación masiva de ventas — cuando hay varios registros con el mismo n° de comprobante, mostrar el DETALLE (actualmente muestra solo el total consolidado).
 - **`getProducedForQuoteLine`:** indexa por SKU → duplica en `/production/new` y `SaleDetailsModal` (la cola ya lo resuelve).
 - **BUG SOMBRA `ROUTE_PERMISSIONS`:** `/admin/lines` sombrea rutas OPERATOR (`Object.keys().find()`). Decisión: acceso actual OK (OPERATOR fuera) → fix = limpiar declaración muerta, NO reordenar.

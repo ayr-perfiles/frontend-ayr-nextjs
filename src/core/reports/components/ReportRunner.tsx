@@ -149,6 +149,18 @@ export function ReportRunner({ report, filters, onFiltersChange, onBack }: Repor
             </div>
           ) : null}
 
+          {/* WARNINGS GENERICOS */}
+          {data.warnings && data.warnings.length > 0 ? (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3 text-red-800 text-sm font-bold animate-in fade-in slide-in-from-top-2">
+              <AlertTriangle size={18} className="text-red-600 shrink-0 mt-0.5" />
+              <div className="flex flex-col gap-1">
+                {data.warnings.map((warn, i) => (
+                  <span key={i}>{warn}</span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {/* TOTALS BAR */}
           {data.totals && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -1,5 +1,5 @@
 # MÓDULO: coils (bobinas) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-07-21 (Frente B, runtime prod ayrsteel-2026).
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-07-29 (Frente B, runtime prod ayrsteel-2026, finishes).
 > ⚠️ SE PUDRE. Antes de tocar lógica/writes de bobinas: verificá (checklist). No confíes si la fecha está vieja.
 
 ## 1. Estado isClosed (regla de negocio verificada)
@@ -15,6 +15,11 @@
 - ML restante = currentWeight/... · ML total teórico = initialWeight/...
 - Densidad SIEMPRE de coil_finishes (0.00785 galv/aluzinc natural, 0.008 aluzinc prepintado). NUNCA hardcodeada. Si falta → "s/densidad", no inventar.
 - ML total inflado en bobinas splitteadas (split.ts baja masterWidth, NO initialWeight) → marcar aproximado ("≈≈").
+
+## 3. Catálogo de Acabados (`coil_finishes`)
+- **Estructura unificada:** `coil_finishes` opera como FUENTE ÚNICA de acabados. Los documentos cuentan con los campos `tipo` (`Natural`|`Prepintado`|`Galvanizado`) y `color` (`Rojo`|`Azul`|`Blanco`|`Gris`|`Verde`|`'-'`). 
+- **Helpers:** `getFinishMeta` lee los campos de BD y `formatFinishChip` inyecta los estilos visuales consistentes (badge colors, etc).
+- **Tipado:** Tipado estricto con uniones `FinishType` y `FinishColor`.
 
 ## 3. Tabla InventoryTable (8 columnas)
 checkbox · Serie(id+proveedor truncado) · Acabado(FinishBadge legible) · Material(dims+originalDescription truncado+tooltip) · Valorización(PEN+USD) · Stock/peso(restante/total kg + ML restante/total + barra) · Estado(StatusBadge+CERRADA) · Acciones. Responsable y Fecha Ingreso → modal, no tabla. Server-side (cursores useCoils.ts) — cambiar filtros toca queries+índices.
