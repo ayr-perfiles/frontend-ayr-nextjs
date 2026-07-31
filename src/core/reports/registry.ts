@@ -329,6 +329,29 @@ export const REPORT_REGISTRY: ReportDefinition[] = [
     exports: ['xlsx', 'csv'],
   },
 
+  // --- STOCK DE BOBINAS (inventario agrupado, estilo PDF cliente) ---
+  {
+    id: 'stock-bobinas',
+    title: 'Stock de Bobinas',
+    category: 'INVENTARIO',
+    description: 'Inventario de bobinas agrupado por tipo, estado, espesor, acabado y proveedor (Prepintado) o solo estado+espesor (Natural).',
+    icon: Layers,
+    filters: [],
+    run: functions.runStockBobinas,
+    columns: [
+      { label: 'Tipo', key: 'tipo', format: 'string' },
+      { label: 'Estado', key: 'estado', format: 'badge', badgeStyle: (v) => v === 'CERRADA' ? 'bg-slate-100 text-slate-700' : 'bg-green-100 text-green-700' },
+      { label: 'Espesor (mm)', key: 'espesor', format: 'number' },
+      { label: 'Acabado', key: 'acabado', format: 'string' },
+      { label: 'Proveedor', key: 'proveedor', format: 'string' },
+      { label: 'N° Bobinas', key: 'numBobinas', format: 'number' },
+      { label: 'Peso (Kg)', key: 'pesoKg', format: 'number' },
+      { label: 'Metraje (ML)', key: 'metrajeML', format: 'number' },
+    ],
+    chart: { type: 'bar', xKey: 'acabado', yKeys: ['pesoKg'] },
+    exports: ['xlsx', 'csv'],
+  },
+
   // --- P2 PLACEHOLDERS ---
   {
     id: 'ventas-por-producto',

@@ -30,6 +30,7 @@ export interface ReportResult {
     name: string;
     data: { label: string; value: number }[];
   }[];
+  warnings?: string[];
 }
 
 export interface ReportDefinition {

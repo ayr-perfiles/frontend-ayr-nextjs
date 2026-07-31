@@ -21,6 +21,8 @@ import {
 } from "@/modules/metallic-roofing/domain/aluzincCostReport";
 import { calculateCosteoAluzinc } from "../costeoAluzincLogic";
 import { mapCosteoAluzincToReportRows } from "../costeoAluzincReportMapper";
+import { calculateStockBobinas, CoilInput as StockBobinaCoilInput, FinishMetaInput as StockBobinaFinishMetaInput } from "../stockBobinasLogic";
+import { mapStockBobinasToReportRows } from "../stockBobinasReportMapper";
 
 /**
  * UTILS
@@ -1017,4 +1019,57 @@ export const runCosteoAluzincTipo = async (params: {
   });
 
   return { rows: mapCosteoAluzincToReportRows(costeoRows) };
+};
+
+// ─── STOCK DE BOBINAS (inventario agrupado, estilo PDF del cliente) ────────
+
+/** Wrapper fino: fetch coils + coil_finishes, deriva acabado (color+RAL) del label del finish (coil_finishes no tiene campo ral separado), adapta calculateStockBobinas (src/core/reports/stockBobinasLogic.ts) al shape ReportResult. Sin filtro de Tipo: ReportFilters (contrato compartido) no soporta MULTISELECT genérico fuera de colorFilter/espesorFilter — distinguible vía columna Tipo. */
+export const runStockBobinas = async (): Promise<ReportResult> => {
+  const [coilsSnap, finishesSnap] = await Promise.all([
+    getDocs(collection(db, "coils")),
+    getDocs(collection(db, "coil_finishes")),
+  ]);
+
+  const finishesMap: Record<string, StockBobinaFinishMetaInput> = {};
+  finishesSnap.forEach((d) => {
+    const data = d.data();
+    const tipo = data.tipo as string | undefined;
+    const acabado =
+      tipo === "Prepintado" && typeof data.label === "string"
+        ? data.label.replace(/^ALUZINC\s+/i, "").trim()
+        : null;
+    finishesMap[d.id] = { tipo, acabado, densityFactor: data.densityFactor };
+  });
+
+  const coils: StockBobinaCoilInput[] = coilsSnap.docs.map((d) => {
+    const data = d.data() as Coil;
+    return {
+      id: d.id,
+      status: data.status,
+      isClosed: data.isClosed,
+      finish: data.finish,
+      thickness: data.thickness,
+      masterWidth: data.masterWidth,
+      currentWeight: data.currentWeight,
+      provider: data.metadata?.provider ?? null,
+    };
+  });
+
+  const { rows, negativeCoils } = calculateStockBobinas({ coils, finishesMap });
+
+  const totals: Record<string, number> = {
+    numBobinas: rows.reduce((acc, r) => acc + r.numBobinas, 0),
+    pesoKg: rows.reduce((acc, r) => acc + r.pesoKg, 0),
+    metrajeML: rows.reduce((acc, r) => acc + r.metrajeML, 0),
+  };
+
+  const finalRows = mapStockBobinasToReportRows(rows);
+  const warnings: string[] = [];
+
+  if (negativeCoils.length > 0) {
+    const idsText = negativeCoils.map(c => `${c.id} (${c.currentWeight}kg)`).join(', ');
+    warnings.push(`Bobinas con peso negativo excluidas de totales: ${idsText}`);
+  }
+
+  return { rows: finalRows, totals, ...(warnings.length > 0 && { warnings }) };
 };
