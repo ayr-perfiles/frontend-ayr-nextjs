@@ -7,6 +7,12 @@
 > backend en prod antes que master.
 
 ## DEUDAS
+- **COB030ROJO:** PT en stock NEGATIVO en prod (-2,116.94 m / S/ -16,916.97). Corrupcion preexistente (no la introduce este merge; el fix inventario la MUESTRA en rojo, correcto). Backfill/ajuste manual pendiente — frente aparte.
+- **Bobina REPRES-ALZ-AZUL-5002-028-2568-00041:** currentWeight -39.09, PROCESSED. Misma familia de corrupcion (bug multicorte). Excluida del stock, avisada en el reporte.
+- **BOM (U+FEFF) en commits 271a2819 y 96017cff** (PowerShell Set-Content). Decision Opcion A: NO corregido (inofensivo, solo rompe matcheo estricto de conventional-commits). De e92c396c en adelante limpios.
+- **functions-sunat/package-lock.json** con CRLF sin commitear (dejar asi).
+- **MetallicProductionHistory.test.tsx** sin trackear — decidir si entra al repo.
+- **Backups de prod sueltos en el working tree** (sales_full_prod_backup_*.json, backup_recon_*.json, scripts/ids_to_purge.json): gitignoreados pero AUN en disco dentro del repo — mover a ~/ayr-backups/ a mano (tarea del duenio).
 - **guard avgCost>0 puede existir en inventarios de otras líneas — verificar/unificar:** (trading catalog L295, roofing catalog L342, roofing inventory L156/L166).
 - **getProducedForQuoteLine:** indexa por SKU → duplica en `/production/new` y `SaleDetailsModal` (la cola ya lo resuelve).
 - **BUG SOMBRA ROUTE_PERMISSIONS:** `/admin/lines` sombrea rutas OPERATOR (`Object.keys().find()`). Decisión: acceso actual OK (OPERATOR fuera) → fix = limpiar declaración muerta, NO reordenar.
@@ -27,9 +33,7 @@
 - **Menú de cotización importada** aún ofrece "Editar Cotización" y "Duplicar Operación" — editar desincroniza la percha (`COT-{documentNumber}`) de la boleta real ya facturada. Frente chico, mismo helper que `isImportedQuotation` (`src/core/import/salesImportLogic.ts:8`).
 
 ## PENDIENTE INMEDIATO
-- **Fix inventario metallic** (`d56f9a9c` en develop): pendiente merge a master y validación runtime del usuario (prod aún muestra COB030ROJO S/7.86 hasta mergear).
-- **Validar runtime prod del merge e67b29d:** (acabados 9 chips + importador accordion/banner).
-- **(CERRADOS Y MERGEADOS 29-jul):** Drawer de detalle por bobina metallic, Fix chip cotización drawer, Inventario bobinas (InventoryTable, nueva col 'Fecha Factura'), Prefill bobinas /production/new, MetallicProductionHistory.
+- **reportes costeo + stock bobinas + fix inventario + higiene MERGEADOS (a5749de6)**, pushed. Reset de test hecho. Reimportacion de bobinas a test PENDIENTE (frente pausado).
 
 ## HORIZONTE (candidatos próximo frente)
 - **Slice 2 (reporte costeo) primero:** reporte de costeo read-only (group-WAC + margen por tipo/color/espesor).
