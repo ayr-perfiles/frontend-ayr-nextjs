@@ -66,3 +66,32 @@ sales_test_import_backup_*.json
 sales_test_approval_backup_*.json
 sales_quotation_prod_backup_*.json
 sales_quotation_test_backup_*.json
+
+# Scripts ad-hoc de recon/migracion/purga (no versionar)
+/scripts/*.cjs
+/scripts/*.ts
+/recon.js
+/test-prod.ts
+/dump_*.cjs
+/functions/*.js
+/functions/script.js
+/functions/checkCatalog.js
+/functions/scripts/
+/functions-sunat/lib/
+/functions-sunat/dump_*.js
+/functions-sunat/recon_*.cjs
+# Backups y dumps (pueden traer data de prod — NUNCA versionar)
+/backup_recon_*.json
+/sales_full_*_backup_*.json
+/scripts/ids_to_purge.json
+/*_backup_*.json
+# Salidas temporales
+/build_output*.txt
+/dump_test_emu.txt
+/commit_msg.txt
+/current_fix.patch
+/tmp*.txt
+/scratch/
+*.bat
+# Editor/agente
+/.claude/
