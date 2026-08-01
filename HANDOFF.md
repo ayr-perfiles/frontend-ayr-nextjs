@@ -1,12 +1,14 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.29).
+> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.33).
 > Preferencias: Prompts Claude Code por defecto. Caveman mode. PASO 0 read-only en cada prompt.
 > Preguntar ante duda de negocio. NUNCA cerrar en verde sin RUNTIME (lo corre el USUARIO, no Claude).
 > npm run build LOCAL antes de merge a master. Un frente a la vez, confirmar cierre antes de seguir.
 > backend en prod antes que master.
 
 ## DEUDAS
+- **DEUDA NUEVA:** test-prod.ts (gitignoreado) rompe el type-check del worker de Next cada vez que se toca — limpiar aparte (frente chico).
+- **Nota proceso:** el ejecutor entregó resumen de tests, no los 16 nombres 1x1; se aceptó por conteo (15+1) + verificación manual por vuelta + runtime real. Reforzar 'pegar corrida con nombres' la próxima.
 - **COB030ROJO:** PT en stock NEGATIVO en prod (-2,116.94 m / S/ -16,916.97). Corrupcion preexistente (no la introduce este merge; el fix inventario la MUESTRA en rojo, correcto). Backfill/ajuste manual pendiente — frente aparte.
 - **Bobina REPRES-ALZ-AZUL-5002-028-2568-00041:** currentWeight -39.09, PROCESSED. Misma familia de corrupcion (bug multicorte). Excluida del stock, avisada en el reporte.
 - **BOM (U+FEFF) en commits 271a2819 y 96017cff** (PowerShell Set-Content). Decision Opcion A: NO corregido (inofensivo, solo rompe matcheo estricto de conventional-commits). De e92c396c en adelante limpios.
@@ -33,7 +35,7 @@
 - **Menú de cotización importada** aún ofrece "Editar Cotización" y "Duplicar Operación" — editar desincroniza la percha (`COT-{documentNumber}`) de la boleta real ya facturada. Frente chico, mismo helper que `isImportedQuotation` (`src/core/import/salesImportLogic.ts:8`).
 
 ## PENDIENTE INMEDIATO
-- **reportes costeo + stock bobinas + fix inventario + higiene MERGEADOS (a5749de6)**, pushed. Reset de test hecho. Reimportacion de bobinas a test PENDIENTE (frente pausado).
+- **reporte bobinas-supervisor LIVE prod (4adda456)**, validado.
 
 ## HORIZONTE (candidatos próximo frente)
 - **Slice 2 (reporte costeo) primero:** reporte de costeo read-only (group-WAC + margen por tipo/color/espesor).
@@ -41,7 +43,6 @@
 - **Frente 2 rol VENDEDOR:** recon hecho (isStaff, ROUTE_PERMISSIONS único guard vivo, isRoleAllowed/mod.routes.roles son código muerto, sellerId en prod es NOMBRE no email → hace falta sellerUid forward-only, agregados scopeados).
 - **Reporte por RAL** (frente aparte).
 - **PT inflado** por producciones contra cotizaciones importadas (venta histórica no descuenta stock, producción sí suma) → ajuste manual al cerrar el período. Ver `docs/modules/ventas.md` §9.
-- **Reporte supervisor bobinas** (agrupado Abiertas/Stock/Cerradas, peso+metraje por grupo — ver foto usuario).
 - **forward-fix** `coilWeightConsumedKg` en `consumeCoil` (drywall, mata `approximateWeight` de logs nuevos).
 - **WRITE 8 cutOrder** (monstruo prorrateo, modelo flejes real + lote-por-bobina).
 - **WRITE 9 salesService**.
