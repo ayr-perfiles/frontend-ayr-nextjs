@@ -3,7 +3,8 @@
 import React from 'react';
 import { REPORT_REGISTRY } from '../registry';
 import { ReportDefinition, ReportCategory } from '../types';
-import { ChevronRight, Search } from 'lucide-react';
+import { ChevronRight, Search, Layers } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface ReportHubProps {
   onSelect: (report: ReportDefinition) => void;
@@ -18,6 +19,7 @@ const CATEGORY_COLORS: Record<ReportCategory, string> = {
 };
 
 export function ReportHub({ onSelect }: ReportHubProps) {
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = React.useState('');
 
   const categories = Array.from(new Set(REPORT_REGISTRY.map((r) => r.category)));
@@ -84,6 +86,30 @@ export function ReportHub({ onSelect }: ReportHubProps) {
                   </div>
                 </button>
               ))}
+
+              {cat === 'INVENTARIO' && (
+                <button
+                  onClick={() => router.push('/admin/reports/bobinas-supervisor')}
+                  className="group flex flex-col text-left bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all relative overflow-hidden"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className={`p-3 rounded-2xl ${CATEGORY_COLORS['INVENTARIO']}`}>
+                      <Layers size={24} />
+                    </div>
+                    <ChevronRight size={18} className="text-slate-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+                  </div>
+                  <h3 className="font-black text-slate-900 text-lg group-hover:text-blue-600 transition-colors">
+                    Reporte de Bobinas (Supervisor)
+                  </h3>
+                  <p className="text-sm text-slate-500 mt-2 line-clamp-2 leading-relaxed">
+                    Stock de bobinas aluzinc detallado por unidad (ABIERTAS / CERRADAS) con exportación a PDF.
+                  </p>
+                  
+                  <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                    <Layers size={100} />
+                  </div>
+                </button>
+              )}
             </div>
           </section>
         );
