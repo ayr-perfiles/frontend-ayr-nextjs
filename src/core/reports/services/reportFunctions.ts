@@ -16,11 +16,11 @@ import {
 } from "@/modules/metallic-roofing/domain/aluzincSalesReport";
 import {
   buildAluzincCostReport,
-  buildAluzincProfitSummary,
   type AluzincCostSaleInput,
 } from "@/modules/metallic-roofing/domain/aluzincCostReport";
 import { calculateCosteoAluzinc } from "../costeoAluzincLogic";
 import { mapCosteoAluzincToReportRows } from "../costeoAluzincReportMapper";
+import { calculateAluzincResumen, type AluzincResumenSale, type AluzincResumenScrap } from "../aluzincResumenLogic";
 import { calculateStockBobinas, CoilInput as StockBobinaCoilInput, FinishMetaInput as StockBobinaFinishMetaInput } from "../stockBobinasLogic";
 import { mapStockBobinasToReportRows } from "../stockBobinasReportMapper";
 
@@ -885,70 +885,47 @@ export const runAluzincResumen = async (params: {
   const { period, startDate, endDate } = params;
   const { start, end } = getPeriodDates(period, startDate, endDate);
 
-  // Una sola fetch de ventas para construir tanto inputs de ventas como de costo
-  const salesSnap = await getDocs(
-    query(
-      collection(db, "sales"),
-      where("timestamp", ">=", Timestamp.fromDate(start)),
-      where("timestamp", "<=", Timestamp.fromDate(end)),
-      where("status", "==", "COMPLETED"),
+  const [salesSnap, scrapSnap, catalogSnap, finishesSnap] = await Promise.all([
+    getDocs(
+      query(
+        collection(db, "sales"),
+        where("timestamp", ">=", Timestamp.fromDate(start)),
+        where("timestamp", "<=", Timestamp.fromDate(end)),
+        where("status", "==", "COMPLETED"),
+      ),
     ),
-  );
-
-  type SaleDoc = Sale & { metadata?: { currency?: string; exchangeRate?: number } };
-
-  const saleInputs: AluzincSaleInput[] = [];
-  const costInputs: AluzincCostSaleInput[] = [];
-
-  for (const docSnap of salesSnap.docs) {
-    const sale = docSnap.data() as SaleDoc;
-    const metallicItems = (sale.items ?? []).filter(
-      (item: SaleItem) =>
-        item.businessLine === "metallic-roofing" && item.weightSnapshot != null,
-    );
-    if (metallicItems.length === 0) continue;
-
-    const currency = sale.metadata?.currency === "USD" ? "USD" : "PEN";
-    const exchangeRate = sale.metadata?.exchangeRate ?? null;
-
-    saleInputs.push({
-      saleId: docSnap.id,
-      currency,
-      exchangeRate,
-      items: metallicItems.map((item: SaleItem) => ({
-        sku: item.sku,
-        quantity: item.quantity,
-        unitValue: item.unitValue,
-        weightSnapshot: item.weightSnapshot ?? null,
-      })),
-    });
-
-    costInputs.push({
-      saleId: docSnap.id,
-      currency,
-      exchangeRate,
-      items: metallicItems.map((item: SaleItem) => ({
-        sku: item.sku,
-        quantity: item.quantity,
-        baseCost: item.baseCost ?? 0,
-        weightSnapshot: item.weightSnapshot ?? null,
-      })),
-    });
-  }
-
-  // Merma del periodo (scrap_logs)
-  const scrapSnap = await getDocs(
-    query(
-      collection(db, "scrap_logs"),
-      where("timestamp", ">=", Timestamp.fromDate(start)),
-      where("timestamp", "<=", Timestamp.fromDate(end)),
+    getDocs(
+      query(
+        collection(db, "scrap_logs"),
+        where("timestamp", ">=", Timestamp.fromDate(start)),
+        where("timestamp", "<=", Timestamp.fromDate(end)),
+      ),
     ),
-  );
-  const totalMermaSoles = calculateTotalMermaSoles(scrapSnap.docs);
+    getDocs(collection(db, "metallic_roofing_catalog")),
+    getDocs(collection(db, "coil_finishes")),
+  ]);
 
-  const ventasResult = buildAluzincSalesReport(saleInputs);
-  const costoResult = buildAluzincCostReport(costInputs);
-  const summary = buildAluzincProfitSummary(ventasResult, costoResult, totalMermaSoles);
+  const sales = salesSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as AluzincResumenSale[];
+  const scraps = scrapSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as AluzincResumenScrap[];
+
+  const metallicCatalog: Record<string, { finish?: string }> = {};
+  catalogSnap.docs.forEach((d) => {
+    const data = d.data();
+    metallicCatalog[d.id] = { finish: data.finish || (data.finishes && data.finishes[0]) };
+  });
+
+  const finishesMap: Record<string, { tipo?: string; color?: string; label?: string }> = {};
+  finishesSnap.docs.forEach((d) => {
+    const data = d.data();
+    finishesMap[d.id] = { tipo: data.tipo, color: data.color, label: data.label };
+  });
+
+  const summary = calculateAluzincResumen({
+    sales,
+    scraps,
+    metallicCatalog,
+    finishesMap,
+  });
 
   return {
     rows: summary.rows,

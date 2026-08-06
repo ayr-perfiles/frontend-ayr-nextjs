@@ -474,4 +474,93 @@ describe('produceFromCoils Integration Tests', () => {
     expect(coilSnap.data()!.status).toBe('IN_PROGRESS');
   });
 
+  it('13. Write-back de costo: al completar cotización vinculada a venta -> actualiza baseCost, profit y totalCost/totalProfit en sales', async () => {
+    await db.collection('coil_finishes').doc('FINISH-WB').set({
+      active: true,
+      lines: ['metallic-roofing'],
+      densityFactor: 0.00785
+    });
+
+    await db.collection('coils').doc('COIL-WB').set({
+      id: 'COIL-WB',
+      status: 'AVAILABLE',
+      isClosed: false,
+      finish: 'FINISH-WB',
+      masterWidth: 1000,
+      thickness: 1,
+      pricePerKg: 10,
+      currentWeight: 1000,
+      initialWeight: 1000
+    });
+
+    // Cotización vinculada
+    await db.collection('sales').doc('COT-F001-999').set({
+      id: 'COT-F001-999',
+      status: 'CONVERTED',
+      relatedSaleId: 'F001-999',
+      items: [
+        {
+          sku: 'SKU-WB',
+          quantity: 10,
+          businessLine: 'metallic-roofing'
+        }
+      ]
+    });
+
+    // Venta con costo inicial 0 y flag 'sin costo'
+    await db.collection('sales').doc('F001-999').set({
+      id: 'F001-999',
+      status: 'COMPLETED',
+      documentNumber: 'F001-999',
+      totalAmount: 1000,
+      totalCost: 0,
+      totalProfit: 847.5,
+      allFlags: ['sin costo'],
+      items: [
+        {
+          sku: 'SKU-WB',
+          productName: 'COBERTURA WB',
+          quantity: 10,
+          unitPrice: 100,
+          unitValue: 84.75,
+          baseCost: 0,
+          profit: 847.5,
+          businessLine: 'metallic-roofing',
+          flags: ['sin costo']
+        }
+      ]
+    });
+
+    const request = {
+      data: {
+        targetSku: 'SKU-WB',
+        productKind: 'COBERTURA_ML',
+        coilInputs: [{ coilId: 'COIL-WB', declared: 10 }],
+        requestId: 'req-wb-1',
+        source: { type: 'QUOTE', id: 'COT-F001-999' }
+      },
+      auth: { uid: 'user-wb', token: { role: 'ADMIN', email: 'admin@ayr.pe' } }
+    };
+
+    const res = await produceFromCoils.run(request as any);
+    expect(res.success).toBe(true);
+
+    // Verificar que la venta linkeada fue actualizada
+    const saleSnap = await db.collection('sales').doc('F001-999').get();
+    expect(saleSnap.exists).toBe(true);
+    const saleData = saleSnap.data()!;
+
+    // 10 ML * (1000mm * 1mm * 0.00785 = 7.85 kg/ML) = 78.5 kg * 10 S//kg = S/ 785 total -> S/ 78.50 unitario
+    expect(saleData.items[0].baseCost).toBeCloseTo(78.50, 2);
+    expect(saleData.items[0].profit).toBeCloseTo((84.75 - 78.50) * 10, 2); // 62.50
+    expect(saleData.items[0].costSource).toBe('PRODUCTION');
+    expect(saleData.items[0].flags).not.toContain('sin costo');
+
+    expect(saleData.totalCost).toBeCloseTo(785.00, 2);
+    expect(saleData.totalProfit).toBeCloseTo(62.50, 2);
+    expect(saleData.totalAmount).toBe(1000);
+    expect(saleData.allFlags).not.toContain('sin costo');
+    expect(saleData.costSyncedAt).toBeDefined();
+  });
+
 });
