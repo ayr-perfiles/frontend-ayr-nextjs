@@ -6,6 +6,11 @@ import { CoilProductionInput, TargetSkuInfo } from "../types/production";
 import { assertCoilFinishCompatible } from "../domain/finishCompat";
 import { metallicRoofingStockStrategy } from "../domain/strategies/metallicRoofingStockStrategy";
 import { determineCoilStatusAfterReversal } from "../domain/scrap";
+import {
+  isQuoteFulfilled,
+  productionUnitCostBySku,
+  applyCostCascade,
+} from "../domain/quoteFulfillment";
 
 export const produceFromCoils = onCall(async (request) => {
   if (!request.auth) {
@@ -51,6 +56,16 @@ export const produceFromCoils = onCall(async (request) => {
   const db = admin.firestore();
   console.log(`[DEBUG] produceFromCoils running in project: ${admin.app().options.projectId}`);
   console.log(`[DEBUG] Request data:`, JSON.stringify(request.data));
+
+  // PRE-TXN: Query de production_logs previos asociados a la cotización (Firestore Admin no admite queries en tx)
+  const quoteId = (source && source.type === 'QUOTE' && typeof source.id === 'string') ? source.id.trim() : '';
+  let preTxnQuoteLogs: any[] = [];
+  if (quoteId) {
+    const existingLogsSnap = await db.collection("production_logs")
+      .where("source.id", "==", quoteId)
+      .get();
+    preTxnQuoteLogs = existingLogsSnap.docs.map(d => d.data());
+  }
 
   return await db.runTransaction(async (tx) => {
     // 1. Idempotency Check
@@ -109,6 +124,28 @@ export const produceFromCoils = onCall(async (request) => {
 
     const stockRef = db.collection("metallic_roofing_stock").doc(targetSku);
     const stockSnap = await tx.get(stockRef);
+
+    // Lectura de Cotización y Venta linkeada para write-back de costo
+    let quoteSnap: admin.firestore.DocumentSnapshot | null = null;
+    let saleSnap: admin.firestore.DocumentSnapshot | null = null;
+    let saleRef: admin.firestore.DocumentReference | null = null;
+
+    if (quoteId) {
+      const quoteRef = db.collection("sales").doc(quoteId);
+      quoteSnap = await tx.get(quoteRef);
+      if (quoteSnap.exists) {
+        const quoteData = quoteSnap.data()!;
+        const relatedSaleId = quoteData.relatedSaleId || quoteId.replace(/^COT-/, "");
+        if (relatedSaleId) {
+          saleRef = db.collection("sales").doc(relatedSaleId);
+          saleSnap = await tx.get(saleRef);
+          if (!saleSnap.exists && relatedSaleId !== quoteId) {
+            saleRef = null;
+            saleSnap = null;
+          }
+        }
+      }
+    }
 
     // 3. VALIDACIÓN y PREPARACIÓN DE INPUTS
     const resolvedCoilInputs: CoilProductionInput[] = [];
@@ -273,7 +310,37 @@ export const produceFromCoils = onCall(async (request) => {
       source: (source && source.type === 'QUOTE' && typeof source.id === 'string' && source.id.trim() !== '') ? source : null,
     });
 
-    // d) Audit logs
+    // d) Write-back de costo a la venta linkeada si la cotización queda CUMPLIDA
+    if (quoteSnap && quoteSnap.exists && saleSnap && saleSnap.exists && saleRef) {
+      const quoteData = quoteSnap.data()!;
+      const currentRunLog = {
+        sku: targetSku,
+        piecesProduced: result.cantidadProducida,
+        stripCost: result.costoTotalPEN,
+        costPerPiece: result.costoUnitarioPEN,
+        status: "ACTIVE",
+        perCoilBreakdown: enrichedBreakdown,
+        source: { type: "QUOTE", id: quoteId },
+      };
+
+      const allQuoteLogs = [...preTxnQuoteLogs, currentRunLog];
+
+      if (isQuoteFulfilled(quoteData.items, allQuoteLogs)) {
+        const costBySku = productionUnitCostBySku(allQuoteLogs);
+        const saleData = saleSnap.data()!;
+        const updatedSale = applyCostCascade(saleData, costBySku);
+
+        tx.update(saleRef, {
+          items: updatedSale.items,
+          totalCost: updatedSale.totalCost,
+          totalProfit: updatedSale.totalProfit,
+          allFlags: updatedSale.allFlags,
+          costSyncedAt: now,
+        });
+      }
+    }
+
+    // e) Audit logs
     const auditRef = db.collection("audit_logs").doc();
     tx.set(auditRef, {
       action: "PRODUCE_FROM_COILS",
