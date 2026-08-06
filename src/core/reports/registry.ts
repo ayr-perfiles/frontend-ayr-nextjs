@@ -291,7 +291,7 @@ export const REPORT_REGISTRY: ReportDefinition[] = [
     description: 'Resumen por color: Venta vs Costo de material (WAC). La merma del período aparece en los totales. Ganancia = Venta − Costo − Merma.',
     icon: PieChart,
     filters: [
-      { id: 'period', label: 'Período', type: 'PERIOD', defaultValue: 'MES' },
+      { id: 'period', label: 'Período', type: 'PERIOD', defaultValue: 'HISTORICO' },
     ],
     run: functions.runAluzincResumen,
     columns: [
