@@ -405,3 +405,6 @@ export { setCoilClosed } from "./callables/coilClose";
 
 // INTEGRACIONES: Consultas RUC/DNI
 export { consultarRuc, consultarDni } from "./callables/integrations";
+
+// BACKFILL: Costo de cotizaciones
+export { backfillQuoteCost } from "./callables/backfillQuoteCost";
