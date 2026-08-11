@@ -65,7 +65,7 @@ El reporte ejecutivo de rentabilidad (P-M7 y Resumen) reconstruye los márgenes 
 
 ### 4.3. Cálculo de Costo (COGS)
 - **Costo por Fila:** `Σ (baseCost × quantity)`
-- *(Nota Crítica: `baseCost` es el WAC del PT **congelado al momento en que el ítem fue agregado al carrito/venta**. NUNCA se recalcula con el WAC actual del stock).*
+- *(Nota Crítica [Actualizada 2026-08-11]: Para cotizaciones CON producción propia, el `baseCost` original (que era el WAC al momento de venta) **SE PISA** con el costo de producción exacto al llegar a CUMPLIDA (A1) o vía backfill (A2). Esto hace que el "Costo Corrida" y el "Costo Reporte" CONVERJAN. Para el histórico loteado sin link a producción propia, sigue rigiendo el WAC de import).*
 
 ### 4.4. Cálculo de Merma
 La merma (scrap) se extrae independientemente sumando el campo `scrapCostPEN` de la colección `scrap_logs` del periodo consultado, **excluyendo** los registros con `status === "VOIDED"`.

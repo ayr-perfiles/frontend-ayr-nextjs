@@ -1,7 +1,14 @@
-# CLAUDE.md — AYR Steel ERP (v6.33)
+# CLAUDE.md — AYR Steel ERP (v6.34)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | test:emu saneado (0 rojos) | Borón masivo ejecutado | Functions v2 operativa.
+> **v6.34:** (Cierre de Sesión — COHERENCIA DE COSTO PRODUCCIÓN→VENTA)
+> - Dominio puro `functions/src/domain/quoteFulfillment.ts`: `isQuoteFulfilled` (regla CUMPLIDA por SKU, EPSILON 0.01), `productionUnitCostBySku` (ΣcostPEN÷Σpiezas no-VOIDED), `applyCostCascade` (pisa baseCost + recalcula profit/totalCost/totalProfit con fórmulas de saleDocBuilder, setea `costSource:'PRODUCTION'`, quita flag 'sin costo').
+> - **A1 write-back forward** (`produceFromCoils`): al producir, si la cotización queda CUMPLIDA (recomputada server-side, 2 fases: query logs pre-txn + `tx.update` venta DENTRO de la misma runTransaction que el production_log) → sincroniza costo a la venta linkeada (via `quote.relatedSaleId`). Solo cotizaciones con producción propia (`source.id`). Marcadores `costSyncedAt` en venta.
+> - **A2 backfill** (callable `backfillQuoteCost({quoteId})`): reusa el mismo dominio, whitelist, 1 cotización/invocación, re-valida server-side, idempotente. Ya corrido sobre 8 cotizaciones históricas.
+> - **A1.5 pendiente**: void re-sync (anular producción sincronizada deja venta con costo viejo) — gap conocido, forward-fix.
+> - Loteadas sin `source.id` (ej. FFA1-1250) NO se tocan (producción agregada, no 1:1 con factura).
+> - Fix reporte `aluzinc-resumen`: default MES→HISTORICO, costea `baseCost×qty` (ahora coherente).
 > **v6.33:** (Cierre de Sesión)
 > - AYR ERP — Reporte BOBINAS SUPERVISOR mergeado a master (merge 4adda456, LIVE prod ayr.mareliac.pe, jul 2026, CLAUDE v6.33).
 >   - Ruta /admin/reports/bobinas-supervisor. PÁGINA DEDICADA (NO en REPORT_REGISTRY: ReportDefinition no soporta render/export custom). Frontend puro (sin callable/índice). Gate heredado /admin/reports = ADMIN+SUPERVISOR (OPERATOR fuera, validado runtime prod).

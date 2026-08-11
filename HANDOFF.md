@@ -35,10 +35,14 @@
 - **Menú de cotización importada** aún ofrece "Editar Cotización" y "Duplicar Operación" — editar desincroniza la percha (`COT-{documentNumber}`) de la boleta real ya facturada. Frente chico, mismo helper que `isImportedQuotation` (`src/core/import/salesImportLogic.ts:8`).
 
 ## PENDIENTE INMEDIATO
-- **reporte bobinas-supervisor LIVE prod (4adda456)**, validado.
+- **A1/A2/fix reporte (Coherencia de costo)**: CERRADOS y en prod.
+  - A1 write-back de costo forward operando.
+  - A2 backfill ejecutado. Backup histórico: `~/ayr-backups/A2-20260811.json`.
+  - Fix reporte aluzinc-resumen activo.
+- **Pendientes no bloqueantes:** Runtime real del reporte de usuario final; fix A1.5 (void re-sync) gap conocido forward-fix.
+- **PRÓXIMO FRENTE (A3):** Reporte 'ventas con producción cumplida' + filtros color+espesor.
 
 ## HORIZONTE (candidatos próximo frente)
-- **Slice 2 (reporte costeo) primero:** reporte de costeo read-only (group-WAC + margen por tipo/color/espesor).
 - **Slice 3 DIFERIDO:** capa de costo variable/conversión.
 - **Frente 2 rol VENDEDOR:** recon hecho (isStaff, ROUTE_PERMISSIONS único guard vivo, isRoleAllowed/mod.routes.roles son código muerto, sellerId en prod es NOMBRE no email → hace falta sellerUid forward-only, agregados scopeados).
 - **Reporte por RAL** (frente aparte).
