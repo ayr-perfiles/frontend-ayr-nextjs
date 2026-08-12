@@ -1028,6 +1028,29 @@
         }
       ],
       "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "productionStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isFulfilled",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "businessLines",
+          "arrayConfig": "CONTAINS"
+        }
+      ],
+      "density": "SPARSE_ALL"
     }
   ],
   "fieldOverrides": []
