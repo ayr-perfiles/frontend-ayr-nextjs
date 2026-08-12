@@ -1,8 +1,11 @@
 <!-- ⚠️ AUTO-GENERADO desde CLAUDE.md. NO editar a mano — editá CLAUDE.md y corré sync-context. -->
-# CLAUDE.md — AYR Steel ERP (v6.34)
+# CLAUDE.md — AYR Steel ERP (v6.35)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | test:emu saneado (0 rojos) | Borón masivo ejecutado | Functions v2 operativa.
+> **v6.35:** (Cierre de Sesión)
+> - **#9 (agrupación por grupo-SKU):** las vistas que iteraban items[] crudo (`/admin/lines/metallic-roofing/production/new` selector + `SaleDetailsModal` panel Progreso de Producción) colapsaban mal líneas del MISMO SKU (botón/renglon gemelo + aviso de sobre-producción descuadrado). Fix: helper puro `quoteFulfillmentRows(items, logs)` agrupa por SKU (requested/produced/pending/pct). Unidad derivada de `products.family` (PLANCHA→UND, COBERTURA→ML), no hardcodeada. Frontend-puro. Commit 72295241.
+> - **Perf N+1 en carga de cotizaciones de `/production/new`:** el loop hacía `await getQuoteFulfillmentLogs(q.id)` secuencial por cotización (71 en prod ≈ 8.5s). Fix: `getAllActiveFulfillmentLogs()` (1 query `where status==ACTIVE`) + helper puro `bucketLogsBySourceId(logs): Map<string,ProductionLog[]>` (agrupa por source.id, saltea logs sin source.id), lookup O(1) en el loop. Frontend-puro. Commit 277e658b. master==develop==origin en 277e658b.
 > **v6.34:** (Cierre de Sesión — COHERENCIA DE COSTO PRODUCCIÓN→VENTA)
 > - Dominio puro `functions/src/domain/quoteFulfillment.ts`: `isQuoteFulfilled` (regla CUMPLIDA por SKU, EPSILON 0.01), `productionUnitCostBySku` (ΣcostPEN÷Σpiezas no-VOIDED), `applyCostCascade` (pisa baseCost + recalcula profit/totalCost/totalProfit con fórmulas de saleDocBuilder, setea `costSource:'PRODUCTION'`, quita flag 'sin costo').
 > - **A1 write-back forward** (`produceFromCoils`): al producir, si la cotización queda CUMPLIDA (recomputada server-side, 2 fases: query logs pre-txn + `tx.update` venta DENTRO de la misma runTransaction que el production_log) → sincroniza costo a la venta linkeada (via `quote.relatedSaleId`). Solo cotizaciones con producción propia (`source.id`). Marcadores `costSyncedAt` en venta.
@@ -72,7 +75,7 @@
 > - 7a (strips_stock pool) validado, sirve flujo aspiracional (strips_stock casi vacío en prod).
 > **v6.22:**
 > - Frente 1.5: fix coilRef.id en voidProductionFromCoils (bobinas sin campo id → kardex sku undefined). Runtime validado.
-> - Cotización↔producción: production_log.source={type:'QUOTE',id,label}, selector "producir contra cotización" + fulfillment derivado (getProducedForSourceLine) + warning sobre-producción (base pendiente) + vista en SaleDetailsModal + botón ver cotización. Índice production_logs(source.id,status,timestamp).
+> - Cotización↔producción: production_log.source={type:'QUOTE',id,label}, selector "producir contra cotización" + fulfillment derivado (getProducedForQuoteLine) + warning sobre-producción (base pendiente) + vista en SaleDetailsModal + botón ver cotización. Índice production_logs(source.id,status,timestamp).
 > - HARD GATE: producción metallic SOLO contra cotización (eliminado ad-hoc + descartado Slice 2 solicitudes manuales). Backend guard: produceFromCoils exige source.type=='QUOTE'.
 > - Cotización captura piezas+longitud (SaleItem aditivo, quantity=ML derivado, pricing/peso igual). Ocultar cotizaciones/líneas cumplidas del selector.
 > - Bug Ventas: índice sales(businessLines CONTAINS,timestamp,totalAmount,totalProfit,totalWeight) + useSales muestra error visible en /admin/sales.
@@ -311,7 +314,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **`parseCoilDescription`** (`src/core/coils/parseCoilDescription.ts`): parser puro cliente-side de texto libre → `{finishToken, thickness, width, flags}`. Token SEMÁNTICO (`GALV|NATURAL|AZUL|BLANCO|ROJO|VERDE|null`), NO la llave de BD. Cero fallback silencioso (no encuentra → null + flag). width literal (1219≠1220). Ambiguo (aluzinc/prepintada sin color) → null. 14 tests.
 - **`bulkUploadLogic`** (`src/core/coils/bulkUploadLogic.ts`): lógica pura UI. `validateCoilRow`, `buildInvoicesPayload`, `parseWeightToKg`, `TOKEN_TO_FINISH`. Guard rango peso **[2000-7000] kg** (atrapa mal-parseo de formato). value monetario redondeado a **2 decimales** (XLSX raw:true trae floats sucios de celdas Excel calculadas). Unidad→kg: TON→×1000, KG→passthrough, ROLLO/UNIDAD→inválida. Moneda no reconocida→inválida (no default PEN). 32 tests.
 - **UI `BulkUploadCoils.tsx`** reescrito de writeBatch directo a thin-client, en **página dedicada `/admin/coils/bulk-import`** (no modal). Preview editable por fila, dropdown finish vivo (`useFinishes`, muestra label / envía id), peso kg editable, TC editable + botón "Sugerir TC" (api `/api/tipo-cambio` como asistente, pre-llena por factura). Finish por-fila (preselección token→llave). Botón HeaderOptions navega a página (gate ADMIN/SUPERVISOR). Modal viejo extirpado de InventoryModals. Breadcrumb `bulk-import`→"Importación masiva".
-- **Config:** `NEXT_PUBLIC_USE_EMULATOR` desacopla emulador de NODE_ENV (default emulador; `"false"` → dev apunta a nube). `vitest.config testTimeout 15000` (suite creció). `scripts/local/` gitignored (scripts throwaway con credenciales).
+- **Config:** `NEXT_PUBLIC_USE_EMULATOR` desacopla emulador de NODE_ENV (default emulador; `"false"` → dev apunta a nube). `vitest.config testTimeout 15000` (suite creció). `scripts/local/` gitignored (scripts throwaway con credenciales). `recon_magnitudes.cjs` y `recon_cola.cjs` anotados como pendientes operativos.
 - Commits (develop→master): backend `31236045`, lógica pura `38fe1df6`, UI `2cac4082`, infra `79ed7be2`.
 - ⚠️ **Runtime PROD end-to-end NO ejercitado.** Validado a fondo en test-nube (doc E001-6498-01: pricePerKg 2.906779 = value×tc/weight, TON→kg 4820, originalCurrencyValue 4003.05 a 2 dec). Callable ACTIVE en prod, UI en master. La primera corrida real de prod = importación de abril (§14).
 
@@ -325,6 +328,9 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **`voidCoilScrap` (callable):** Reversa de merma mal registrada. Restaura peso al costo congelado, marca scrap_log VOIDED, kardex compensatorio SCRAP_REVERSAL, audit VOID_COIL_SCRAP. Filtro de reporte de merma (scrap VOIDED no cuenta en totalMermaSoles). Helper backend determineCoilStatusAfterReversal. CERRADO EN PROD. (Ver §3.7).
 
 **PENDIENTE / EN COLA (orden sugerido):**
+
+- **Frente Cola (COLA-1, COLA-2):** el count 69 es CORRECTO (CONFIRMED + status==QUOTATION + businessLines contiene metallic; los 2 de más vs 71 son no-metallic/no-cotización). El problema: de 69, 56 ya CUMPLIDA, solo 13 accionables; el banner las cuenta todas y el subtítulo 'pendientes de conformación' engaña. Badge sidebar = `getProductionQueueCount` (server .count, 3 filtros). Banner página = `totalFiltered` de `useTableData` (post-filtro frontend). Ocultar cumplidas: infra existe (`hideCompleted` arranca false, `<TableFilters>`, `useTableData` filtra `row.status==='CUMPLIDA'`). CUMPLIDA se deriva en `queueLogic` (`buildQueueRow`): todas las líneas grupo-SKU con `producido >= requerido - EPSILON(0.01)`.
+  - **PLAN:** (fase 1, frontend-puro) default `hideCompleted=true` + copy subtítulo + fusionar el N+1 de la Cola con el batch (`getAllActiveFulfillmentLogs`+`bucketLogsBySourceId`) si el list fetch es secuencial. (fase 2, backend+backfill = opción B elegida) denormalizar flag `isFulfilled`/`productionFulfilledAt` escrito por `produceFromCoils` al marcar CUMPLIDA + init en `confirmQuotationForProduction` + filtro en `getProductionQueueCount` → badge=13 consistente + backfill de 56 con gate. Void re-sync (A1.5) sigue DIFERIDO — relevante para revertir el flag en anulaciones.
 
 4. **WRITE 7:** `voidProductionFromCoils` metallic+drywall (costo congelado del `production_log`).
 5. **WRITE 8:** `cutOrder` (monstruo: WAC+prorrateo, 5 funciones).
@@ -341,6 +347,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 ## 10. Decisiones de Diseño (Sprint 7 - ADRs)
 
 - **Cloud Functions Callable onCall v2:** NO server actions (razón: serviceAccountKey fuera de Vercel + request.auth nativo).
+- **`production_log` sin `lineIndex`:** por diseño, la producción es loteada por SKU. Atribuir ML a líneas comerciales individuales del mismo SKU fabrica una precisión que no existe físicamente. Dos líneas mismo-SKU colapsan a UNA fila de fulfillment; SKUs distintos siguen separados.
 - **Estructura de Writes:** 6 Functions separadas, una por write. Orden: scrap→split→produce→void→sale→annul.
 - **Payload thin client/fat backend:** baseCost/unitWeight/densityFactor/correlativo RE-LEÍDOS de fuente; unitPrice input vendedor, piso=costo, ADMIN lo cruza.
 - **Dominio puro:** copia canónica en `functions/src/domain/` + TEST DE PARIDAD vs copia cliente.
@@ -361,7 +368,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 ## 11. Deuda Técnica Menor (Backlog)
 
 - ⚠️ **PENDIENTE INMEDIATO (UI):** Mejorar importación masiva de ventas — cuando hay varios registros con el mismo n° de comprobante, mostrar el DETALLE (actualmente muestra solo el total consolidado).
-- **`getProducedForQuoteLine`:** indexa por SKU → duplica en `/production/new` y `SaleDetailsModal` (la cola ya lo resuelve).
+- **`getProducedForQuoteLine`:** indexa por SKU → duplica en `/production/new` y `SaleDetailsModal` (la cola ya lo resuelve). [RESUELTA: ambas vistas usan `quoteFulfillmentRows` agrupado por SKU]
 - **BUG SOMBRA `ROUTE_PERMISSIONS`:** `/admin/lines` sombrea rutas OPERATOR (`Object.keys().find()`). Decisión: acceso actual OK (OPERATOR fuera) → fix = limpiar declaración muerta, NO reordenar.
 - **`production_log`:** no graba perfil TR4/TR5.
 
@@ -370,7 +377,7 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 - **Rotar token decolecta:** quedó expuesto en un chat.
 - **ML yield -100% (`calcCoilYieldDeviation`):** transitorio en close/merma, inspeccionar si recurre.
 - **`registerCoilsBulk`:** mantiene ID viejo.
-- **Relabel COGS vs Costo Corrida:** match por largo en fulfillment; ruta muerta `/api/consulta-doc`; `useSales` swallow parcial.
+- **Relabel COGS vs Costo Corrida:** ruta muerta `/api/consulta-doc`; `useSales` swallow parcial.
 
 - **RUC/DNI en prod RESUELTO:** consultarRuc/Dni extraídas a codebase `functions` (default, sin secrets SOL), secret APISNET_TOKEN + doc integrations/apisnet sembrados en prod, funcionando. Pendiente menor: (1) rotar el token de decolecta (quedó expuesto en un chat); (2) ruta muerta src/app/api/consulta-doc/route.ts (deuda cosmética).
 - **Ventas históricas pre-multilínea sin `businessLines`/`items[].businessLine`** (era todo drywall) → invisibles al filtro por línea. Deuda ACEPTADA; filtro sirve para data nueva. Backfill descartado (migración de data financiera en prod, alto riesgo/bajo valor) salvo necesidad real de reportar históricos por línea.
@@ -407,6 +414,9 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 ---
 
 ## 11. Convenciones
+
+### Helpers Puros (Core)
+- **`src/core/production/fulfillmentLogic.ts`:** `quoteFulfillmentRows` y `bucketLogsBySourceId`, ambos puros + testeados (Vitest aislado). Comparten la matemática de agrupación por SKU con `queueLogic.ts` → mantener en sync (hay comentario cruzado en ambos archivos).
 
 ### densityFactor por acabado (referencia, fuente seedFinishes eliminada)
 
