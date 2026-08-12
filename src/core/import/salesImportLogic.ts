@@ -56,6 +56,7 @@ export function buildImportWrites(sale: any, injectedUploadedAt?: any): ImportWr
     quotationDoc = {
       ...baseQuotationDoc,
       productionStatus: 'CONFIRMED',
+      isFulfilled: false,
       relatedSaleId: sale.documentNumber,
       ...(uploadedAt ? { uploadedAt } : {}),
       metadata: {

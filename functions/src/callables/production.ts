@@ -311,7 +311,7 @@ export const produceFromCoils = onCall(async (request) => {
     });
 
     // d) Write-back de costo a la venta linkeada si la cotización queda CUMPLIDA
-    if (quoteSnap && quoteSnap.exists && saleSnap && saleSnap.exists && saleRef) {
+    if (quoteSnap && quoteSnap.exists) {
       const quoteData = quoteSnap.data()!;
       const currentRunLog = {
         sku: targetSku,
@@ -326,17 +326,21 @@ export const produceFromCoils = onCall(async (request) => {
       const allQuoteLogs = [...preTxnQuoteLogs, currentRunLog];
 
       if (isQuoteFulfilled(quoteData.items, allQuoteLogs)) {
-        const costBySku = productionUnitCostBySku(allQuoteLogs);
-        const saleData = saleSnap.data()!;
-        const updatedSale = applyCostCascade(saleData, costBySku);
+        tx.update(quoteSnap.ref, { isFulfilled: true });
 
-        tx.update(saleRef, {
-          items: updatedSale.items,
-          totalCost: updatedSale.totalCost,
-          totalProfit: updatedSale.totalProfit,
-          allFlags: updatedSale.allFlags,
-          costSyncedAt: now,
-        });
+        if (saleSnap && saleSnap.exists && saleRef) {
+          const costBySku = productionUnitCostBySku(allQuoteLogs);
+          const saleData = saleSnap.data()!;
+          const updatedSale = applyCostCascade(saleData, costBySku);
+
+          tx.update(saleRef, {
+            items: updatedSale.items,
+            totalCost: updatedSale.totalCost,
+            totalProfit: updatedSale.totalProfit,
+            allFlags: updatedSale.allFlags,
+            costSyncedAt: now,
+          });
+        }
       }
     }
 
@@ -437,17 +441,35 @@ export const voidProductionFromCoils = onCall(async (request) => {
 
   let hasOverRestoreWarning = false;
 
+  // PRE-TXN M2: Query remaining active logs si estaba ligada a una cotización
+  const quoteId = (log.source && log.source.type === 'QUOTE' && typeof log.source.id === 'string') ? log.source.id.trim() : null;
+  let remainingLogs: any[] = [];
+  if (quoteId) {
+    const activeLogsSnap = await db.collection("production_logs")
+      .where("source.id", "==", quoteId)
+      .where("status", "==", "ACTIVE")
+      .get();
+    
+    remainingLogs = activeLogsSnap.docs
+      .filter(d => d.id !== logId)
+      .map(d => d.data());
+  }
+
   return await db.runTransaction(async (tx) => {
     // 1. LECTURAS
     const coilRefs = log.perCoilBreakdown.map((b: any) => db.collection("coils").doc(b.coilId));
     const stockRef = db.collection("metallic_roofing_stock").doc(log.sku);
     const scrapRefs = log.scrapIds ? log.scrapIds.map((id: string) => db.collection("scrap_logs").doc(id)) : [];
+    const quoteRef = quoteId ? db.collection("sales").doc(quoteId) : null;
 
-    const refs = [...coilRefs, stockRef, ...scrapRefs];
+    const refs: admin.firestore.DocumentReference[] = [...coilRefs, stockRef, ...scrapRefs];
+    if (quoteRef) refs.push(quoteRef);
+
     const snaps = await tx.getAll(...refs);
 
     const coilSnaps = snaps.slice(0, coilRefs.length);
     const stockSnap = snaps[coilRefs.length];
+    const quoteSnap = quoteRef ? snaps[snaps.length - 1] : null;
 
     // Verificar que todas existan
     coilSnaps.forEach((snap, i) => {
@@ -557,6 +579,14 @@ export const voidProductionFromCoils = onCall(async (request) => {
       details: `Anulación de ${log.piecesProduced} u de ${log.sku}. Devolución de MP a ${log.perCoilBreakdown.length} bobina(s).`,
       timestamp: now,
     });
+
+    // e) Actualizar cotización si aplica (M2)
+    if (quoteSnap && quoteSnap.exists && quoteRef) {
+      const quoteData = quoteSnap.data()!;
+      if (!isQuoteFulfilled(quoteData.items, remainingLogs)) {
+        tx.update(quoteRef, { isFulfilled: false });
+      }
+    }
 
     return { success: true, hasOverRestoreWarning };
   });

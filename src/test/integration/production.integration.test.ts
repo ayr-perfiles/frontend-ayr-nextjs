@@ -563,4 +563,58 @@ describe('produceFromCoils Integration Tests', () => {
     expect(saleData.costSyncedAt).toBeDefined();
   });
 
+  it('14. RED 1x1 (M2): produceFromCoils marca isFulfilled en la cotizacion si completa, false si parcial', async () => {
+    // Preparar bobina
+    await db.collection('coil_finishes').doc('F-FULFILL').set({ active: true, lines: ['metallic-roofing'], densityFactor: 0.00785 });
+    await db.collection('coils').doc('COIL-FULFILL').set({
+      id: 'COIL-FULFILL', status: 'AVAILABLE', finish: 'F-FULFILL',
+      masterWidth: 1000, thickness: 1, pricePerKg: 10, currentWeight: 1000, initialWeight: 1000
+    });
+
+    // Crear Cotizacion y Venta (cantidad 20 ML)
+    await db.collection('sales').doc('COT-FULFILL').set({
+      status: 'QUOTATION',
+      productionStatus: 'CONFIRMED',
+      isFulfilled: false,
+      relatedSaleId: 'SALE-FULFILL',
+      items: [
+        { businessLine: 'metallic-roofing', sku: 'SKU-FULFILL', quantity: 20, type: 'METALLIC' }
+      ]
+    });
+    await db.collection('sales').doc('SALE-FULFILL').set({
+      status: 'COMPLETED',
+      items: [
+        { businessLine: 'metallic-roofing', sku: 'SKU-FULFILL', quantity: 20, type: 'METALLIC' }
+      ]
+    });
+
+    // 1. Produccion parcial (10 ML)
+    await produceFromCoils.run({
+      data: {
+        targetSku: 'SKU-FULFILL',
+        productKind: 'COBERTURA_ML',
+        coilInputs: [{ coilId: 'COIL-FULFILL', declared: 10 }],
+        requestId: 'req-partial', source: { type: 'QUOTE', id: 'COT-FULFILL' }
+      },
+      auth: { uid: 'user-wb', token: { role: 'ADMIN' } }
+    } as any);
+
+    let quoteSnap = await db.collection('sales').doc('COT-FULFILL').get();
+    expect(quoteSnap.data()!.isFulfilled).toBe(false);
+
+    // 2. Produccion completa (10 ML restantes)
+    await produceFromCoils.run({
+      data: {
+        targetSku: 'SKU-FULFILL',
+        productKind: 'COBERTURA_ML',
+        coilInputs: [{ coilId: 'COIL-FULFILL', declared: 10 }],
+        requestId: 'req-complete', source: { type: 'QUOTE', id: 'COT-FULFILL' }
+      },
+      auth: { uid: 'user-wb', token: { role: 'ADMIN' } }
+    } as any);
+
+    quoteSnap = await db.collection('sales').doc('COT-FULFILL').get();
+    expect(quoteSnap.data()!.isFulfilled).toBe(true);
+  });
+
 });

@@ -166,4 +166,14 @@ describe('confirmQuotationForProduction - Frente 1 productionStatus (RED PHASE)'
     expect(data.confirmedForProductionAt.toDate().toISOString()).toBe(originalDate.toISOString());
     expect(data.confirmedBy).toBe('primer-admin@ayrsteel.com');
   });
+
+  it('10. RED 1x1 (M2): Cotización confirmada nace isFulfilled: false', async () => {
+    const adminDb = (await import('firebase-admin')).firestore();
+    const quoteId = 'COT-ISFULFILLED';
+    await adminDb.collection('sales').doc(quoteId).set({ ...baseQuotation, documentNumber: 'ISFULFILLED' });
+    await confirmQuotationForProduction(quoteId, 'admin@test.com');
+    
+    const snap = await adminDb.collection('sales').doc(quoteId).get();
+    expect(snap.data()!.isFulfilled).toBe(false);
+  });
 });

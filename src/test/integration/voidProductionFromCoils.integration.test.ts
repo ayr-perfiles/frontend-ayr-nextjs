@@ -391,4 +391,82 @@ describe('voidProductionFromCoils — Anulación de Aluzinc (Integration)', () =
     const coil = (await adminDb.collection("coils").doc("BOB-K").get()).data()!;
     expect(coil.currentWeight).toBe(700); // sin cambio
   });
+
+  it('9. RED 1x1 (M2): voidProductionFromCoils que revierte una cotizacion CUMPLIDA la devuelve a isFulfilled:false', async () => {
+    const adminDb = admin.firestore();
+    const logTimestampMs = Date.now();
+
+    await seedScenario(adminDb, {
+      logId: "PROD-9",
+      sku: "COB-ALU-9",
+      coils: [{ id: "BOB-9", initialWeight: 1000, currentWeight: 700, pricePerKg: 3.5 }],
+      breakdown: [{ coilId: "BOB-9", mlFromCoil: 300, weightConsumedKg: 300, costPEN: 1050 }],
+      piecesProduced: 300,
+      stockQuantity: 300,
+      stockTotalValue: 1050,
+      logTimestampMs,
+    });
+
+    // Anclamos la cotizacion a la produccion
+    await adminDb.collection("production_logs").doc("PROD-9").update({
+      source: { type: 'QUOTE', id: 'COT-9' }
+    });
+
+    await adminDb.collection("sales").doc("COT-9").set({
+      status: 'QUOTATION',
+      productionStatus: 'CONFIRMED',
+      isFulfilled: true,
+      items: [{ businessLine: 'metallic-roofing', sku: 'COB-ALU-9', quantity: 300, type: 'METALLIC' }]
+    });
+
+    await voidProductionFromCoils.run({ data: { logId: "PROD-9" }, auth: getAdminAuth() } as any);
+
+    const quoteSnap = await adminDb.collection("sales").doc("COT-9").get();
+    expect(quoteSnap.data()!.isFulfilled).toBe(false);
+  });
+
+  it('10. RED 1x1 (M2): voidProductionFromCoils con excedente (no la saca del 100%) la deja en isFulfilled:true', async () => {
+    const adminDb = admin.firestore();
+    const logTimestampMs = Date.now();
+
+    // Requerido: 300
+    // Producido: log A (300) + log B (100) = 400
+    // Anulamos log B -> queda 300 -> Sigue cumplida
+    await seedScenario(adminDb, {
+      logId: "PROD-10",
+      sku: "COB-ALU-10",
+      coils: [{ id: "BOB-10", initialWeight: 1000, currentWeight: 700, pricePerKg: 3.5 }],
+      breakdown: [{ coilId: "BOB-10", mlFromCoil: 100, weightConsumedKg: 100, costPEN: 350 }],
+      piecesProduced: 100,
+      stockQuantity: 400,
+      stockTotalValue: 1400,
+      logTimestampMs,
+    });
+
+    // Log A (que no anularemos y sostiene el cumplimiento)
+    await adminDb.collection("production_logs").doc("PROD-10-A").set({
+      status: "ACTIVE",
+      source: { type: 'QUOTE', id: 'COT-10' },
+      sku: "COB-ALU-10",
+      piecesProduced: 300,
+      timestamp: admin.firestore.Timestamp.fromMillis(logTimestampMs - 1000)
+    });
+
+    await adminDb.collection("production_logs").doc("PROD-10").update({
+      source: { type: 'QUOTE', id: 'COT-10' }
+    });
+
+    await adminDb.collection("sales").doc("COT-10").set({
+      status: 'QUOTATION',
+      productionStatus: 'CONFIRMED',
+      isFulfilled: true,
+      items: [{ businessLine: 'metallic-roofing', sku: 'COB-ALU-10', quantity: 300, type: 'METALLIC' }]
+    });
+
+    await voidProductionFromCoils.run({ data: { logId: "PROD-10" }, auth: getAdminAuth() } as any);
+
+    const quoteSnap = await adminDb.collection("sales").doc("COT-10").get();
+    expect(quoteSnap.data()!.isFulfilled).toBe(true);
+  });
+
 });

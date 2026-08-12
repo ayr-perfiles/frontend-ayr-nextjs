@@ -278,7 +278,11 @@ describe("buildImportWrites - Cotización Aluzinc en Importador (RED PHASE)", ()
     const result = buildImportWrites(sampleMetallicSale);
 
     expect(result.quotationDoc).not.toBeNull();
-    // FAILS IN RED! buildImportWrites todavía no escribe el campo productionStatus.
     expect(result.quotationDoc?.productionStatus).toBe("CONFIRMED");
+  });
+
+  it("RED 4 (Fase 2B M2): quotationDoc.isFulfilled es false al nacer", () => {
+    const result = buildImportWrites(sampleMetallicSale);
+    expect(result.quotationDoc?.isFulfilled).toBe(false);
   });
 });

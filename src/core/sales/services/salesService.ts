@@ -234,6 +234,7 @@ export const confirmQuotationForProduction = async (
 
     transaction.update(quoteRef, {
       productionStatus: 'CONFIRMED',
+      isFulfilled: false,
       confirmedForProductionAt: serverTimestamp(),
       confirmedBy: userEmail,
     });
