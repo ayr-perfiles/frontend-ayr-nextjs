@@ -8,8 +8,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { isCoilEligibleForProduct } from "@/modules/metallic-roofing/domain/coilFilter";
 import { listProducts } from "@/modules/metallic-roofing/services/catalogService";
-import { produceFromCoils, getQuoteFulfillmentLogs, getProducedForQuoteLine } from "@/modules/metallic-roofing/services/productionService";
-import { quoteFulfillmentRows, FulfillmentRow } from "@/core/production/fulfillmentLogic";
+import { produceFromCoils, getQuoteFulfillmentLogs, getProducedForQuoteLine, getAllActiveFulfillmentLogs } from "@/modules/metallic-roofing/services/productionService";
+import { quoteFulfillmentRows, FulfillmentRow, bucketLogsBySourceId } from "@/core/production/fulfillmentLogic";
 import { calcProductionFromCoils } from "@/modules/metallic-roofing/domain/coilProduction";
 import { isThicknessWithinTolerance } from "@/modules/metallic-roofing/domain/thicknessMatch";
 import { parsePositiveNumberInput, computeCoverageDeclaredMl } from "@/modules/metallic-roofing/domain/coverageProductionInput";
@@ -106,12 +106,14 @@ function MetallicProductionForm() {
       setLoadingFilteredQuotes(true);
       try {
         const result: (Sale & { activeItems: FulfillmentRow[] })[] = [];
+        const allActive = await getAllActiveFulfillmentLogs();
+        const buckets = bucketLogsBySourceId(allActive);
         
         for (const q of quotes) {
           const metallicItems = q.items?.filter(item => item.businessLine === "metallic-roofing") || [];
           if (metallicItems.length === 0) continue;
           
-          const logs = await getQuoteFulfillmentLogs(q.id!);
+          const logs = buckets.get(q.id!) ?? [];
           const rows = quoteFulfillmentRows(metallicItems, logs);
           const activeItems = rows.filter(r => r.pending > 0);
           

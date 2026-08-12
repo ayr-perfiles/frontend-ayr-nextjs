@@ -1,6 +1,7 @@
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, functions } from '@/lib/firebase/clientApp';
 import { httpsCallable } from 'firebase/functions';
+import type { ProductionLog } from "@/types";
 
 export interface ProduceFromCoilsParams {
   targetSku: string;
@@ -103,6 +104,15 @@ export async function getQuoteFulfillmentLogs(quoteId: string): Promise<any[]> {
   return snap.docs
     .map((d) => d.data())
     .filter((log) => log.status !== "VOIDED");
+}
+
+export async function getAllActiveFulfillmentLogs(): Promise<ProductionLog[]> {
+  const q = query(
+    collection(db, "production_logs"),
+    where("status", "==", "ACTIVE")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as ProductionLog);
 }
 
 /**

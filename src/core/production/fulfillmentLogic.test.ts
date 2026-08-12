@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { quoteFulfillmentRows } from "./fulfillmentLogic";
+import { quoteFulfillmentRows, bucketLogsBySourceId } from "./fulfillmentLogic";
 
 describe("quoteFulfillmentRows", () => {
   it("dos líneas mismo SKU (360+1440), producido 1800 → 1 fila, requested 1800, produced 1800, pending 0, pct 100", () => {
@@ -95,5 +95,46 @@ describe("quoteFulfillmentRows", () => {
     expect(rows[0].quantityProduced).toBe(120);
     expect(rows[0].pending).toBe(0);
     expect(rows[0].pct).toBe(120); // (120/100)*100 = 120
+  });
+});
+
+describe("bucketLogsBySourceId", () => {
+  it("dos logs mismo source.id → un bucket con los 2", () => {
+    const logs: any[] = [
+      { id: "L1", source: { id: "QUOTE1", type: "QUOTE" } },
+      { id: "L2", source: { id: "QUOTE1", type: "QUOTE" } }
+    ];
+    
+    const buckets = bucketLogsBySourceId(logs);
+    expect(buckets.size).toBe(1);
+    expect(buckets.get("QUOTE1")).toHaveLength(2);
+    expect(buckets.get("QUOTE1")?.[0].id).toBe("L1");
+  });
+
+  it("logs con distinto source.id → buckets separados", () => {
+    const logs: any[] = [
+      { id: "L1", source: { id: "QUOTE1", type: "QUOTE" } },
+      { id: "L2", source: { id: "QUOTE2", type: "QUOTE" } }
+    ];
+    
+    const buckets = bucketLogsBySourceId(logs);
+    expect(buckets.size).toBe(2);
+    expect(buckets.get("QUOTE1")).toHaveLength(1);
+    expect(buckets.get("QUOTE2")).toHaveLength(1);
+  });
+
+  it("log sin source / sin source.id → NO aparece en el bucket de ninguna cotización real", () => {
+    const logs: any[] = [
+      { id: "L1", source: { id: "QUOTE1", type: "QUOTE" } },
+      { id: "L2", source: undefined },
+      { id: "L3" }
+    ];
+    
+    const buckets = bucketLogsBySourceId(logs);
+    
+    expect(buckets.size).toBe(1);
+    expect(buckets.has("QUOTE1")).toBe(true);
+    expect(buckets.get("QUOTE1")).toHaveLength(1);
+    expect(buckets.has(undefined as never)).toBe(false);
   });
 });

@@ -46,3 +46,15 @@ export function quoteFulfillmentRows(items: SaleItem[], logs: ProductionLog[]): 
     };
   });
 }
+
+export function bucketLogsBySourceId(logs: ProductionLog[]): Map<string, ProductionLog[]> {
+  const buckets = new Map<string, ProductionLog[]>();
+  for (const log of logs) {
+    const sourceId = log.source?.id;
+    if (!sourceId) continue;
+    const bucket = buckets.get(sourceId) ?? [];
+    bucket.push(log);
+    buckets.set(sourceId, bucket);
+  }
+  return buckets;
+}
