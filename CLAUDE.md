@@ -1,7 +1,23 @@
-# CLAUDE.md — AYR Steel ERP (v6.37)
+# CLAUDE.md — AYR Steel ERP (v6.38)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | test:emu saneado (0 rojos) | Borón masivo ejecutado | Functions v2 operativa.
+> **v6.38:** (A3 PASO 0)
+> - **A3 (HORIZONTE) — TERRENO CONFIRMADO:** (recon read-only)
+>   - Reporte 'ventas con producción cumplida': página DEDICADA fuera de REPORT_REGISTRY (ReportDefinition/ReportRunner render rígido, no soporta 3 bloques/export custom). PRECEDENTE a copiar: `src/app/admin/reports/bobinas-supervisor/page.tsx` + su `pdfExport.ts`.
+>   - PDF: jspdf ^4.2.1 + jspdf-autotable ^5.0.8 (ya en package.json). Patrón: `autoTable(doc,{startY,head,body,theme})` — ver bobinas-supervisor/pdfExport.ts.
+>   - Parseo SKU: REUSAR `parseCoverageMetadata` (src/modules/metallic-roofing/domain/coverageMetadataParser.ts) → family (COB→COBERTURA, PL→PLANCHA) + espesor `/^(\d{2,3})/` (030→0.30) + color por diccionario de alias. NO reinventar.
+>   - aluzinc-detalle: NET-NEW (no existe). aluzinc-resumen vive en `aluzincResumenLogic.ts` + `reportFunctions.runAluzincResumen`, querea sales status=='COMPLETED' + scrap_logs, filtro `timestamp`.
+>   - 3 bloques: (1) VENTAS — link `sale.relatedQuotationId`→COT-*, costSource:'PRODUCTION' a nivel ítem; (2) MERMAS — CÓMPUTO, no campo: `weightConsumedKg − teorico(ML×ancho×espesor×densidad)`, densidad SIEMPRE de coil_finishes; vive en production_log.perCoilBreakdown; (3) PRODUCCION — production_logs (sku, mlProduced, piecesProduced, perCoilBreakdown; ojo costPEN a veces undefined en top-level, está en perCoilBreakdown).
+>   - Período: helper `getPeriodDates(period)` + Timestamp.fromDate sobre `timestamp` (PERIOD: HOY/ESTE_MES/HISTORICO...).
+>   - Reagrupación/filtro por COLOR+ESPESOR (de parseCoverageMetadata). Drill-down = vista detalle net-new.
+> - **DUDAS PENDIENTES A3:** (resolver al inicio de la próxima sesión, antes de implementar)
+>   1. Definición exacta de 'venta con producción cumplida': ¿sale cuya quote linkeada (relatedQuotationId) tiene isFulfilled==true? ¿Qué se hace con ventas POS sin quote?
+>   2. Merma: confirmar fórmula del teórico + qué densidad por finish (natural 0.00785 vs prepintado 0.008) + qué ancho (masterWidth decrece post-split → ML aprox).
+>   3. Scope del PDF (qué bloques exporta, layout landscape, 1 doc).
+>   4. Drill-down: modal / sub-tabla / vista aparte desde una fila color+espesor.
+>   5. Universo de ventas: ¿alinear con aluzinc-resumen (status=='COMPLETED')?
+>   6. Observaciones auto-derivadas: definir el set (ej. merma %, SKU peor merma, ventas sin costo de producción).
 > **v6.37:** (Cierre Frente Cola B)
 > - **FRENTE COLA — CERRADO:** Fase 1 (frontend): default `hideCompleted=true` en la Cola + copy 'Cotizaciones pendientes de producción'. Commit 3f5adb2f. Fase 2 (flag isFulfilled): M1 índice sales(status,productionStatus,isFulfilled,businessLines) prod+test; M2 forward (produceFromCoils marca true; voidProductionFromCoils revierte a false con isQuoteFulfilled sobre logs ACTIVE restantes; init false en confirmQuotationForProduction + buildImportWrites) — functions deployadas prod+test; M4 backfill 69 docs (56 true / 13 false) con guard projectId, backup, lote-por-lote; M3 filtro isFulfilled==false en getProductionQueueCount → badge 69→13. Commits 0ea8eb85, 4b7a17de, fbfc5b1a. Backup: ~/ayr-backups/B-M4-isFulfilled-2026-08-12*.json.
 > - Helper reusado en forward+void+backfill: `isQuoteFulfilled` (grupo-SKU, EPSILON 0.01) — misma verdad en los 3.

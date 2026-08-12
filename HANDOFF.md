@@ -42,7 +42,7 @@
   - A2 backfill ejecutado. Backup histórico: `~/ayr-backups/A2-20260811.json`.
   - Fix reporte aluzinc-resumen activo.
 - **Pendientes no bloqueantes:** Runtime real del reporte de usuario final; fix A1.5 (void re-sync) gap conocido forward-fix.
-- **PRÓXIMO FRENTE (A3):** Reporte 'ventas con producción cumplida' + filtros color+espesor.
+- **PRÓXIMO FRENTE (A3):** PASO 0 hecho (terreno mapeado en CLAUDE v6.38 + módulo), DUDAS pendientes listadas. Estado repo: 0bd5f7c9, master==develop==origin. Frentes cerrados esta sesión: #9, perf N+1, Cola B completo.
 
 ## HORIZONTE (candidatos próximo frente)
 - **Slice 3 DIFERIDO:** capa de costo variable/conversión.
@@ -55,7 +55,7 @@
 - **Drawer piezas/bobina en PLANCHA — forward-fix del writer:** `produceFromCoils` hoy graba `piecesCount`/`pieceLengthM` en `perCoilBreakdown` solo para COBERTURA. Plancha muestra '—' en esas 2 columnas. Si se quiere desglose en plancha, es cambio de backend + backfill opcional (frente aparte).
 
 ## PENDIENTES OPERATIVOS
-- **Scripts sueltos:** mover del working tree a `~/ayr-backups/` los sueltos: `M4a-backfill-dryrun.ts`, `M4b-lote1-false.ts`, `M4b-lote2-true.ts`, `functions_list_after.txt`, `functions_list_test.txt`, `recon_cola.cjs`, `recon_magnitudes.cjs`.
+
 - **Smoke check Algolia en prod:** `/admin/sales` con búsqueda de texto activa → verificar que las 3 tarjetas de dinero se ocultan y el pie de tabla queda coherente (mensaje "Totales no disponibles en búsqueda por texto"). Test (`ayrsteel-test`) no tiene Algolia, solo verificable en prod.
 
 ## ESTADO FRENTE B (Cola fase 2)
