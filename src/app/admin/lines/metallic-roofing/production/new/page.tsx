@@ -9,6 +9,7 @@ import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { isCoilEligibleForProduct } from "@/modules/metallic-roofing/domain/coilFilter";
 import { listProducts } from "@/modules/metallic-roofing/services/catalogService";
 import { produceFromCoils, getQuoteFulfillmentLogs, getProducedForQuoteLine } from "@/modules/metallic-roofing/services/productionService";
+import { quoteFulfillmentRows, FulfillmentRow } from "@/core/production/fulfillmentLogic";
 import { calcProductionFromCoils } from "@/modules/metallic-roofing/domain/coilProduction";
 import { isThicknessWithinTolerance } from "@/modules/metallic-roofing/domain/thicknessMatch";
 import { parsePositiveNumberInput, computeCoverageDeclaredMl } from "@/modules/metallic-roofing/domain/coverageProductionInput";
@@ -91,7 +92,7 @@ function MetallicProductionForm() {
     skipAggregates: true,
   });
 
-  const [filteredQuotes, setFilteredQuotes] = useState<(Sale & { activeItems: SaleItem[] })[]>([]);
+  const [filteredQuotes, setFilteredQuotes] = useState<(Sale & { activeItems: FulfillmentRow[] })[]>([]);
   const [loadingFilteredQuotes, setLoadingFilteredQuotes] = useState(false);
 
   useEffect(() => {
@@ -104,20 +105,15 @@ function MetallicProductionForm() {
     const computePending = async () => {
       setLoadingFilteredQuotes(true);
       try {
-        const result: (Sale & { activeItems: SaleItem[] })[] = [];
+        const result: (Sale & { activeItems: FulfillmentRow[] })[] = [];
         
         for (const q of quotes) {
           const metallicItems = q.items?.filter(item => item.businessLine === "metallic-roofing") || [];
           if (metallicItems.length === 0) continue;
           
-          const activeItems: SaleItem[] = [];
-          for (const item of metallicItems) {
-            const produced = await getProducedForQuoteLine(q.id!, item.sku);
-            const pending = Math.max(0, item.quantity - produced);
-            if (pending > 0) {
-              activeItems.push(item);
-            }
-          }
+          const logs = await getQuoteFulfillmentLogs(q.id!);
+          const rows = quoteFulfillmentRows(metallicItems, logs);
+          const activeItems = rows.filter(r => r.pending > 0);
           
           if (activeItems.length > 0) {
             result.push({ ...q, activeItems });
@@ -480,24 +476,23 @@ function MetallicProductionForm() {
               <div className="p-3 bg-orange-50 rounded-xl border border-orange-100">
                 <p className="text-xs font-bold text-orange-800 mb-2">Selecciona un producto de la cotización:</p>
                 <div className="grid gap-2">
-                  {filteredQuotes.find(q => q.id === selectedQuoteId)?.activeItems.map((item, idx) => {
-                    const produced = quoteLogs.filter(l => l.sku === item.sku).reduce((acc, l) => acc + (l.piecesProduced || 0), 0);
-                    const pending = Math.max(0, item.quantity - produced);
+                  {filteredQuotes.find(q => q.id === selectedQuoteId)?.activeItems.map((row, idx) => {
+                    const { sku, quantityRequested, pending, itemRef: item } = row;
                     const isFulfilled = pending === 0;
-                    const unit = products.find(p => p.sku === item.sku)?.family === "PLANCHA" ? "UND" : "ML";
+                    const unit = products.find(p => p.sku === sku)?.family === "PLANCHA" ? "UND" : "ML";
                     return (
                       <button
                         key={idx}
                         type="button"
                         onClick={() => {
-                          setSelectedSku(item.sku);
-                          const prod = products.find((p) => p.sku === item.sku);
+                          setSelectedSku(sku);
+                          const prod = products.find((p) => p.sku === sku);
                           setQuoteItemPending(pending);
                           const newR = newRow(prod?.length ?? null);
                           newR.declared = pending > 0 ? String(pending) : "0";
                           
                           if (prod?.family !== "PLANCHA") {
-                            const prefill = computeCoberturaPrefill(pending, item.pieceLengthM ?? 0, item.piecesCount);
+                            const prefill = computeCoberturaPrefill(pending, item?.pieceLengthM ?? 0, item?.piecesCount);
                             if (prefill) {
                               newR.longitud = prefill.longitud;
                               newR.cantidad = prefill.cantidad;
@@ -506,9 +501,9 @@ function MetallicProductionForm() {
                           
                           setRows([newR]);
                         }}
-                        className={`text-left p-3 rounded-lg border text-sm font-bold transition ${selectedSku === item.sku ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-slate-700 hover:border-orange-300 border-slate-200'}`}
+                        className={`text-left p-3 rounded-lg border text-sm font-bold transition ${selectedSku === sku ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-slate-700 hover:border-orange-300 border-slate-200'}`}
                       >
-                        {item.sku} — Pendiente: {pending} de {item.quantity} {unit}
+                        {sku} — Pendiente: {pending} de {quantityRequested} {unit}
                         {isFulfilled && <span className="ml-2 text-[10px] font-black bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded uppercase tracking-widest inline-block">Ya cumplida</span>}
                       </button>
                     );

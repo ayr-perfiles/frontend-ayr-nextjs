@@ -20,6 +20,7 @@ export interface QueueRow {
   status: QueueRowStatus;
 }
 
+// Nota: la matemática de agrupación por SKU (produced/pending/pct) está compartida con fulfillmentLogic.ts, mantener en sync!
 /**
  * EPSILON: 0.01
  * Justificación: El sistema maneja ML (metros lineales) y kg. 

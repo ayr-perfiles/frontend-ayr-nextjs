@@ -22,7 +22,10 @@ import { Sale } from "@/types";
 import { useAuth } from "@/context/AuthContext";
 import { annulSale, confirmQuotationForProduction } from "@/services/salesService";
 import { canConfirmForProduction } from "@/core/sales/productionConfirmationLogic";
+import { quoteFulfillmentRows } from "@/core/production/fulfillmentLogic";
 import { getQuoteFulfillmentLogs } from "@/modules/metallic-roofing/services/productionService";
+import { listProducts } from "@/modules/metallic-roofing/services/catalogService";
+import type { MetallicProduct } from "@/modules/metallic-roofing/types";
 import toast from "react-hot-toast";
 import { SunatPanel } from "./SunatPanel";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
@@ -504,6 +507,7 @@ function ProductionFulfillment({
   onConfirmed?: () => void;
 }) {
   const [logs, setLogs] = useState<any[]>([]);
+  const [products, setProducts] = useState<MetallicProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
 
@@ -511,10 +515,14 @@ function ProductionFulfillment({
     if (!sale.id) return;
     const fetchFulfillment = async () => {
       try {
-        const validLogs = await getQuoteFulfillmentLogs(sale.id!);
+        const [validLogs, allProducts] = await Promise.all([
+          getQuoteFulfillmentLogs(sale.id!),
+          listProducts({ active: true })
+        ]);
         setLogs(validLogs);
+        setProducts(allProducts);
       } catch (err) {
-        console.error("Error fetching fulfillment logs", err);
+        console.error("Error fetching fulfillment logs or products", err);
       } finally {
         setLoading(false);
       }
@@ -571,33 +579,33 @@ function ProductionFulfillment({
         </div>
       ) : (
         <div className="space-y-4">
-          {metallicItems.map((item, idx) => {
-            const produced = logs
-              .filter((l) => l.sku === item.sku)
-              .reduce((acc, l) => acc + (l.piecesProduced || 0), 0);
-            const pending = Math.max(0, item.quantity - produced);
+          {quoteFulfillmentRows(metallicItems, logs).map((row, idx) => {
+            const { sku, quantityRequested, quantityProduced: produced, pending, itemRef: item } = row;
             const status = pending === 0 ? "CUMPLIDA" : produced > 0 ? "EN PROGRESO" : "PENDIENTE";
+            const unit = products.find(p => p.sku === sku)?.family === "PLANCHA" ? "UND" : "ML";
 
             return (
               <div key={idx} className="bg-orange-50/50 p-4 rounded-xl border border-orange-100 flex flex-col sm:flex-row justify-between gap-4">
                 <div>
-                  <p className="font-black text-gray-800">{item.sku}</p>
+                  <p className="font-black text-gray-800">{sku}</p>
                   <div className="flex gap-4 mt-2 text-xs">
                     <div>
                       <span className="text-gray-500 font-bold uppercase tracking-wider block text-[9px]">Solicitado</span>
                       <span className="font-bold text-gray-700">
-                        {item.piecesCount && item.pieceLengthM
-                          ? `${item.piecesCount} pzs \u00D7 ${item.pieceLengthM} m = ${item.quantity} ML`
-                          : item.quantity}
+                        {quantityRequested} {unit}
                       </span>
                     </div>
                     <div>
                       <span className="text-gray-500 font-bold uppercase tracking-wider block text-[9px]">Producido</span>
-                      <span className="font-bold text-blue-600">{produced}</span>
+                      <span className="font-bold text-blue-600">
+                        {produced} {unit}
+                      </span>
                     </div>
                     <div>
                       <span className="text-gray-500 font-bold uppercase tracking-wider block text-[9px]">Pendiente</span>
-                      <span className="font-bold text-orange-600">{pending}</span>
+                      <span className="font-bold text-orange-600">
+                        {pending} {unit}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -609,7 +617,7 @@ function ProductionFulfillment({
                   
                   {pending > 0 && canProduce && (
                     <Link
-                      href={`/admin/lines/metallic-roofing/production/new?quoteId=${sale.id}&sku=${item.sku}&qty=${pending}`}
+                      href={`/admin/lines/metallic-roofing/production/new?quoteId=${sale.id}&sku=${sku}&qty=${pending}`}
                       className="text-[10px] bg-orange-500 hover:bg-orange-600 text-white font-black px-3 py-1.5 rounded-lg transition"
                     >
                       PRODUCIR
