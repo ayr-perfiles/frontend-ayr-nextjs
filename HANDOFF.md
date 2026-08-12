@@ -7,6 +7,8 @@
 > backend en prod antes que master.
 
 ## DEUDAS
+- **isFulfilled se DESINCRONIZA** si se EDITA una cotización ya cumplida sin pasar por produce/void (el forward solo recalcula en produce/void). Forward-fix: recomputar isFulfilled on-edit. Mismo patrón que la deuda 'Editar Cotización desincroniza'.
+- **Data de TEST sin backfill de isFulfilled** → badge test da 0 hasta que se produzca ahí. ACEPTADO (sandbox); paridad es de código/índice/functions, no de data de negocio.
 - **DEUDA NUEVA:** test-prod.ts (gitignoreado) rompe el type-check del worker de Next cada vez que se toca — limpiar aparte (frente chico).
 - **Nota proceso:** el ejecutor entregó resumen de tests, no los 16 nombres 1x1; se aceptó por conteo (15+1) + verificación manual por vuelta + runtime real. Reforzar 'pegar corrida con nombres' la próxima.
 - **COB030ROJO:** PT en stock NEGATIVO en prod (-2,116.94 m / S/ -16,916.97). Corrupcion preexistente (no la introduce este merge; el fix inventario la MUESTRA en rojo, correcto). Backfill/ajuste manual pendiente — frente aparte.
@@ -53,13 +55,15 @@
 - **Drawer piezas/bobina en PLANCHA — forward-fix del writer:** `produceFromCoils` hoy graba `piecesCount`/`pieceLengthM` en `perCoilBreakdown` solo para COBERTURA. Plancha muestra '—' en esas 2 columnas. Si se quiere desglose en plancha, es cambio de backend + backfill opcional (frente aparte).
 
 ## PENDIENTES OPERATIVOS
+- **Scripts sueltos:** mover del working tree a `~/ayr-backups/` los sueltos: `M4a-backfill-dryrun.ts`, `M4b-lote1-false.ts`, `M4b-lote2-true.ts`, `functions_list_after.txt`, `functions_list_test.txt`, `recon_cola.cjs`, `recon_magnitudes.cjs`.
 - **Smoke check Algolia en prod:** `/admin/sales` con búsqueda de texto activa → verificar que las 3 tarjetas de dinero se ocultan y el pie de tabla queda coherente (mensaje "Totales no disponibles en búsqueda por texto"). Test (`ayrsteel-test`) no tiene Algolia, solo verificable en prod.
 
 ## ESTADO FRENTE B (Cola fase 2)
-M1 índice isFulfilled deployado prod+test; M2 flag forward (produceFromCoils/void + inits cliente) código listo, functions deployadas a prod; PENDIENTE en orden: M4 backfill 69 (56 true / 13 false) → M3 filtro isFulfilled==false en getProductionQueueCount. Nota: M4 va ANTES que M3 (count no matchea campo ausente).
+**CERRADO.** Fase 1 + Fase 2 isFulfilled terminados. (Commits 3f5adb2f, 0ea8eb85, 4b7a17de, fbfc5b1a).
 
 ## REGLAS GRABADAS (aprendidas)
 - **PARIDAD DE ENTORNOS:** ayrsteel-test y ayrsteel-2026 (prod) se mantienen A LA PAR siempre — índices Firestore, Cloud Functions, y ramas git (develop==master==origin). Todo deploy a prod (índice/función) o push se replica/verifica en test en la MISMA tanda. Verificar paridad al inicio de cada frente.
+- **Scripts en Prod:** Todo script que lea/escriba prod imprime y ASSERTEA el projectId al arrancar (`if (projectId !== 'ayrsteel-2026') process.exit(1)`). Sin eso no corre.
 - Ejecutor **PARA y espera OK** antes de tocar prod (no ejecutar-y-reportar).
 - **NUNCA script que reimplemente callable** saltándose guards contra prod.
 - **Guard laterSales NO se toca.**

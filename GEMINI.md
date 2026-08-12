@@ -1,11 +1,13 @@
 <!-- ⚠️ AUTO-GENERADO desde CLAUDE.md. NO editar a mano — editá CLAUDE.md y corré sync-context. -->
-# CLAUDE.md — AYR Steel ERP (v6.36)
+# CLAUDE.md — AYR Steel ERP (v6.37)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | test:emu saneado (0 rojos) | Borón masivo ejecutado | Functions v2 operativa.
+> **v6.37:** (Cierre Frente Cola B)
+> - **FRENTE COLA — CERRADO:** Fase 1 (frontend): default `hideCompleted=true` en la Cola + copy 'Cotizaciones pendientes de producción'. Commit 3f5adb2f. Fase 2 (flag isFulfilled): M1 índice sales(status,productionStatus,isFulfilled,businessLines) prod+test; M2 forward (produceFromCoils marca true; voidProductionFromCoils revierte a false con isQuoteFulfilled sobre logs ACTIVE restantes; init false en confirmQuotationForProduction + buildImportWrites) — functions deployadas prod+test; M4 backfill 69 docs (56 true / 13 false) con guard projectId, backup, lote-por-lote; M3 filtro isFulfilled==false en getProductionQueueCount → badge 69→13. Commits 0ea8eb85, 4b7a17de, fbfc5b1a. Backup: ~/ayr-backups/B-M4-isFulfilled-2026-08-12*.json.
+> - Helper reusado en forward+void+backfill: `isQuoteFulfilled` (grupo-SKU, EPSILON 0.01) — misma verdad en los 3.
 > **v6.36:** (Sync Entornos)
 > - **PARIDAD DE ENTORNOS:** ayrsteel-test y ayrsteel-2026 (prod) se mantienen A LA PAR siempre — índices Firestore, Cloud Functions, y ramas git (develop==master==origin). Todo deploy a prod (índice/función) o push se replica/verifica en test en la MISMA tanda. Verificar paridad al inicio de cada frente.
-> - **Estado Frente B (Cola fase 2):** M1 índice isFulfilled deployado prod+test; M2 flag forward (produceFromCoils/void + inits cliente) código listo, functions deployadas a prod; PENDIENTE en orden: M4 backfill 69 (56 true / 13 false) → M3 filtro isFulfilled==false en getProductionQueueCount. Nota: M4 va ANTES que M3 (count no matchea campo ausente).
 > **v6.35:** (Cierre de Sesión)
 > - **#9 (agrupación por grupo-SKU):** las vistas que iteraban items[] crudo (`/admin/lines/metallic-roofing/production/new` selector + `SaleDetailsModal` panel Progreso de Producción) colapsaban mal líneas del MISMO SKU (botón/renglon gemelo + aviso de sobre-producción descuadrado). Fix: helper puro `quoteFulfillmentRows(items, logs)` agrupa por SKU (requested/produced/pending/pct). Unidad derivada de `products.family` (PLANCHA→UND, COBERTURA→ML), no hardcodeada. Frontend-puro. Commit 72295241.
 > - **Perf N+1 en carga de cotizaciones de `/production/new`:** el loop hacía `await getQuoteFulfillmentLogs(q.id)` secuencial por cotización (71 en prod ≈ 8.5s). Fix: `getAllActiveFulfillmentLogs()` (1 query `where status==ACTIVE`) + helper puro `bucketLogsBySourceId(logs): Map<string,ProductionLog[]>` (agrupa por source.id, saltea logs sin source.id), lookup O(1) en el loop. Frontend-puro. Commit 277e658b. master==develop==origin en 277e658b.
@@ -332,9 +334,6 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 
 **PENDIENTE / EN COLA (orden sugerido):**
 
-- **Frente Cola (COLA-1, COLA-2):** el count 69 es CORRECTO (CONFIRMED + status==QUOTATION + businessLines contiene metallic; los 2 de más vs 71 son no-metallic/no-cotización). El problema: de 69, 56 ya CUMPLIDA, solo 13 accionables; el banner las cuenta todas y el subtítulo 'pendientes de conformación' engaña. Badge sidebar = `getProductionQueueCount` (server .count, 3 filtros). Banner página = `totalFiltered` de `useTableData` (post-filtro frontend). Ocultar cumplidas: infra existe (`hideCompleted` arranca false, `<TableFilters>`, `useTableData` filtra `row.status==='CUMPLIDA'`). CUMPLIDA se deriva en `queueLogic` (`buildQueueRow`): todas las líneas grupo-SKU con `producido >= requerido - EPSILON(0.01)`.
-  - **PLAN:** (fase 1, frontend-puro) default `hideCompleted=true` + copy subtítulo + fusionar el N+1 de la Cola con el batch (`getAllActiveFulfillmentLogs`+`bucketLogsBySourceId`) si el list fetch es secuencial. (fase 2, backend+backfill = opción B elegida) denormalizar flag `isFulfilled`/`productionFulfilledAt` escrito por `produceFromCoils` al marcar CUMPLIDA + init en `confirmQuotationForProduction` + filtro en `getProductionQueueCount` → badge=13 consistente + backfill de 56 con gate. Void re-sync (A1.5) sigue DIFERIDO — relevante para revertir el flag en anulaciones.
-
 4. **WRITE 7:** `voidProductionFromCoils` metallic+drywall (costo congelado del `production_log`).
 5. **WRITE 8:** `cutOrder` (monstruo: WAC+prorrateo, 5 funciones).
 6. **WRITE 9:** `salesService` (payload crítico precio/correlativo). Desbloquea 3 tests `salesReimport` skipped.
@@ -370,6 +369,8 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 
 ## 11. Deuda Técnica Menor (Backlog)
 
+- **isFulfilled se DESINCRONIZA** si se EDITA una cotización ya cumplida sin pasar por produce/void (el forward solo recalcula en produce/void). Forward-fix: recomputar isFulfilled on-edit. Mismo patrón que la deuda 'Editar Cotización desincroniza'.
+- **Data de TEST sin backfill de isFulfilled** → badge test da 0 hasta que se produzca ahí. ACEPTADO (sandbox); paridad es de código/índice/functions, no de data de negocio.
 - ⚠️ **PENDIENTE INMEDIATO (UI):** Mejorar importación masiva de ventas — cuando hay varios registros con el mismo n° de comprobante, mostrar el DETALLE (actualmente muestra solo el total consolidado).
 - **`getProducedForQuoteLine`:** indexa por SKU → duplica en `/production/new` y `SaleDetailsModal` (la cola ya lo resuelve). [RESUELTA: ambas vistas usan `quoteFulfillmentRows` agrupado por SKU]
 - **BUG SOMBRA `ROUTE_PERMISSIONS`:** `/admin/lines` sombrea rutas OPERATOR (`Object.keys().find()`). Decisión: acceso actual OK (OPERATOR fuera) → fix = limpiar declaración muerta, NO reordenar.
@@ -440,6 +441,7 @@ Runtime: lookup desde `coil_finishes`, throw si falta.
 - **Tests:** `fileParallelism: false` (los de integración comparten emulador; en paralelo colisionan). Correr serializado para verde real (463/463).
 - **Build de Vercel = build SIN credenciales** (serviceAccountKey gitignored). Scripts de migración EXCLUIDOS del build Next (tsconfig exclude) — importan serviceAccountKey que no existe en Vercel. Verificar build renombrando la credencial localmente.
 - **Git:** push directo a `develop`. Push dispara Vercel. Credenciales (serviceAccountKey*, .env*) y \*.log en .gitignore.
+- ⚠️ **REGLA DE ORO (Scripts en Prod):** Todo script que lea/escriba prod imprime y ASSERTEA el projectId al arrancar (`if (projectId !== 'ayrsteel-2026') process.exit(1)`). Sin eso no corre. Aprendido: un dry-run leyó data cruzada por confusión de entorno.
 - ⚠️ **REGLA DE ORO (Functions Deploy):** Deploy con `--only functions:A,functions:B` **DEBE** repetir el prefijo `functions:` en cada target. La CLI ignora silenciosamente los que no lo tienen. Verificar `functions:list` post-deploy.
 - ⚠️ **REGLA DE ORO (Operaciones Destructivas y Lotes):** En operaciones destructivas por lotes, SE DEBE usar un GATE: correr UN lote → reportar → ESPERAR OK del usuario antes de seguir. NUNCA correr todo de corrido.
 - ⚠️ **REGLA DE ORO (Backups y Borrados):** Antes de un borrado físico, hacer backup JSON fuera del entorno y PROBAR EL RESTORE en `test` (asegurando el mapeo `_id` → `doc.id`) antes de tocar prod.
