@@ -35,7 +35,7 @@ export default function ProductionQueuePage() {
   const [loadingLogs, setLoadingLogs] = useState(false);
   
   // Filtros propios de la página
-  const [hideCompleted, setHideCompleted] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Sale | null>(null);
 
   useEffect(() => {
@@ -94,6 +94,13 @@ export default function ProductionQueuePage() {
     },
     pageSize: 50,
   });
+
+  useEffect(() => {
+    if (!showCompleted) {
+      setFilterValue("status-filter", ["hide_completed"]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const columns: ColumnDef<QueueRow>[] = useMemo(() => [
     {
@@ -209,7 +216,7 @@ export default function ProductionQueuePage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Cola de Producción (Aluzinc)</h1>
-          <p className="text-slate-500 mt-1">Órdenes pendientes de conformación</p>
+          <p className="text-slate-500 mt-1">Cotizaciones pendientes de producción</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
@@ -238,13 +245,14 @@ export default function ProductionQueuePage() {
               label: "Estado",
               multiple: true,
               options: [
-                { value: "hide_completed", label: "Ocultar cumplidas" }
+                { value: "show_completed", label: "Mostrar cumplidas" }
               ],
-              value: hideCompleted ? ["hide_completed"] : [],
+              value: showCompleted ? ["show_completed"] : [],
               onChange: (v) => {
                 const arr = v as string[];
-                setHideCompleted(arr.includes("hide_completed"));
-                setFilterValue("status-filter", arr);
+                const isShow = arr.includes("show_completed");
+                setShowCompleted(isShow);
+                setFilterValue("status-filter", isShow ? [] : ["hide_completed"]);
               }
             }
           ]}
