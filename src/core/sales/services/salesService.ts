@@ -681,6 +681,7 @@ export const getProductionQueueCount = async (): Promise<number> => {
       where('status', '==', PRODUCTION_QUEUE_FILTER.status),
       where('productionStatus', '==', PRODUCTION_QUEUE_FILTER.productionStatus),
       where('businessLines', 'array-contains', PRODUCTION_QUEUE_FILTER.businessLine),
+      where('isFulfilled', '==', false),
     ),
   );
   return snap.data().count;

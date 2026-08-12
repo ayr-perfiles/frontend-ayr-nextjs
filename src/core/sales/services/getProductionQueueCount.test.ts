@@ -26,7 +26,7 @@ describe("getProductionQueueCount", () => {
     vi.clearAllMocks();
   });
 
-  it("arma la query con los 3 filtros exactos de la cola (status/productionStatus/businessLines) y devuelve el count crudo", async () => {
+  it("arma la query con los 4 filtros exactos de la cola y devuelve el count crudo", async () => {
     getCountFromServerMock.mockResolvedValue({ data: () => ({ count: 23 }) });
 
     const result = await getProductionQueueCount();
@@ -35,6 +35,7 @@ describe("getProductionQueueCount", () => {
     expect(whereMock).toHaveBeenCalledWith("status", "==", "QUOTATION");
     expect(whereMock).toHaveBeenCalledWith("productionStatus", "==", "CONFIRMED");
     expect(whereMock).toHaveBeenCalledWith("businessLines", "array-contains", "metallic-roofing");
+    expect(whereMock).toHaveBeenCalledWith("isFulfilled", "==", false);
     expect(getCountFromServerMock).toHaveBeenCalledTimes(1);
     expect(result).toBe(23);
   });
