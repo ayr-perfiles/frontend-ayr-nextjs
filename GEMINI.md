@@ -1,8 +1,11 @@
 <!-- ⚠️ AUTO-GENERADO desde CLAUDE.md. NO editar a mano — editá CLAUDE.md y corré sync-context. -->
-# CLAUDE.md — AYR Steel ERP (v6.35)
+# CLAUDE.md — AYR Steel ERP (v6.36)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | test:emu saneado (0 rojos) | Borón masivo ejecutado | Functions v2 operativa.
+> **v6.36:** (Sync Entornos)
+> - **PARIDAD DE ENTORNOS:** ayrsteel-test y ayrsteel-2026 (prod) se mantienen A LA PAR siempre — índices Firestore, Cloud Functions, y ramas git (develop==master==origin). Todo deploy a prod (índice/función) o push se replica/verifica en test en la MISMA tanda. Verificar paridad al inicio de cada frente.
+> - **Estado Frente B (Cola fase 2):** M1 índice isFulfilled deployado prod+test; M2 flag forward (produceFromCoils/void + inits cliente) código listo, functions deployadas a prod; PENDIENTE en orden: M4 backfill 69 (56 true / 13 false) → M3 filtro isFulfilled==false en getProductionQueueCount. Nota: M4 va ANTES que M3 (count no matchea campo ausente).
 > **v6.35:** (Cierre de Sesión)
 > - **#9 (agrupación por grupo-SKU):** las vistas que iteraban items[] crudo (`/admin/lines/metallic-roofing/production/new` selector + `SaleDetailsModal` panel Progreso de Producción) colapsaban mal líneas del MISMO SKU (botón/renglon gemelo + aviso de sobre-producción descuadrado). Fix: helper puro `quoteFulfillmentRows(items, logs)` agrupa por SKU (requested/produced/pending/pct). Unidad derivada de `products.family` (PLANCHA→UND, COBERTURA→ML), no hardcodeada. Frontend-puro. Commit 72295241.
 > - **Perf N+1 en carga de cotizaciones de `/production/new`:** el loop hacía `await getQuoteFulfillmentLogs(q.id)` secuencial por cotización (71 en prod ≈ 8.5s). Fix: `getAllActiveFulfillmentLogs()` (1 query `where status==ACTIVE`) + helper puro `bucketLogsBySourceId(logs): Map<string,ProductionLog[]>` (agrupa por source.id, saltea logs sin source.id), lookup O(1) en el loop. Frontend-puro. Commit 277e658b. master==develop==origin en 277e658b.

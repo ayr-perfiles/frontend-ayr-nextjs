@@ -55,7 +55,11 @@
 ## PENDIENTES OPERATIVOS
 - **Smoke check Algolia en prod:** `/admin/sales` con búsqueda de texto activa → verificar que las 3 tarjetas de dinero se ocultan y el pie de tabla queda coherente (mensaje "Totales no disponibles en búsqueda por texto"). Test (`ayrsteel-test`) no tiene Algolia, solo verificable en prod.
 
+## ESTADO FRENTE B (Cola fase 2)
+M1 índice isFulfilled deployado prod+test; M2 flag forward (produceFromCoils/void + inits cliente) código listo, functions deployadas a prod; PENDIENTE en orden: M4 backfill 69 (56 true / 13 false) → M3 filtro isFulfilled==false en getProductionQueueCount. Nota: M4 va ANTES que M3 (count no matchea campo ausente).
+
 ## REGLAS GRABADAS (aprendidas)
+- **PARIDAD DE ENTORNOS:** ayrsteel-test y ayrsteel-2026 (prod) se mantienen A LA PAR siempre — índices Firestore, Cloud Functions, y ramas git (develop==master==origin). Todo deploy a prod (índice/función) o push se replica/verifica en test en la MISMA tanda. Verificar paridad al inicio de cada frente.
 - Ejecutor **PARA y espera OK** antes de tocar prod (no ejecutar-y-reportar).
 - **NUNCA script que reimplemente callable** saltándose guards contra prod.
 - **Guard laterSales NO se toca.**
