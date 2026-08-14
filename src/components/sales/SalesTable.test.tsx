@@ -5,7 +5,6 @@ import { Sale } from "@/types";
 
 describe("SalesTable Component Guard (RED PHASE)", () => {
   const dummyHandlers = {
-    onPrint: vi.fn(),
     onDuplicate: vi.fn(),
     onApprove: vi.fn(),
     onViewDetails: vi.fn(),

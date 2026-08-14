@@ -14,7 +14,6 @@ import {
   Eye,
   Edit,
   XCircle,
-  FileDown,
   Copy,
   Link as LinkIcon,
   CloudOff,
@@ -82,7 +81,6 @@ interface SalesTableProps {
   isProcessing: boolean;
   currentPage: number;
   pageSize: number;
-  onPrint: (sale: Sale) => void;
   onDuplicate: (saleId: string) => void;
   onApprove: (sale: Sale) => void;
   onViewDetails: (sale: Sale) => void;
@@ -97,7 +95,6 @@ export function SalesTable({
   isProcessing,
   currentPage,
   pageSize,
-  onPrint,
   onDuplicate,
   onApprove,
   onViewDetails,
@@ -279,12 +276,6 @@ export function SalesTable({
       width: "w-28",
       render: (sale) => {
         const actions: RowAction[] = [
-          {
-            id: "print",
-            label: "Imprimir Ticket",
-            icon: <FileDown size={16} />,
-            onClick: () => onPrint(sale),
-          },
           {
             id: "duplicate",
             label: "Duplicar Operación",
