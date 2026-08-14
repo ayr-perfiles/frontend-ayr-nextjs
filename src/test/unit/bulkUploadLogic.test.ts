@@ -177,6 +177,33 @@ describe('bulkUploadLogic', () => {
       expect(validateCoilRow({ ...validBase, weightRaw: '999' }, liveFinishKeys).valid).toBe(false);
       expect(validateCoilRow({ ...validBase, weightRaw: '20001' }, liveFinishKeys).valid).toBe(false);
     });
+
+    it('should return invalid for weight 25000 without override', () => {
+      const res = validateCoilRow({ ...validBase, weightRaw: '25000', unitRaw: 'KILOGRAMO' }, liveFinishKeys);
+      expect(res.valid).toBe(false);
+      expect(res.errors.some(e => e.includes('fuera de rango esperado'))).toBe(true);
+    });
+
+    it('should return valid for weight 25000 with weightOverride=true', () => {
+      const res = validateCoilRow({ ...validBase, weightRaw: '25000', unitRaw: 'KILOGRAMO', weightOverride: true } as any, liveFinishKeys);
+      expect(res.valid).toBe(true);
+    });
+
+    it('should return valid for weight 500 with weightOverride=true (low-end symmetric)', () => {
+      const res = validateCoilRow({ ...validBase, weightRaw: '500', unitRaw: 'KILOGRAMO', weightOverride: true } as any, liveFinishKeys);
+      expect(res.valid).toBe(true);
+    });
+
+    it('should remain invalid for ROLLO unit even with weightOverride=true', () => {
+      const res = validateCoilRow({ ...validBase, weightRaw: '5000', unitRaw: 'ROLLO', weightOverride: true } as any, liveFinishKeys);
+      expect(res.valid).toBe(false);
+      expect(res.errors.some(e => e.toLowerCase().includes('peso inválido'))).toBe(true);
+    });
+
+    it('should remain valid for weight 5000 with weightOverride=true', () => {
+      const res = validateCoilRow({ ...validBase, weightRaw: '5000', unitRaw: 'KILOGRAMO', weightOverride: true } as any, liveFinishKeys);
+      expect(res.valid).toBe(true);
+    });
     // --------------------------
 
     it('should return invalid if valueRaw is 0', () => {
@@ -266,6 +293,20 @@ describe('bulkUploadLogic', () => {
       expect(invoices[0].coils[0].thickness).toBe(0.28);
       expect(invoices[0].coils[0].weight).toBe(3500.5); // override takes precedence
       expect(invoices[0].coils[0].value).toBe(2862.58);
+    });
+
+    it('should pass effective weight correctly when weightOverride is used without propagating the flag', () => {
+      const rows: CoilRow[] = [
+        {
+          serie: 'F002', nroDoc: '999', fecha: '30/06/2026', provider: 'B', providerDoc: '2',
+          currencyRaw: 'DOLARES', exchangeRateRaw: '3,5000',
+          finish: 'ALU-VERDE', widthRaw: '1220', thicknessRaw: '0,28', weightRaw: '25000', unitRaw: 'KILOGRAMO', weightKgRaw: '', valueRaw: '2.862,58', weightOverride: true
+        } as any
+      ];
+
+      const { invoices } = buildInvoicesPayload(rows, liveFinishKeys);
+      expect(invoices[0].coils[0].weight).toBe(25000);
+      expect((invoices[0].coils[0] as any).weightOverride).toBeUndefined();
     });
 
     it('should strictly round raw value floats to 2 decimal places (accounting truth)', () => {

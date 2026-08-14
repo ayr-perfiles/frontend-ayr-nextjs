@@ -25,8 +25,11 @@ import {
   CoilRow,
   normalizeFecha,
   parseWeightToKg,
-  isValidUsdExchangeRate
+  isValidUsdExchangeRate,
+  WEIGHT_MIN_KG,
+  WEIGHT_MAX_KG
 } from "@/core/coils/bulkUploadLogic";
+import { parseNumValue } from "@/core/import/catalogImport";
 
 interface InvoiceResult {
   invoiceId: string;
@@ -115,7 +118,7 @@ export function BulkUploadCoils() {
     }
   };
 
-  const handleRowChange = (index: number, field: keyof CoilRow, value: string) => {
+  const handleRowChange = (index: number, field: keyof CoilRow, value: string | boolean) => {
     const newRows = [...rows];
     newRows[index] = { ...newRows[index], [field]: value };
     setRows(newRows);
@@ -400,14 +403,42 @@ export function BulkUploadCoils() {
                     <td className="p-1">
                       {(() => {
                         const isMissing = !row.weightKgRaw || row.weightKgRaw.trim() === "";
+                        
+                        let effectiveWeight: number | null = null;
+                        if (!isMissing) {
+                          effectiveWeight = parseNumValue(row.weightKgRaw);
+                        } else {
+                          effectiveWeight = parseWeightToKg(row.weightRaw, row.unitRaw);
+                        }
+                        
+                        const isResolvable = effectiveWeight !== null && !isNaN(effectiveWeight) && effectiveWeight > 0;
+                        const isOutOfRange = isResolvable && (effectiveWeight! < WEIGHT_MIN_KG || effectiveWeight! > WEIGHT_MAX_KG);
+
                         return (
-                          <input 
-                            type="text" 
-                            value={row.weightKgRaw} 
-                            onChange={(e) => handleRowChange(i, "weightKgRaw", e.target.value)} 
-                            className={`w-20 p-1 border rounded text-xs ${isMissing ? 'border-red-400 bg-red-50' : ''}`}
-                            placeholder="En Kg..."
-                          />
+                          <div className="flex flex-col gap-1 items-start">
+                            <input 
+                              type="text" 
+                              value={row.weightKgRaw} 
+                              onChange={(e) => handleRowChange(i, "weightKgRaw", e.target.value)} 
+                              className={`w-20 p-1 border rounded text-xs ${isMissing ? 'border-red-400 bg-red-50' : ''}`}
+                              placeholder="En Kg..."
+                            />
+                            {isOutOfRange && (
+                              <label className="flex items-center gap-1 text-[10px] whitespace-nowrap cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  checked={row.weightOverride || false}
+                                  onChange={(e) => handleRowChange(i, "weightOverride", e.target.checked)}
+                                  className="w-3 h-3"
+                                />
+                                {row.weightOverride ? (
+                                  <span className="text-amber-600 font-medium bg-amber-50 px-1 rounded">Peso autorizado</span>
+                                ) : (
+                                  <span className="text-red-600 font-medium">Autorizar ({effectiveWeight} kg)</span>
+                                )}
+                              </label>
+                            )}
+                          </div>
                         );
                       })()}
                     </td>

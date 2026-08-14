@@ -7,7 +7,6 @@
 > backend en prod antes que master.
 
 ## DEUDAS
-- **Rango bulk import [1000,20000] → rediseño a rango + CHECK "autorizar peso anómalo":** el usuario pidió subir a [100,50000], pero OJO: líneas AGRUPADAS (F013/JAVISAC, deuda §14) traen peso total de VARIAS bobinas (ej 31,202 kg) que hoy el rango ataja. Fix correcto NO es subir el techo ciego: es rango + checkbox de override manual que marque explícito "peso anómalo autorizado". Frente aparte, con recon (confirmar si la fila 31k es línea agrupada). NO subir el rango a lo bruto.
 - **@types/jest/vi faltante** rompe tsc --noEmit en stockDisplayLogic.test.ts / finishService.test.ts / reportFunctions.test.ts (pre-existente, no A3). Frente chico de config.
 - **getPeriodDates exportado** de reportFunctions.ts (para reuso en el hook A3).
 - **Fuera-de-calibre en grupos multi-espesor REALES** (modo COLOR con ≥2 espesores): hoy se omite (thicknessMm='VARIOS' escapa el guard). Si se quiere flaggear, evaluar por-log antes de consolidar (booleano hasCalibreWarning). Diferido, no hay data que lo ejercite (todo 0.30).
@@ -49,8 +48,8 @@
   - Fix reporte aluzinc-resumen activo.
 - **Pendientes no bloqueantes:** Runtime real del reporte de usuario final; fix A1.5 (void re-sync) gap conocido forward-fix.
 - **A3 CERRADO EN PROD** (merge 58709805, hashes develop 6cb1c1d1 / master 58709805). Reporte aluzinc-detalle finalizado y documentado.
-- **PRÓXIMO FRENTE (CANDIDATO):** Rango bulk import (ojo con la advertencia de líneas agrupadas en las deudas).
-
+- **v6.40 CERRADO EN PROD:** Override peso anómalo + paréntesis operativo purga Mar/Abr/May finalizados.
+- **PRÓXIMO FRENTE (CANDIDATO):** Elegir del HORIZONTE (Slice 3, VENDEDOR, Reporte RAL).
 ## HORIZONTE (candidatos próximo frente)
 - **Slice 3 DIFERIDO:** capa de costo variable/conversión.
 - **Frente 2 rol VENDEDOR:** recon hecho (isStaff, ROUTE_PERMISSIONS único guard vivo, isRoleAllowed/mod.routes.roles son código muerto, sellerId en prod es NOMBRE no email → hace falta sellerUid forward-only, agregados scopeados).
@@ -81,3 +80,7 @@
 - **Deploy de Functions:** Usar el prefijo `functions:` explícito en todos los targets del `--only` para evitar omisiones silenciosas. Validar con `functions:list` post-deploy.
 - **Lotes y Operaciones Destructivas:** Usar siempre un GATE entre lotes. Correr 1 lote, reportar, esperar OK. NUNCA correr de corrido.
 - **Backups de purgas:** Hacer el backup fuera de workspace, y obligatoriamente probar restaurarlo en `test` mapeando `_id -> doc.id` antes de purgar en `prod`.
+- **La colección `quotations` NO existe:** cotizaciones viven en `sales` con prefijo COT- en doc.id (dedup por existencia de doc). Consecuencia: recon de sales+quotations es una sola query filtrada por prefijo.
+- **voidProductionFromCoils es fuego-y-olvido** con la cotización source: `if quoteSnap.exists` la protege — se puede voidear un log cuya cotización ya fue borrada sin fallar (solo pierde el reset de isFulfilled, que igual desaparece con el doc).
+- **Timestamp de production_log = fecha del día**, no editable. Producciones contra cotizaciones con timestamp histórico quedan con fechas divergentes (venta Mar, log Ago). NO es bug, es UX.
+- **Kardex es partida doble append-only** — ningún consumidor filtra por status/voided. Anulaciones se reflejan por movimientos compensatorios con `reference: logId`. Historial ruidoso pero contablemente correcto.
