@@ -3,7 +3,7 @@
 import React from 'react';
 import { REPORT_REGISTRY } from '../registry';
 import { ReportDefinition, ReportCategory } from '../types';
-import { ChevronRight, Search, Layers } from 'lucide-react';
+import { ChevronRight, Search, Layers, TrendingUp } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface ReportHubProps {
@@ -107,6 +107,30 @@ export function ReportHub({ onSelect }: ReportHubProps) {
                   
                   <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
                     <Layers size={100} />
+                  </div>
+                </button>
+              )}
+
+              {cat === 'EJECUTIVO' && (
+                <button
+                  onClick={() => router.push('/admin/reports/aluzinc-detalle')}
+                  className="group flex flex-col text-left bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all relative overflow-hidden"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className={`p-3 rounded-2xl ${CATEGORY_COLORS['EJECUTIVO']}`}>
+                      <TrendingUp size={24} />
+                    </div>
+                    <ChevronRight size={18} className="text-slate-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+                  </div>
+                  <h3 className="font-black text-slate-900 text-lg group-hover:text-blue-600 transition-colors">
+                    Aluzinc - Ventas con Producción Cumplida
+                  </h3>
+                  <p className="text-sm text-slate-500 mt-2 line-clamp-2 leading-relaxed">
+                    Reporte de agrupaciones por color y espesor con desglose de producción, rendimiento y mermas.
+                  </p>
+                  
+                  <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                    <TrendingUp size={100} />
                   </div>
                 </button>
               )}

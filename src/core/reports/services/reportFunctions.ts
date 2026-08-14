@@ -27,7 +27,7 @@ import { mapStockBobinasToReportRows } from "../stockBobinasReportMapper";
 /**
  * UTILS
  */
-const getPeriodDates = (period: string, startDate?: string, endDate?: string) => {
+export const getPeriodDates = (period: string, startDate?: string, endDate?: string) => {
   const now = new Date();
   let start = new Date();
   let end = new Date();
