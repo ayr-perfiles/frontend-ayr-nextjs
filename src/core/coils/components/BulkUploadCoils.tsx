@@ -32,7 +32,7 @@ import {
 import { parseNumValue } from "@/core/import/catalogImport";
 
 interface InvoiceResult {
-  invoiceId: string;
+  invoice: string;
   status: "created" | "skipped-dup" | "failed";
   count?: number;
   error?: string;
@@ -263,7 +263,7 @@ export function BulkUploadCoils() {
               {res.status === "failed" && <XCircle size={18} className="text-red-600" />}
               
               <div className="flex-1">
-                <p className="font-bold">{res.invoiceId || "Factura Desconocida"}</p>
+                <p className="font-bold">{res.invoice || "Factura Desconocida"}</p>
                 <p className="text-sm opacity-90">
                   {res.status === "created"
                     ? `Registrada con éxito (${res.count} bobinas)`
