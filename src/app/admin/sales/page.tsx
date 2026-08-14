@@ -198,7 +198,6 @@ export default function SalesPage() {
           role={role}
           currentPage={currentPage}
           pageSize={pageSize}
-          onPrint={(sale) => window.open(`/admin/sales/${sale.id}/print`, "_blank")}
           onDuplicate={(saleId) => (window.location.href = `/admin/sales/new?from=${saleId}`)}
           onEdit={(saleId) => (window.location.href = `/admin/sales/${saleId}/edit`)}
         />
