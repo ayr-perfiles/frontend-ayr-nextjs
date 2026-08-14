@@ -24,6 +24,7 @@ export interface CoilRow {
   unitRaw: string;
   weightKgRaw: string;
   valueRaw: string;
+  weightOverride?: boolean;
 }
 
 export interface CoilRowValidation {
@@ -170,7 +171,7 @@ export function validateCoilRow(row: CoilRow, liveFinishKeys: string[]): CoilRow
     
   if (effectiveWeight === null || isNaN(effectiveWeight) || effectiveWeight <= 0) {
     errors.push('Peso inválido (kg no resuelto — revise unidad o ingrese kg)');
-  } else if (effectiveWeight < WEIGHT_MIN_KG || effectiveWeight > WEIGHT_MAX_KG) {
+  } else if (!row.weightOverride && (effectiveWeight < WEIGHT_MIN_KG || effectiveWeight > WEIGHT_MAX_KG)) {
     errors.push(`Peso ${effectiveWeight} fuera de rango esperado [${WEIGHT_MIN_KG}-${WEIGHT_MAX_KG} kg], verifique`);
   }
 
