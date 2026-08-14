@@ -27,7 +27,6 @@
 - **BUG SOMBRA ROUTE_PERMISSIONS:** `/admin/lines` sombrea rutas OPERATOR (`Object.keys().find()`). Decisión: acceso actual OK (OPERATOR fuera) → fix = limpiar declaración muerta, NO reordenar.
 - **production_log:** no graba perfil TR4/TR5.
 - **SalesHistoryTable (perfil de cliente):** estado BINARIO, pinta VOIDED como "Cotización". El perfil de 3AAMSEQ aparenta S/357k cotizados con 2 anuladas.
-- **PrintableTicket HUÉRFANO** (cero importadores) + botón "Imprimir Ticket" en `/admin/sales:201` abre `/admin/sales/{id}/print` → ruta INEXISTENTE → 404 en prod. El fix de RUC que se le hizo está sin ejercitar.
 - **fetchSales param customerDoc:** mismo bug de semántica, código muerto (0 callers).
 - **reportFunctions.ts:381:** muestra documentNumber como "Doc" (vacío en ventas POS).
 - **CustomersReportTab.tsx** huérfano.
@@ -49,6 +48,7 @@
 - **Pendientes no bloqueantes:** Runtime real del reporte de usuario final; fix A1.5 (void re-sync) gap conocido forward-fix.
 - **A3 CERRADO EN PROD** (merge 58709805, hashes develop 6cb1c1d1 / master 58709805). Reporte aluzinc-detalle finalizado y documentado.
 - **v6.40 CERRADO EN PROD:** Override peso anómalo + paréntesis operativo purga Mar/Abr/May finalizados.
+- **PrintableTicket:** Frente chico CERRADO en prod (botón UI removido, componente preservado).
 - **PRÓXIMO FRENTE (CANDIDATO):** Elegir del HORIZONTE (Slice 3, VENDEDOR, Reporte RAL).
 ## HORIZONTE (candidatos próximo frente)
 - **Slice 3 DIFERIDO:** capa de costo variable/conversión.
@@ -67,7 +67,12 @@
 ## ESTADO FRENTE B (Cola fase 2)
 **CERRADO.** Fase 1 + Fase 2 isFulfilled terminados. (Commits 3f5adb2f, 0ea8eb85, 4b7a17de, fbfc5b1a).
 
+## PENDIENTES DIFERIDOS
+- Componente `PrintableTicket` (src/components/sales/) queda en repo sin importadores; cablear ruta `/admin/sales/[id]/print` si aparece use case POS térmico. Botón en UI removido el 2026-08-14.
+
 ## REGLAS GRABADAS (aprendidas)
+- **Meta-nota de arranque de sesión:** primero `git fetch --all && git log origin/develop --since="1 day ago"` para detectar commits externos (GitHub Web u otro ejecutor) ANTES de codear. Aprendido cuando dos fixes idénticos (Update weight constants x2, fix Factura Desconocida) generaron trabajo duplicado + un force-push --force-with-lease.
+- **Meta-nota de proceso:** Todo el código pasa por el ejecutor. GitHub Web ya NO se usa para tocar código directo (decisión del dueño 2026-08-14).
 - **PARIDAD DE ENTORNOS:** ayrsteel-test y ayrsteel-2026 (prod) se mantienen A LA PAR siempre — índices Firestore, Cloud Functions, y ramas git (develop==master==origin). Todo deploy a prod (índice/función) o push se replica/verifica en test en la MISMA tanda. Verificar paridad al inicio de cada frente.
 - **Scripts en Prod:** Todo script que lea/escriba prod imprime y ASSERTEA el projectId al arrancar (`if (projectId !== 'ayrsteel-2026') process.exit(1)`). Sin eso no corre.
 - Ejecutor **PARA y espera OK** antes de tocar prod (no ejecutar-y-reportar).
