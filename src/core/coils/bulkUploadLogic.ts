@@ -114,8 +114,8 @@ export function normalizeCurrency(raw: string): 'USD' | 'PEN' | null {
   return null;
 }
 
-export const WEIGHT_MIN_KG = 1000;
-export const WEIGHT_MAX_KG = 20000;
+export const WEIGHT_MIN_KG = 100;
+export const WEIGHT_MAX_KG = 50000;
 
 export const EXCHANGE_RATE_MIN = 2;
 export const EXCHANGE_RATE_MAX = 7;
