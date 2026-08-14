@@ -1,7 +1,18 @@
-# CLAUDE.md — AYR Steel ERP (v6.38)
+# CLAUDE.md — AYR Steel ERP (v6.39)
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 | tsc limpio | test:emu saneado (0 rojos) | Borón masivo ejecutado | Functions v2 operativa.
+> **v6.39:** (Cierre Frente A3 — Reporte aluzinc-detalle EN PROD)
+> - **A3 CERRADO Y EN PROD** (merge 58709805, ayr.mareliac.pe). Página dedicada /admin/reports/aluzinc-detalle (fuera de REPORT_REGISTRY, link en ReportHub.tsx cat EJECUTIVO). Frontend puro (sin callable/índice/functions nuevos). Gate INLINE role ADMIN+SUPERVISOR (NO ROUTE_PERMISSIONS, que tiene bug de sombra).
+> - Lógica pura src/core/reports/aluzincDetalleLogic.ts (14 tests Vitest). Fetch hook useAluzincDetalleFetch.ts (client-side, patrón bobinas-supervisor). Modal drill-down + pdfExport.ts (jspdf+autotable, landscape).
+> - **Definición 'venta con producción cumplida':** sale status==COMPLETED con relatedQuotationId cuya quote tiene isFulfilled==true. Universo alineado con aluzinc-resumen. Filtro POR ÍTEM (item.businessLine==='metallic-roofing'), NO por venta — para no inflar en ventas mixtas (test lo cubre).
+> - **RENDIMIENTO DE MATERIAL (NO 'merma'):** scrap_logs aluzinc=0, no hay merma física. Es variación de calibre. Cómputo: Σweight consumido − teórico(mlProduced × product.thickness × product.widthMm × product.densityFactor). Teórico usa dims NOMINALES DEL PRODUCTO (estables), NO masterWidth de bobina (decrece post-split). desvíoPct crudo (redondeo solo presentación). Global excluye grupos con teórico blindado (sin dims → '—').
+> - weightConsumedKg del log = reportedWeightKg del operario ?? derivado (mlFromCoil×thickness×masterWidth×density). En prod cae al derivado → el desvío refleja calibre real de bobina (~0.285) vs nominal 0.30, sistemático y dentro de banda ±0.02 (política comercial). NO es merma de proceso.
+> - montoVentas POR ÍTEM = unitValue×quantity, fallback baseCost×quantity+profit si 0 (verificado A≈B en prod). NUNCA sale.totalAmount (incluye IGV, duplica en multi-línea).
+> - Tipos de LECTURA derivados del canónico con Pick (AluzincSaleRead/ItemRead), NO sombra: CanonicalSaleDoc no tipa relatedQuotationId/isFulfilled/costSource (campos de lectura escritos por importador/produceFromCoils/A1) → van como extensión. costSource se lee, no está en el write-shape.
+> - Grupo carga ventasDetalle[]/logsDetalle[] del MISMO universo filtrado → drill-down cuadra con la fila por construcción (pie modal Σventa == monto fila). Bug 'doble universo' del modal (iteraba sales crudo) ELIMINADO.
+> - Toggle agrupación COLOR_ESPESOR / COLOR (fusiona espesores, desvíoPct recalculado sobre teórico combinado, calibreImplicito via denominadorCalibre; etiqueta = espesor real si único, 'VARIOS' si ≥2). PDF global (bloque advertencias) + PDF por fila (scope 'single').
+> - 4 observaciones auto: rendimiento global %, mayor desvío grupo, N fuera de calibre ±0.02, N ventas sin costSource PRODUCTION.
 > **v6.38:** (A3 PASO 0)
 > - **A3 (HORIZONTE) — TERRENO CONFIRMADO:** (recon read-only)
 >   - Reporte 'ventas con producción cumplida': página DEDICADA fuera de REPORT_REGISTRY (ReportDefinition/ReportRunner render rígido, no soporta 3 bloques/export custom). PRECEDENTE a copiar: `src/app/admin/reports/bobinas-supervisor/page.tsx` + su `pdfExport.ts`.
@@ -383,6 +394,13 @@ Helpers blindados: `isSignedIn`, `hasRole`, `isAdmin`, `isStaff` — **todos ver
 ---
 
 ## 11. Deuda Técnica Menor (Backlog)
+
+- **Rango bulk import [1000,20000] → rediseño a rango + CHECK "autorizar peso anómalo":** el usuario pidió subir a [100,50000], pero OJO: líneas AGRUPADAS (F013/JAVISAC, deuda §14) traen peso total de VARIAS bobinas (ej 31,202 kg) que hoy el rango ataja. Fix correcto NO es subir el techo ciego: es rango + checkbox de override manual que marque explícito "peso anómalo autorizado". Frente aparte, con recon (confirmar si la fila 31k es línea agrupada). NO subir el rango a lo bruto.
+- **@types/jest/vi faltante** rompe tsc --noEmit en stockDisplayLogic.test.ts / finishService.test.ts / reportFunctions.test.ts (pre-existente, no A3). Frente chico de config.
+- **getPeriodDates exportado** de reportFunctions.ts (para reuso en el hook A3).
+- **Fuera-de-calibre en grupos multi-espesor REALES** (modo COLOR con ≥2 espesores): hoy se omite (thicknessMm='VARIOS' escapa el guard). Si se quiere flaggear, evaluar por-log antes de consolidar (booleano hasCalibreWarning). Diferido, no hay data que lo ejercite (todo 0.30).
+- **Fallback de monto dispara con ===0:** una venta legítima de monto 0 (NC, muestra) se auto-corregiría a baseCost×qty+profit. Improbable en aluzinc, vigilar.
+- **functions-sunat/package-lock.json** modificado externo, sin commitear (arrastrado toda la sesión).
 
 - **isFulfilled se DESINCRONIZA** si se EDITA una cotización ya cumplida sin pasar por produce/void (el forward solo recalcula en produce/void). Forward-fix: recomputar isFulfilled on-edit. Mismo patrón que la deuda 'Editar Cotización desincroniza'.
 - **Data de TEST sin backfill de isFulfilled** → badge test da 0 hasta que se produzca ahí. ACEPTADO (sandbox); paridad es de código/índice/functions, no de data de negocio.

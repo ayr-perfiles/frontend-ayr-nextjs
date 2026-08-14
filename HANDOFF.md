@@ -1,12 +1,18 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.33).
+> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.39).
 > Preferencias: Prompts Claude Code por defecto. Caveman mode. PASO 0 read-only en cada prompt.
 > Preguntar ante duda de negocio. NUNCA cerrar en verde sin RUNTIME (lo corre el USUARIO, no Claude).
 > npm run build LOCAL antes de merge a master. Un frente a la vez, confirmar cierre antes de seguir.
 > backend en prod antes que master.
 
 ## DEUDAS
+- **Rango bulk import [1000,20000] → rediseño a rango + CHECK "autorizar peso anómalo":** el usuario pidió subir a [100,50000], pero OJO: líneas AGRUPADAS (F013/JAVISAC, deuda §14) traen peso total de VARIAS bobinas (ej 31,202 kg) que hoy el rango ataja. Fix correcto NO es subir el techo ciego: es rango + checkbox de override manual que marque explícito "peso anómalo autorizado". Frente aparte, con recon (confirmar si la fila 31k es línea agrupada). NO subir el rango a lo bruto.
+- **@types/jest/vi faltante** rompe tsc --noEmit en stockDisplayLogic.test.ts / finishService.test.ts / reportFunctions.test.ts (pre-existente, no A3). Frente chico de config.
+- **getPeriodDates exportado** de reportFunctions.ts (para reuso en el hook A3).
+- **Fuera-de-calibre en grupos multi-espesor REALES** (modo COLOR con ≥2 espesores): hoy se omite (thicknessMm='VARIOS' escapa el guard). Si se quiere flaggear, evaluar por-log antes de consolidar (booleano hasCalibreWarning). Diferido, no hay data que lo ejercite (todo 0.30).
+- **Fallback de monto dispara con ===0:** una venta legítima de monto 0 (NC, muestra) se auto-corregiría a baseCost×qty+profit. Improbable en aluzinc, vigilar.
+- **functions-sunat/package-lock.json** modificado externo, sin commitear (arrastrado toda la sesión).
 - **isFulfilled se DESINCRONIZA** si se EDITA una cotización ya cumplida sin pasar por produce/void (el forward solo recalcula en produce/void). Forward-fix: recomputar isFulfilled on-edit. Mismo patrón que la deuda 'Editar Cotización desincroniza'.
 - **Data de TEST sin backfill de isFulfilled** → badge test da 0 hasta que se produzca ahí. ACEPTADO (sandbox); paridad es de código/índice/functions, no de data de negocio.
 - **DEUDA NUEVA:** test-prod.ts (gitignoreado) rompe el type-check del worker de Next cada vez que se toca — limpiar aparte (frente chico).
@@ -42,7 +48,8 @@
   - A2 backfill ejecutado. Backup histórico: `~/ayr-backups/A2-20260811.json`.
   - Fix reporte aluzinc-resumen activo.
 - **Pendientes no bloqueantes:** Runtime real del reporte de usuario final; fix A1.5 (void re-sync) gap conocido forward-fix.
-- **PRÓXIMO FRENTE (A3):** PASO 0 hecho (terreno mapeado en CLAUDE v6.38 + módulo), DUDAS pendientes listadas. Estado repo: 0bd5f7c9, master==develop==origin. Frentes cerrados esta sesión: #9, perf N+1, Cola B completo.
+- **A3 CERRADO EN PROD** (merge 58709805, hashes develop 6cb1c1d1 / master 58709805). Reporte aluzinc-detalle finalizado y documentado.
+- **PRÓXIMO FRENTE (CANDIDATO):** Rango bulk import (ojo con la advertencia de líneas agrupadas en las deudas).
 
 ## HORIZONTE (candidatos próximo frente)
 - **Slice 3 DIFERIDO:** capa de costo variable/conversión.
