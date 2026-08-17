@@ -49,9 +49,11 @@ describe("ProductionQueuePage", () => {
 
     mockUseSales.mockReturnValue({ sales: quotes, loading: false } as any);
 
-    // 1 sola query trae TODOS los logs activos; el segundo item cumple 100% (CUMPLIDA), el primero queda sin logs (PENDIENTE).
+    // 1 sola query trae TODOS los logs activos; FFA1-101 sin logs (PENDIENTE), FFA1-102 parcial 10/20 (PARCIAL).
+    // Ninguna CUMPLIDA a propósito: el default hideCompleted=true (desde 3f5adb2f) oculta filas CUMPLIDA,
+    // y este test verifica que 2 filas con distinto avance conviven en la tabla, no el filtro de cumplidas.
     mockGetLogs.mockResolvedValueOnce([
-      { sku: "SKU2", piecesProduced: 20, status: "ACTIVE", source: { id: "COT-FFA1-102" } },
+      { sku: "SKU2", piecesProduced: 10, status: "ACTIVE", source: { id: "COT-FFA1-102" } },
     ]);
 
     render(<ProductionQueuePage />);
