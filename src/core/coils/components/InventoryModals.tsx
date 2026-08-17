@@ -1,5 +1,6 @@
 "use client";
 
+import type { Dispatch, SetStateAction } from "react";
 import { X } from "lucide-react";
 import { Coil } from "@/types";
 import { AddCoilForm } from "@/core/coils/components/AddCoilForm";
@@ -15,7 +16,7 @@ import { RegisterScrapModal } from "@/core/coils/components/RegisterScrapModal";
 interface InventoryModalsProps {
   editingCoil: Coil | null;
   editData: EditData;
-  setEditData: (data: EditData) => void;
+  setEditData: Dispatch<SetStateAction<EditData>>;
   onCloseEdit: () => void;
   onSaveEdit: () => void;
 

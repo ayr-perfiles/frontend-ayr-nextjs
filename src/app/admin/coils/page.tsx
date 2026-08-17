@@ -253,6 +253,7 @@ export default function CoilsPage() {
           pricePerKg: fullCoil.pricePerKg || 0,
           currency: fullCoil.metadata?.currency || "PEN",
           exchangeRate: fullCoil.metadata?.exchangeRate || 3.80,
+          originalCurrencyValue: fullCoil.metadata?.originalCurrencyValue,
           providerDocType: fullCoil.metadata?.providerDocType || "LOCAL",
           providerDoc: fullCoil.metadata?.providerDoc || "",
           providerName: fullCoil.metadata?.provider || "",
@@ -395,16 +396,17 @@ export default function CoilsPage() {
 
   const handleSaveEdit = async () => {
     if (!editingCoil) return;
-    toast
-      .promise(updateCoil(editingCoil.id, editData, user?.email || "Admin"), {
+    try {
+      await toast.promise(updateCoil(editingCoil.id, editData, user?.email || "Admin"), {
         loading: "Guardando...",
         success: "Bobina actualizada.",
         error: (err: any) => err.message,
-      })
-      .then(() => {
-        setEditingCoil(null);
-        refresh();
       });
+      setEditingCoil(null);
+      refresh();
+    } catch {
+      // El toast ya mostró el mensaje de error; no re-lanzamos para no crashear la UI.
+    }
   };
 
   const handleClearSearch = () => {

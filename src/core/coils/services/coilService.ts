@@ -20,7 +20,8 @@ import { Coil, BusinessLine } from "@/types";
 import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
 import { listFinishes } from "./finishService";
 
-export interface CoilUpdates {
+export interface CoilUpdates
+  extends Pick<NonNullable<Coil["metadata"]>, "currency" | "exchangeRate" | "originalCurrencyValue"> {
   initialWeight: number;
   currentWeight: number;
   masterWidth: number;

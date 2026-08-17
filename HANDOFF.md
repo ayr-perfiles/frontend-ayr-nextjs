@@ -1,6 +1,6 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.39).
+> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.41).
 > Preferencias: Prompts Claude Code por defecto. Caveman mode. PASO 0 read-only en cada prompt.
 > Preguntar ante duda de negocio. NUNCA cerrar en verde sin RUNTIME (lo corre el USUARIO, no Claude).
 > npm run build LOCAL antes de merge a master. Un frente a la vez, confirmar cierre antes de seguir.
@@ -39,8 +39,12 @@
 - **guard isClosed solo client-side** en `consumeCoil`/`sendToCut` (hermético solo en `produceFromCoils`).
 - **Importador de ventas sigue client-side directo** (`src/app/admin/sales/import/page.tsx`, `runTransaction`/`writeBatch` sin pasar por callable). Migra en WRITE 9 (`salesService`).
 - **Menú de cotización importada** aún ofrece "Editar Cotización" y "Duplicar Operación" — editar desincroniza la percha (`COT-{documentNumber}`) de la boleta real ya facturada. Frente chico, mismo helper que `isImportedQuotation` (`src/core/import/salesImportLogic.ts:8`).
+- **Forms de bobina duplicados huérfanos:** `src/components/forms/AddCoilForm.tsx`, `src/components/purchases/PurchaseCoilFromXml.tsx`, `src/components/inventory/EditCoilModal.tsx` — sin imports en todo el repo (confirmado por grep en la sesión combo UI #7+#8), solo mencionados en `ROADMAP.md`. Mismo patrón que el barrel muerto `BulkUploadCoils.tsx` ya documentado. No reciben los fixes #7/#8 (viven solo en las rutas LIVE bajo `src/core/coils/components/`). Limpieza aparte, frente chico.
+- **Registro de bobina con VALOR 0 bloqueado por `coilEntryFormSchema` (`z.coerce.number().positive()`)** — verificado en la sesión combo UI, es comportamiento correcto (bloquea en submit con mensaje claro), no requiere fix, descartado de este frente.
 
 ## PENDIENTE INMEDIATO
+- **Combo UI #7+#8 CERRADO EN PROD** (develop 5fca6ed6 / master 2995e0b3). Spinner+wheel muerto y paste numérico sanitizado en Peso/Ancho/Espesor/Valor de los 3 forms LIVE de bobina (`AddCoilForm.tsx`, `PurchaseCoilFromXml.tsx`, `EditCoilModal.tsx`). Helper puro `src/core/coils/utils/numericInput.ts` con 8 tests Vitest (RED→GREEN documentado). Frontend-puro, sin backend/índice tocado.
+- **#1 (editar bobina USD→SOLES sigue mostrando TC) — RECLASIFICADO A WRITE BACKEND DEDICADO, NO cosmético.** Recon (sesión combo UI) encontró que `EditCoilModal.tsx` sí oculta el campo TC correctamente al togglear a PEN (`isUSD && (...)`), pero el callable `updateCoil` (`functions/src/callables/coilManagement.ts:128-154`) **nunca lee ni escribe `updates.currency`/`updates.exchangeRate`** — el `updatePayload` los omite por completo. Consecuencia: el toggle de moneda en el modal es 100% cosmético hoy, Firestore queda congelado en la moneda/TC original de alta, y por eso `CoilDetailsModal.tsx:70-71`, `InventoryTable.tsx:261-262` y el export Excel (`page.tsx:446-447`) siguen mostrando USD/TC viejo después de "editar a Soles". Antes de PASO 0 del fix, resolver duda de negocio: al togglear USD→PEN, ¿`pricePerKg` se re-convierte con el TC viejo y se congela en soles, o se recalcula con TC=1, o se deja tal cual y solo cambia el label? Afecta directamente el costeo congelado (ADR-009).
 - **A1/A2/fix reporte (Coherencia de costo)**: CERRADOS y en prod.
   - A1 write-back de costo forward operando.
   - A2 backfill ejecutado. Backup histórico: `~/ayr-backups/A2-20260811.json`.

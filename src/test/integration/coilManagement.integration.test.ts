@@ -197,6 +197,149 @@ describe('Coil Management Module (Integration)', () => {
       };
       await expect(updateCoil.run(request as any)).rejects.toMatchObject({ code: 'failed-precondition' });
     });
+
+    it('editar USD->PEN normaliza metadata.currency/exchangeRate y limpia originalCurrencyValue', async () => {
+      const adminDb = admin.firestore();
+      await adminDb.collection("coils").doc("BOB-UPD-CUR-1").set({
+        initialWeight: 1000,
+        currentWeight: 1000,
+        status: "AVAILABLE",
+        masterWidth: 1200,
+        thickness: 0.45,
+        finish: "GALV",
+        pricePerKg: 7.0,
+        metadata: { currency: "USD", exchangeRate: 3.5, originalCurrencyValue: 4000 },
+      });
+
+      const request = {
+        data: {
+          coilId: "BOB-UPD-CUR-1",
+          updates: {
+            initialWeight: 1000,
+            masterWidth: 1200,
+            thickness: 0.45,
+            finish: "GALV",
+            pricePerKg: 7.0,
+            currency: "PEN",
+          },
+        },
+        auth: { token: { role: "ADMIN", email: "admin@test.com" } },
+      };
+
+      await updateCoil.run(request as any);
+
+      const coilSnap = await adminDb.collection("coils").doc("BOB-UPD-CUR-1").get();
+      const coil = coilSnap.data()!;
+      expect(coil.metadata?.currency).toBe("PEN");
+      expect(coil.metadata?.exchangeRate).toBe(1);
+      expect(coil.metadata?.originalCurrencyValue).toBeUndefined();
+    });
+
+    it('editar dejando USD con TC 3.5 persiste currency/exchangeRate/originalCurrencyValue', async () => {
+      const adminDb = admin.firestore();
+      await adminDb.collection("coils").doc("BOB-UPD-CUR-2").set({
+        initialWeight: 2000,
+        currentWeight: 2000,
+        status: "AVAILABLE",
+        masterWidth: 1200,
+        thickness: 0.45,
+        finish: "GALV",
+        pricePerKg: 7.0,
+        metadata: { currency: "USD", exchangeRate: 3.5, originalCurrencyValue: 4000 },
+      });
+
+      const request = {
+        data: {
+          coilId: "BOB-UPD-CUR-2",
+          updates: {
+            initialWeight: 2000,
+            masterWidth: 1200,
+            thickness: 0.45,
+            finish: "GALV",
+            pricePerKg: 7.0,
+            currency: "USD",
+            exchangeRate: 3.5,
+            originalCurrencyValue: 4000,
+          },
+        },
+        auth: { token: { role: "ADMIN", email: "admin@test.com" } },
+      };
+
+      await updateCoil.run(request as any);
+
+      const coilSnap = await adminDb.collection("coils").doc("BOB-UPD-CUR-2").get();
+      const coil = coilSnap.data()!;
+      expect(coil.metadata?.currency).toBe("USD");
+      expect(coil.metadata?.exchangeRate).toBe(3.5);
+      expect(coil.metadata?.originalCurrencyValue).toBe(4000);
+    });
+
+    it('pricePerKg persiste tal cual lo manda el cliente, sin recombinar con exchangeRate', async () => {
+      const adminDb = admin.firestore();
+      await adminDb.collection("coils").doc("BOB-UPD-CUR-3").set({
+        initialWeight: 2000,
+        currentWeight: 2000,
+        status: "AVAILABLE",
+        masterWidth: 1200,
+        thickness: 0.45,
+        finish: "GALV",
+        pricePerKg: 3.5,
+        metadata: { currency: "PEN", exchangeRate: 1 },
+      });
+
+      const request = {
+        data: {
+          coilId: "BOB-UPD-CUR-3",
+          updates: {
+            initialWeight: 2000,
+            masterWidth: 1200,
+            thickness: 0.45,
+            finish: "GALV",
+            pricePerKg: 7.0, // ya convertido a PEN por el cliente
+            currency: "USD",
+            exchangeRate: 3.5,
+            originalCurrencyValue: 4000,
+          },
+        },
+        auth: { token: { role: "ADMIN", email: "admin@test.com" } },
+      };
+
+      await updateCoil.run(request as any);
+
+      const coilSnap = await adminDb.collection("coils").doc("BOB-UPD-CUR-3").get();
+      expect(coilSnap.data()?.pricePerKg).toBe(7.0);
+    });
+
+    it('rechaza USD sin exchangeRate valido (invalid-argument)', async () => {
+      const adminDb = admin.firestore();
+      await adminDb.collection("coils").doc("BOB-UPD-CUR-4").set({
+        initialWeight: 1000,
+        currentWeight: 1000,
+        status: "AVAILABLE",
+        masterWidth: 1200,
+        thickness: 0.45,
+        finish: "GALV",
+        pricePerKg: 7.0,
+      });
+
+      const request = {
+        data: {
+          coilId: "BOB-UPD-CUR-4",
+          updates: {
+            initialWeight: 1000,
+            masterWidth: 1200,
+            thickness: 0.45,
+            finish: "GALV",
+            pricePerKg: 7.0,
+            currency: "USD",
+            exchangeRate: 1,
+          },
+        },
+        auth: { token: { role: "ADMIN", email: "admin@test.com" } },
+      };
+
+      await expect(updateCoil.run(request as any)).rejects.toMatchObject({ code: 'invalid-argument' });
+    });
   });
 
   describe('cancelCoilPlan', () => {
