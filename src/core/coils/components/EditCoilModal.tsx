@@ -1,6 +1,7 @@
 import { X, Save, Building2, Lock, Calendar, Tag } from "lucide-react";
 import { Coil } from "@/types";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
+import { NO_SPIN_CLASS, numericFieldHandlers } from "@/core/coils/utils/numericInput";
 
 export interface EditData {
   initialWeight: number;
@@ -162,12 +163,14 @@ export function EditCoilModal({
                 </label>
                 <input
                   type="number"
+                  min="0"
                   disabled={isLocked}
                   value={editData.initialWeight}
                   onChange={(e) =>
                     handleInitialWeightChange(Number(e.target.value))
                   }
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed ${NO_SPIN_CLASS}`}
+                  {...numericFieldHandlers((v) => handleInitialWeightChange(Number(v)))}
                 />
               </div>
 
@@ -177,12 +180,14 @@ export function EditCoilModal({
                 </label>
                 <input
                   type="number"
+                  min="0"
                   disabled={isLocked}
                   value={isUSD ? Number(currentTotalValueUSD.toFixed(2)) : Number(currentTotalValue.toFixed(2))}
                   onChange={(e) =>
                     handleTotalValueChange(Number(e.target.value))
                   }
-                  className="w-full p-3 bg-blue-50 border border-blue-200 rounded-xl font-bold text-blue-800 outline-none focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className={`w-full p-3 bg-blue-50 border border-blue-200 rounded-xl font-bold text-blue-800 outline-none focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed ${NO_SPIN_CLASS}`}
+                  {...numericFieldHandlers((v) => handleTotalValueChange(Number(v)))}
                 />
               </div>
             </div>
@@ -194,6 +199,7 @@ export function EditCoilModal({
                 </label>
                 <input
                   type="number"
+                  min="0"
                   value={editData.masterWidth}
                   onChange={(e) =>
                     setEditData({
@@ -201,7 +207,8 @@ export function EditCoilModal({
                       masterWidth: Number(e.target.value),
                     })
                   }
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500"
+                  className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 ${NO_SPIN_CLASS}`}
+                  {...numericFieldHandlers((v) => setEditData({ ...editData, masterWidth: Number(v) }))}
                 />
               </div>
               <div>
@@ -211,6 +218,7 @@ export function EditCoilModal({
                 <input
                   type="number"
                   step="0.01"
+                  min="0"
                   value={editData.thickness}
                   onChange={(e) =>
                     setEditData({
@@ -218,7 +226,8 @@ export function EditCoilModal({
                       thickness: Number(e.target.value),
                     })
                   }
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500"
+                  className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 ${NO_SPIN_CLASS}`}
+                  {...numericFieldHandlers((v) => setEditData({ ...editData, thickness: Number(v) }))}
                 />
               </div>
             </div>

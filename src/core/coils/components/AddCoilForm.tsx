@@ -28,6 +28,7 @@ import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { functions } from "@/lib/firebase/clientApp";
 import { httpsCallable } from "firebase/functions";
 import { calcCoilTheoreticalML } from "@/modules/metallic-roofing/domain/yieldCalc";
+import { NO_SPIN_CLASS, numericFieldHandlers } from "@/core/coils/utils/numericInput";
 
 interface AddCoilFormProps {
   onOpenChange: (isOpen: boolean) => void;
@@ -613,11 +614,13 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     <input
                       type="number"
                       step="0.01"
-                      className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${rowErr.weight ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
+                      min="0"
+                      className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${NO_SPIN_CLASS} ${rowErr.weight ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
                       value={coil.weight}
                       onChange={(e) =>
                         updateCoil(coil.uid, "weight", e.target.value)
                       }
+                      {...numericFieldHandlers((v) => updateCoil(coil.uid, "weight", v))}
                     />
                     {(() => {
                       if (!coil.weight || !coil.width || !coil.thickness || !selectedFinish?.densityFactor) {
@@ -644,11 +647,13 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     </label>
                     <input
                       type="number"
-                      className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${rowErr.width ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
+                      min="0"
+                      className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${NO_SPIN_CLASS} ${rowErr.width ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
                       value={coil.width}
                       onChange={(e) =>
                         updateCoil(coil.uid, "width", e.target.value)
                       }
+                      {...numericFieldHandlers((v) => updateCoil(coil.uid, "width", v))}
                     />
                     {rowErr.width && (
                       <p className="text-red-500 text-xs mt-1">
@@ -664,11 +669,13 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                     <input
                       type="number"
                       step="0.01"
-                      className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${rowErr.thickness ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
+                      min="0"
+                      className={`w-full border rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${NO_SPIN_CLASS} ${rowErr.thickness ? "bg-red-50 border-red-300" : "bg-white border-slate-200"}`}
                       value={coil.thickness}
                       onChange={(e) =>
                         updateCoil(coil.uid, "thickness", e.target.value)
                       }
+                      {...numericFieldHandlers((v) => updateCoil(coil.uid, "thickness", v))}
                     />
                     {rowErr.thickness && (
                       <p className="text-red-500 text-xs mt-1">
@@ -689,11 +696,13 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
                       <input
                         type="number"
                         step="0.01"
-                        className={`pl-8 w-full border rounded-md p-2.5 text-sm font-black outline-none ${rowErr.value ? "bg-red-50 border-red-300 text-red-800" : "bg-emerald-50 border-emerald-200 text-emerald-800 focus:bg-white focus:border-emerald-500"}`}
+                        min="0"
+                        className={`pl-8 w-full border rounded-md p-2.5 text-sm font-black outline-none ${NO_SPIN_CLASS} ${rowErr.value ? "bg-red-50 border-red-300 text-red-800" : "bg-emerald-50 border-emerald-200 text-emerald-800 focus:bg-white focus:border-emerald-500"}`}
                         value={coil.value}
                         onChange={(e) =>
                           updateCoil(coil.uid, "value", e.target.value)
                         }
+                        {...numericFieldHandlers((v) => updateCoil(coil.uid, "value", v))}
                       />
                     </div>
                     {(() => {
