@@ -1,7 +1,12 @@
+import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { X, Save, Building2, Lock, Calendar, Tag } from "lucide-react";
+import toast from "react-hot-toast";
 import { Coil } from "@/types";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { NO_SPIN_CLASS, numericFieldHandlers } from "@/core/coils/utils/numericInput";
+import { validateCoilCurrencyForm } from "@/core/coils/utils/coilCurrencyForm";
+import { fetchTipoCambio } from "@/core/coils/services/tipoCambio";
+import { computePricePerKg } from "@/core/coils/domain/coilPricing";
 
 export interface EditData {
   initialWeight: number;
@@ -23,7 +28,7 @@ export interface EditData {
 interface EditCoilModalProps {
   editingCoil: Coil;
   editData: EditData;
-  setEditData: (data: EditData) => void;
+  setEditData: Dispatch<SetStateAction<EditData>>;
   onClose: () => void;
   onSave: () => void;
 }
@@ -37,15 +42,55 @@ export function EditCoilModal({
 }: EditCoilModalProps) {
   const { finishes } = useFinishes(true);
   const isLocked = editingCoil.status !== "AVAILABLE";
-  
+  const [fetchingRate, setFetchingRate] = useState(false);
+  const fetchSeq = useRef(0);
+
   const isUSD = editData.currency === "USD";
   const currentTotalValue = editData.initialWeight * editData.pricePerKg;
   const currentTotalValueUSD = isUSD ? currentTotalValue / (editData.exchangeRate || 1) : 0;
+  const currencyValidation = validateCoilCurrencyForm(editData);
+
+  // Autofill del TC por fecha de factura (mismo mecanismo que AddCoilForm, /api/tipo-cambio).
+  // Disparado SOLO por acción explícita del usuario (toggle moneda / cambio de fecha) — NUNCA en mount,
+  // para no pisar el exchangeRate ya guardado de una bobina USD al solo abrir el modal.
+  // Forma funcional: usa siempre el estado más reciente al resolver, nunca un snapshot capturado
+  // al momento del disparo (evita pisar ediciones concurrentes de otros campos).
+  const runTipoCambioLookup = (invoiceDate: string) => {
+    const seq = ++fetchSeq.current;
+    setFetchingRate(true);
+    fetchTipoCambio(invoiceDate)
+      .then(({ venta, fallback }) => {
+        if (fetchSeq.current !== seq) return; // superado por un fetch más nuevo
+        if (venta != null) {
+          setEditData((prev) => {
+            const valor = prev.originalCurrencyValue ?? 0;
+            const pricePerKg =
+              prev.initialWeight > 0 && valor > 0
+                ? computePricePerKg(valor, prev.initialWeight, "USD", venta)
+                : prev.pricePerKg;
+            return { ...prev, exchangeRate: venta, pricePerKg };
+          });
+          if (fallback) toast.error(`TC Referencial: S/ ${venta}`);
+          else toast.success(`TC Obtenido: S/ ${venta}`);
+        } else {
+          toast.error("TC real no disponible, ingresá el del día de la factura.");
+        }
+      })
+      .finally(() => {
+        if (fetchSeq.current === seq) setFetchingRate(false);
+      });
+  };
 
   const handleTotalValueChange = (newTotal: number) => {
-    const totalPEN = isUSD ? newTotal * editData.exchangeRate : newTotal;
-    const newPrice = editData.initialWeight > 0 ? totalPEN / editData.initialWeight : 0;
-    setEditData({ ...editData, pricePerKg: Number(newPrice.toFixed(6)) });
+    const canCompute = editData.initialWeight > 0 && (!isUSD || editData.exchangeRate > 1);
+    const pricePerKg = canCompute
+      ? computePricePerKg(newTotal, editData.initialWeight, editData.currency, editData.exchangeRate)
+      : editData.pricePerKg;
+    setEditData({
+      ...editData,
+      pricePerKg,
+      originalCurrencyValue: isUSD ? newTotal : editData.originalCurrencyValue,
+    });
   };
 
   const handleInitialWeightChange = (newWeight: number) => {
@@ -132,11 +177,34 @@ export function EditCoilModal({
                   value={editData.currency}
                   onChange={(e) => {
                     const nextCurrency = e.target.value as "PEN" | "USD";
-                    setEditData({
+                    if (nextCurrency === "PEN") {
+                      // Reinterpreta el monto mostrado (hoy en USD) como el nuevo total en PEN.
+                      const valor = currentTotalValueUSD;
+                      const pricePerKg =
+                        editData.initialWeight > 0 && valor > 0
+                          ? computePricePerKg(valor, editData.initialWeight, "PEN", 1)
+                          : editData.pricePerKg;
+                      setEditData({
+                        ...editData,
+                        currency: "PEN",
+                        exchangeRate: 1,
+                        originalCurrencyValue: undefined,
+                        pricePerKg,
+                      });
+                      return;
+                    }
+                    // Reinterpreta el monto mostrado (hoy en PEN) como el nuevo total en USD.
+                    const valor = currentTotalValue;
+                    const nextData: EditData = {
                       ...editData,
-                      currency: nextCurrency,
-                      exchangeRate: nextCurrency === "PEN" ? 1 : editData.exchangeRate,
-                    });
+                      currency: "USD",
+                      exchangeRate: 0,
+                      originalCurrencyValue: valor,
+                    };
+                    setEditData(nextData);
+                    if (nextData.invoiceDate) {
+                      runTipoCambioLookup(nextData.invoiceDate);
+                    }
                   }}
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 disabled:opacity-60"
                 >
@@ -148,18 +216,21 @@ export function EditCoilModal({
               {isUSD && (
                 <div>
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">
-                    Tipo de Cambio
+                    Tipo de Cambio {fetchingRate && "(buscando...)"}
                   </label>
                   <input
                     type="number"
                     step="0.001"
-                    disabled={isLocked}
-                    value={editData.exchangeRate}
+                    disabled={isLocked || fetchingRate}
+                    value={editData.exchangeRate || ""}
                     onChange={(e) =>
                       setEditData({ ...editData, exchangeRate: Number(e.target.value) })
                     }
                     className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 disabled:opacity-60"
                   />
+                  {!currencyValidation.ok && (
+                    <p className="text-[10px] text-red-500 font-bold mt-1">{currencyValidation.message}</p>
+                  )}
                 </div>
               )}
 
@@ -297,9 +368,14 @@ export function EditCoilModal({
                 <input
                   type="date"
                   value={editData.invoiceDate}
-                  onChange={(e) =>
-                    setEditData({ ...editData, invoiceDate: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const nextInvoiceDate = e.target.value;
+                    const nextData: EditData = { ...editData, invoiceDate: nextInvoiceDate };
+                    setEditData(nextData);
+                    if (nextData.currency === "USD" && nextInvoiceDate) {
+                      runTipoCambioLookup(nextInvoiceDate);
+                    }
+                  }}
                   className="w-full p-3 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl font-bold outline-none focus:border-blue-500"
                 />
               </div>
@@ -308,7 +384,8 @@ export function EditCoilModal({
 
           <button
             onClick={onSave}
-            className="w-full bg-blue-600 text-white p-4 rounded-xl font-black flex justify-center items-center gap-2 hover:bg-blue-700 transition active:scale-95 shadow-md shadow-blue-200"
+            disabled={!currencyValidation.ok}
+            className="w-full bg-blue-600 text-white p-4 rounded-xl font-black flex justify-center items-center gap-2 hover:bg-blue-700 transition active:scale-95 shadow-md shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save size={20} /> Guardar Cambios
           </button>
