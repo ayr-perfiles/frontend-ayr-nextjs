@@ -131,3 +131,52 @@ export function sortQueueFifo(rows: QueueRow[]): QueueRow[] {
     return tA - tB;
   });
 }
+
+export interface QuoteDetailRow {
+  sku: string;
+  productName: string;
+  quantityRequested: number;
+  piecesCount?: number;
+  pieceLengthM?: number;
+  unitPrice: number;
+  lineSubtotal: number;
+  producedForSku: number;
+  isSharedSku: boolean;
+}
+
+export interface QuoteDetailView {
+  rows: QuoteDetailRow[];
+  totalAmount: number;
+  hasSharedSku: boolean;
+}
+
+export function buildQuoteDetailView(sale: Sale, queueRow: QueueRow): QuoteDetailView {
+  const items = sale.items || [];
+  const skuCounts: Record<string, number> = {};
+  items.forEach((item) => {
+    skuCounts[item.sku] = (skuCounts[item.sku] || 0) + 1;
+  });
+
+  const producedBySku = new Map<string, number>();
+  queueRow.lines.forEach((line) => {
+    producedBySku.set(line.sku, line.quantityProduced);
+  });
+
+  const rows: QuoteDetailRow[] = items.map((item) => ({
+    sku: item.sku,
+    productName: item.productName ?? "",
+    quantityRequested: item.quantity,
+    piecesCount: item.piecesCount,
+    pieceLengthM: item.pieceLengthM,
+    unitPrice: item.unitPrice,
+    lineSubtotal: item.subtotal ?? item.unitPrice * item.quantity,
+    producedForSku: producedBySku.get(item.sku) ?? 0,
+    isSharedSku: skuCounts[item.sku] >= 2,
+  }));
+
+  return {
+    rows,
+    totalAmount: sale.totalAmount,
+    hasSharedSku: rows.some((r) => r.isSharedSku),
+  };
+}

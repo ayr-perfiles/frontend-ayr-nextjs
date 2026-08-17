@@ -11,7 +11,7 @@ import { TablePagination } from "@/components/ui/TablePagination";
 import { useTableData } from "@/hooks/useTableData";
 import { RowActionsMenu } from "@/components/ui/RowActionsMenu";
 import { Factory, Eye, Loader2 } from "lucide-react";
-import { SaleDetailsModal } from "@/components/sales/SaleDetailsModal";
+import { QuoteDetailsReadOnly } from "@/components/production/QuoteDetailsReadOnly";
 import { Sale } from "@/types";
 import { PRODUCTION_QUEUE_FILTER } from "@/core/sales/services/salesService";
 
@@ -37,6 +37,7 @@ export default function ProductionQueuePage() {
   // Filtros propios de la página
   const [showCompleted, setShowCompleted] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Sale | null>(null);
+  const [selectedQuoteRow, setSelectedQuoteRow] = useState<QueueRow | null>(null);
 
   useEffect(() => {
     if (!quotes || quotes.length === 0) {
@@ -202,14 +203,17 @@ export default function ProductionQueuePage() {
               icon: <Eye size={16} />,
               onClick: () => {
                 const sale = quotes.find(q => q.id === row.quoteId);
-                if (sale) setSelectedQuote(sale);
+                if (sale) {
+                  setSelectedQuote(sale);
+                  setSelectedQuoteRow(row);
+                }
               },
             }
           ]}
         />
       ),
     }
-  ], [router]);
+  ], [router, quotes]);
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
@@ -283,10 +287,14 @@ export default function ProductionQueuePage() {
         </div>
       </div>
 
-      {selectedQuote && (
-        <SaleDetailsModal 
+      {selectedQuote && selectedQuoteRow && (
+        <QuoteDetailsReadOnly
           sale={selectedQuote}
-          onClose={() => setSelectedQuote(null)}
+          queueRow={selectedQuoteRow}
+          onClose={() => {
+            setSelectedQuote(null);
+            setSelectedQuoteRow(null);
+          }}
         />
       )}
     </div>
