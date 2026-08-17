@@ -27,7 +27,7 @@ vi.mock("next/navigation", () => ({
 
 describe("ProductionQueuePage", () => {
   const mockUseSales = vi.spyOn(useSalesModule, "useSales");
-  const mockGetLogs = vi.spyOn(productionServiceModule, "getQuoteFulfillmentLogs");
+  const mockGetLogs = vi.spyOn(productionServiceModule, "getAllActiveFulfillmentLogs");
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -49,10 +49,10 @@ describe("ProductionQueuePage", () => {
 
     mockUseSales.mockReturnValue({ sales: quotes, loading: false } as any);
 
-    // El primero tendrá 0 prod (PENDIENTE)
-    mockGetLogs.mockResolvedValueOnce([]);
-    // El segundo tendrá todo prod (CUMPLIDA)
-    mockGetLogs.mockResolvedValueOnce([{ sku: "SKU2", piecesProduced: 20 }]);
+    // 1 sola query trae TODOS los logs activos; el segundo item cumple 100% (CUMPLIDA), el primero queda sin logs (PENDIENTE).
+    mockGetLogs.mockResolvedValueOnce([
+      { sku: "SKU2", piecesProduced: 20, status: "ACTIVE", source: { id: "COT-FFA1-102" } },
+    ]);
 
     render(<ProductionQueuePage />);
 
@@ -88,12 +88,11 @@ describe("ProductionQueuePage", () => {
 
     mockUseSales.mockReturnValue({ sales: quotes, loading: false } as any);
 
-    mockGetLogs.mockImplementation(async (quoteId: string) => {
-      if (quoteId === "COT-FFA1-201") return []; // PENDIENTE
-      if (quoteId === "COT-FFA1-202") return [{ sku: "SKU2", piecesProduced: 20 }]; // CUMPLIDA
-      if (quoteId === "COT-FFA1-203") return [{ sku: "SKU3", piecesProduced: 12 }]; // SOBRE_PRODUCIDA
-      return [];
-    });
+    // 1 sola query trae todos los logs activos; COT-FFA1-201 no tiene logs (PENDIENTE).
+    mockGetLogs.mockResolvedValue([
+      { sku: "SKU2", piecesProduced: 20, status: "ACTIVE", source: { id: "COT-FFA1-202" } }, // CUMPLIDA
+      { sku: "SKU3", piecesProduced: 12, status: "ACTIVE", source: { id: "COT-FFA1-203" } }, // SOBRE_PRODUCIDA
+    ]);
 
     render(<ProductionQueuePage />);
 
@@ -130,16 +129,16 @@ describe("useTableData pipeline (pageSize de la cola de producción)", () => {
   });
 });
 
-describe("Banner de techo (fetch cap de useSales, literal 100 en page.tsx:219)", () => {
+describe("Banner de techo (fetch cap de useSales, QUEUE_FETCH_CAP en page.tsx)", () => {
   const mockUseSales = vi.spyOn(useSalesModule, "useSales");
-  const mockGetLogs = vi.spyOn(productionServiceModule, "getQuoteFulfillmentLogs");
+  const mockGetLogs = vi.spyOn(productionServiceModule, "getAllActiveFulfillmentLogs");
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("con 100 cotizaciones construidas (== fetch cap de useSales), el banner 'Mostrando las primeras 100' aparece", async () => {
-    const quotes = Array.from({ length: 100 }, (_, i) => ({
+  it("con 500 cotizaciones construidas (== fetch cap de useSales), el banner 'Mostrando las primeras 500' aparece", async () => {
+    const quotes = Array.from({ length: 500 }, (_, i) => ({
       id: `COT-Q-${i}`,
       documentNumber: "",
       customerName: `CLIENTE ${i}`,
@@ -155,11 +154,11 @@ describe("Banner de techo (fetch cap de useSales, literal 100 en page.tsx:219)",
       expect(screen.getByText("CLIENTE 0")).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/Mostrando las primeras 100/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mostrando las primeras 500/i)).toBeInTheDocument();
   });
 
-  it("con 99 cotizaciones construidas (< fetch cap de useSales), el banner NO aparece", async () => {
-    const quotes = Array.from({ length: 99 }, (_, i) => ({
+  it("con 499 cotizaciones construidas (< fetch cap de useSales), el banner NO aparece", async () => {
+    const quotes = Array.from({ length: 499 }, (_, i) => ({
       id: `COT-Q-${i}`,
       documentNumber: "",
       customerName: `CLIENTE ${i}`,

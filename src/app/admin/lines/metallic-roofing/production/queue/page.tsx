@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useSales } from "@/core/hooks/useSales";
-import { getQuoteFulfillmentLogs } from "@/modules/metallic-roofing/services/productionService";
+import { getAllActiveFulfillmentLogs } from "@/modules/metallic-roofing/services/productionService";
+import { bucketLogsBySourceId } from "@/core/production/fulfillmentLogic";
 import { buildQueueRow, sortQueueFifo, getTimestampMillis, formatQuoteDisplayId, QueueRow } from "@/core/production/queueLogic";
 import { DataTable, ColumnDef } from "@/components/ui/DataTable";
 import { TableFilters } from "@/components/ui/TableFilters";
@@ -15,12 +16,13 @@ import { QuoteDetailsReadOnly } from "@/components/production/QuoteDetailsReadOn
 import { Sale } from "@/types";
 import { PRODUCTION_QUEUE_FILTER } from "@/core/sales/services/salesService";
 
+const QUEUE_FETCH_CAP = 500;
 
 export default function ProductionQueuePage() {
   const router = useRouter();
-  
+
   const { sales: quotes, loading: loadingQuotes } = useSales({
-    pageSize: 100,
+    pageSize: QUEUE_FETCH_CAP,
     statusFilter: PRODUCTION_QUEUE_FILTER.status,
     businessLine: PRODUCTION_QUEUE_FILTER.businessLine,
     searchTerm: "",
@@ -50,12 +52,14 @@ export default function ProductionQueuePage() {
     const fetchLogs = async () => {
       setLoadingLogs(true);
       try {
-        const rowPromises = quotes.map(async (q) => {
-          const logs = await getQuoteFulfillmentLogs(q.id!);
+        const allActive = await getAllActiveFulfillmentLogs();
+        const buckets = bucketLogsBySourceId(allActive);
+
+        const builtRows = quotes.map((q) => {
+          const logs = buckets.get(q.id!) ?? [];
           return buildQueueRow(q, logs);
         });
-        const builtRows = await Promise.all(rowPromises);
-        
+
         if (isMounted) {
           setRows(sortQueueFifo(builtRows));
         }
@@ -85,6 +89,11 @@ export default function ProductionQueuePage() {
     totalFiltered,
   } = useTableData({
     data: rows,
+    searchFields: [
+      (row) => row.customerName ?? "",
+      (row) => row.documentNumber ?? "",
+      (row) => row.quoteId ?? "",
+    ],
     filters: {
       "status-filter": (row, value) => {
         if (Array.isArray(value) && value.includes("hide_completed") && row.status === "CUMPLIDA") {
@@ -224,14 +233,14 @@ export default function ProductionQueuePage() {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-            {totalFiltered} cotizaciones en cola
+            {totalFiltered} {searchValue.trim() ? "resultados" : "cotizaciones en cola"}
           </span>
         </div>
       </div>
 
-      {quotes && quotes.length === 100 && (
+      {quotes && quotes.length === QUEUE_FETCH_CAP && (
         <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg flex items-center gap-3">
-          <span className="font-semibold">Mostrando las primeras 100.</span>
+          <span className="font-semibold">Mostrando las primeras {QUEUE_FETCH_CAP}.</span>
           <span>Hay más cotizaciones en cola.</span>
         </div>
       )}
