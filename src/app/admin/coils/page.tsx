@@ -253,6 +253,7 @@ export default function CoilsPage() {
           pricePerKg: fullCoil.pricePerKg || 0,
           currency: fullCoil.metadata?.currency || "PEN",
           exchangeRate: fullCoil.metadata?.exchangeRate || 3.80,
+          originalCurrencyValue: fullCoil.metadata?.originalCurrencyValue,
           providerDocType: fullCoil.metadata?.providerDocType || "LOCAL",
           providerDoc: fullCoil.metadata?.providerDoc || "",
           providerName: fullCoil.metadata?.provider || "",

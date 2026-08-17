@@ -12,6 +12,7 @@ export interface EditData {
   pricePerKg: number;
   currency: "PEN" | "USD";
   exchangeRate: number;
+  originalCurrencyValue?: number;
   providerDocType: "LOCAL" | "TAX_ID";
   providerDoc: string;
   providerName: string;
@@ -129,9 +130,14 @@ export function EditCoilModal({
                 <select
                   disabled={isLocked}
                   value={editData.currency}
-                  onChange={(e) =>
-                    setEditData({ ...editData, currency: e.target.value as "PEN" | "USD" })
-                  }
+                  onChange={(e) => {
+                    const nextCurrency = e.target.value as "PEN" | "USD";
+                    setEditData({
+                      ...editData,
+                      currency: nextCurrency,
+                      exchangeRate: nextCurrency === "PEN" ? 1 : editData.exchangeRate,
+                    });
+                  }}
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold outline-none focus:border-blue-500 disabled:opacity-60"
                 >
                   <option value="PEN">Soles (PEN)</option>

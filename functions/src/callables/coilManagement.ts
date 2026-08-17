@@ -1,6 +1,25 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
+import { resolveCoilCurrencyUpdate, type CoilCurrencyInput } from "../domain/coilCurrency";
+
+interface UpdateCoilRequestUpdates extends CoilCurrencyInput {
+  initialWeight: number;
+  masterWidth: number;
+  thickness: number;
+  finish: string;
+  pricePerKg: number;
+  providerDocType?: "LOCAL" | "TAX_ID";
+  providerDoc?: string;
+  providerName?: string;
+  invoiceNumber?: string;
+  invoiceDate?: string;
+}
+
+interface UpdateCoilRequestData {
+  coilId: string;
+  updates: UpdateCoilRequestUpdates;
+}
 
 export const voidCoil = onCall(async (request) => {
   if (!request.auth) {
@@ -78,7 +97,7 @@ export const voidCoil = onCall(async (request) => {
   });
 });
 
-export const updateCoil = onCall(async (request) => {
+export const updateCoil = onCall(async (request: CallableRequest<UpdateCoilRequestData>) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Usuario no autenticado");
   }
@@ -125,6 +144,18 @@ export const updateCoil = onCall(async (request) => {
       finalInvoiceDate = new Date(`${updates.invoiceDate}T12:00:00`);
     }
 
+    let resolvedCurrency;
+    try {
+      resolvedCurrency = resolveCoilCurrencyUpdate({
+        currency: updates.currency,
+        exchangeRate: updates.exchangeRate,
+        originalCurrencyValue: updates.originalCurrencyValue,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Moneda/TC inválido.";
+      throw new HttpsError("invalid-argument", message);
+    }
+
     const updatePayload: Record<string, any> = {
       initialWeight: initialWeight,
       currentWeight: initialWeight, // derivado, ignoramos el del cliente
@@ -133,6 +164,12 @@ export const updateCoil = onCall(async (request) => {
       finish: updates.finish,
       pricePerKg: updates.pricePerKg,
       updatedAt: FieldValue.serverTimestamp(),
+      "metadata.currency": resolvedCurrency.currency,
+      "metadata.exchangeRate": resolvedCurrency.exchangeRate,
+      "metadata.originalCurrencyValue":
+        resolvedCurrency.originalCurrencyValue === null
+          ? FieldValue.delete()
+          : resolvedCurrency.originalCurrencyValue,
     };
 
     // Actualizar metadata flat
