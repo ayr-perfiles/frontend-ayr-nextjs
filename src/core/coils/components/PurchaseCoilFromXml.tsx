@@ -22,6 +22,7 @@ import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { parseCoilDescription } from "@/core/coils/parseCoilDescription";
 import { TOKEN_TO_FINISH, isValidUsdExchangeRate } from "@/core/coils/bulkUploadLogic";
 import { httpsCallable } from "firebase/functions";
+import { NO_SPIN_CLASS, numericFieldHandlers } from "@/core/coils/utils/numericInput";
 
 interface CoilEntry {
   uid: string;
@@ -500,11 +501,13 @@ export function PurchaseCoilFromXml() {
                       required
                       type="number"
                       step="0.01"
-                      className="w-full bg-white border border-slate-200 rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500"
+                      min="0"
+                      className={`w-full bg-white border border-slate-200 rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${NO_SPIN_CLASS}`}
                       value={coil.weight}
                       onChange={(e) =>
                         updateCoil(coil.uid, "weight", e.target.value)
                       }
+                      {...numericFieldHandlers((v) => updateCoil(coil.uid, "weight", v))}
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -514,11 +517,13 @@ export function PurchaseCoilFromXml() {
                     <input
                       required
                       type="number"
-                      className="w-full bg-white border border-slate-200 rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500"
+                      min="0"
+                      className={`w-full bg-white border border-slate-200 rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${NO_SPIN_CLASS}`}
                       value={coil.width}
                       onChange={(e) =>
                         updateCoil(coil.uid, "width", e.target.value)
                       }
+                      {...numericFieldHandlers((v) => updateCoil(coil.uid, "width", v))}
                     />
                   </div>
                   <div className="md:col-span-1">
@@ -529,11 +534,13 @@ export function PurchaseCoilFromXml() {
                       required
                       type="number"
                       step="0.01"
-                      className="w-full bg-white border border-slate-200 rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500"
+                      min="0"
+                      className={`w-full bg-white border border-slate-200 rounded-md p-2.5 text-sm font-bold outline-none focus:border-blue-500 ${NO_SPIN_CLASS}`}
                       value={coil.thickness}
                       onChange={(e) =>
                         updateCoil(coil.uid, "thickness", e.target.value)
                       }
+                      {...numericFieldHandlers((v) => updateCoil(coil.uid, "thickness", v))}
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -549,11 +556,13 @@ export function PurchaseCoilFromXml() {
                         required
                         type="number"
                         step="0.01"
-                        className="pl-8 w-full bg-emerald-50 border border-emerald-200 rounded-md p-2.5 text-sm font-black text-emerald-800 outline-none focus:border-emerald-500"
+                        min="0"
+                        className={`pl-8 w-full bg-emerald-50 border border-emerald-200 rounded-md p-2.5 text-sm font-black text-emerald-800 outline-none focus:border-emerald-500 ${NO_SPIN_CLASS}`}
                         value={coil.value}
                         onChange={(e) =>
                           updateCoil(coil.uid, "value", e.target.value)
                         }
+                        {...numericFieldHandlers((v) => updateCoil(coil.uid, "value", v))}
                       />
                     </div>
                   </div>
