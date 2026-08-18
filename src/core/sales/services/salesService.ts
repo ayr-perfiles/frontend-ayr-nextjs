@@ -1,6 +1,6 @@
 import { algoliaClient, ALGOLIA_INDICES } from '@/lib/algoliaClient';
 import { db } from '@/lib/firebase/clientApp';
-import { buildAggregateStatusFilter, buildListStatusFilter, buildAlgoliaStatusFilter } from '@/core/sales/salesAggregateLogic';
+import { buildAggregateStatusFilter, buildListStatusFilter } from '@/core/sales/salesAggregateLogic';
 import {
   collection,
   doc,
@@ -516,7 +516,11 @@ export const fetchSales = async (params: FetchSalesParams) => {
 
   // ── MOTOR ALGOLIA ─────────────────────────────────────────────────────────
   if (searchTerm.trim().length > 0 && !customerDoc) {
-    let filters = buildAlgoliaStatusFilter(statusFilter);
+    // Revertido a status:${statusFilter} simple (Frente #9-B.1-E, ver DEUDA en HANDOFF):
+    // buildAlgoliaStatusFilter('ALL') mandaba '(status:COMPLETED OR status:VOIDED)' en el
+    // camino default, y `status` no es facetable en sales_index → Algolia tiraba error →
+    // catch de algoliaClient.ts devolvía hits:[] → 0 resultados para TODA búsqueda en prod.
+    let filters = statusFilter !== 'ALL' ? `status:${statusFilter}` : '';
     if (sunatFilter && sunatFilter !== 'ALL') {
       filters += (filters ? ' AND ' : '') + `sunat.estado:${sunatFilter}`;
     }
