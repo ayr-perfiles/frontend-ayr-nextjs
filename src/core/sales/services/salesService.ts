@@ -672,6 +672,9 @@ export const PRODUCTION_QUEUE_FILTER = {
   businessLine: 'metallic-roofing',
 } as const;
 
+/** Cap de fetch compartido por la cola (/production/queue) y el selector de cotización (/production/new). */
+export const QUEUE_FETCH_CAP = 500;
+
 /** Count barato (agregación, cero lectura de docs) de cotizaciones en la cola de producción. */
 export const getProductionQueueCount = async (): Promise<number> => {
   const collRef = collection(db, 'sales');

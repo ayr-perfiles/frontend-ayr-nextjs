@@ -18,6 +18,8 @@ import type { MetallicProduct } from "@/modules/metallic-roofing/types";
 import type { Coil, Sale, SaleItem } from "@/types";
 import type { CoilFinish } from "@/core/coils/services/finishService";
 import { useSales } from "@/core/hooks/useSales";
+import { QUEUE_FETCH_CAP } from "@/core/sales/services/salesService";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import {
   Factory,
   Plus,
@@ -81,7 +83,7 @@ function MetallicProductionForm() {
   const [quoteLogs, setQuoteLogs] = useState<any[]>([]);
   
   const { sales: quotes, loading: loadingQuotes } = useSales({
-    pageSize: 100,
+    pageSize: QUEUE_FETCH_CAP,
     statusFilter: "QUOTATION",
     businessLine: "metallic-roofing",
     searchTerm: "",
@@ -253,6 +255,19 @@ function MetallicProductionForm() {
     if (!finish?.densityFactor) loadError = `El acabado '${coil.finish}' no tiene factor de densidad configurado.`;
     setRows(prev => prev.map(r => r.rowId === rowId ? { ...r, coilId, coilData: coil, finish, loadError } : r));
   }, [eligibleCoils, finishes]);
+
+  const handleQuoteChange = useCallback((qId: string) => {
+    setSelectedQuoteId(qId);
+    const q = filteredQuotes.find((s) => s.id === qId);
+    if (q) {
+      setSelectedQuoteLabel(q.customerName || qId);
+    } else {
+      setSelectedQuoteLabel("");
+    }
+    setSelectedSku("");
+    setQuoteItemPending(null);
+    setRows([newRow()]);
+  }, [filteredQuotes]);
 
   // ── Cálculo en vivo del resumen ────────────────────────────────────────────
 
@@ -437,30 +452,18 @@ function MetallicProductionForm() {
         ) : (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <select
-                className="flex-1 border-2 border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-blue-400 bg-white min-w-0"
-                value={selectedQuoteId}
-                onChange={(e) => {
-                  const qId = e.target.value;
-                  setSelectedQuoteId(qId);
-                  const q = filteredQuotes.find((s) => s.id === qId);
-                  if (q) {
-                    setSelectedQuoteLabel(q.customerName || qId);
-                  } else {
-                    setSelectedQuoteLabel("");
-                  }
-                  setSelectedSku("");
-                  setQuoteItemPending(null);
-                  setRows([newRow()]);
-                }}
-              >
-                <option value="">— Seleccionar Cotización —</option>
-                {filteredQuotes.map((q) => (
-                  <option key={q.id} value={q.id}>
-                    {q.id} — {q.customerName}
-                  </option>
-                ))}
-              </select>
+              <div className="flex-1 min-w-0">
+                <SearchableSelect
+                  value={selectedQuoteId}
+                  onChange={handleQuoteChange}
+                  options={filteredQuotes}
+                  getId={(q) => q.id!}
+                  getLabel={(q) => `${q.id} — ${q.customerName}`}
+                  searchFields={(q) => [q.id ?? "", q.customerName ?? "", q.documentNumber ?? ""]}
+                  placeholder="Seleccionar Cotización"
+                  emptyMessage="No hay cotizaciones que matcheen"
+                />
+              </div>
 
               {selectedQuoteId && (
                 <button
@@ -528,24 +531,19 @@ function MetallicProductionForm() {
             <Loader2 size={16} className="animate-spin" /> Cargando productos...
           </div>
         ) : (
-          <select
-            className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm font-bold outline-none focus:border-blue-400 bg-white"
+          <SearchableSelect
             value={selectedSku}
-            onChange={(e) => {
-              const sku = e.target.value;
+            onChange={(sku) => {
               setSelectedSku(sku);
               const product = products.find((p) => p.sku === sku);
               setRows([newRow(product?.length ?? null)]);
             }}
-            required
-          >
-            <option value="">— Seleccionar SKU terminado (COBERTURA / PLANCHA) —</option>
-            {products.map((p) => (
-              <option key={p.sku} value={p.sku}>
-                {p.sku} — {p.displayName}
-              </option>
-            ))}
-          </select>
+            options={products}
+            getId={(p) => p.sku}
+            getLabel={(p) => `${p.sku} — ${p.displayName}`}
+            searchFields={(p) => [p.sku, p.displayName ?? ""]}
+            placeholder="Seleccionar SKU terminado (COBERTURA / PLANCHA)"
+          />
         )}
 
         {selectedProduct && (
@@ -787,18 +785,18 @@ function CoilRowCard({
               No hay bobinas compatibles disponibles
             </div>
           ) : (
-            <select
-              className="w-full border border-slate-200 rounded-lg p-2.5 text-sm font-bold outline-none focus:border-blue-400 bg-white"
+            <SearchableSelect
               value={row.coilId}
-              onChange={(e) => onCoilSelect(e.target.value)}
-            >
-              <option value="">— Seleccionar bobina —</option>
-              {eligibleCoils.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.id} ({c.currentWeight.toLocaleString("es-PE", { maximumFractionDigits: 2 })} kg disp. · {c.thickness} mm · {c.finish})
-                </option>
-              ))}
-            </select>
+              onChange={onCoilSelect}
+              options={eligibleCoils}
+              getId={(c) => c.id}
+              getLabel={(c) =>
+                `${c.id} (${c.currentWeight.toLocaleString("es-PE", { maximumFractionDigits: 2 })} kg disp. · ${c.thickness} mm · ${c.finish})`
+              }
+              searchFields={(c) => [c.id, c.finish ?? "", String(c.thickness ?? "")]}
+              placeholder="Seleccionar bobina"
+              emptyMessage="No hay bobinas que matcheen"
+            />
           )}
         </div>
 

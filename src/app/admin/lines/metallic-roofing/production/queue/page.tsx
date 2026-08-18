@@ -14,9 +14,7 @@ import { RowActionsMenu } from "@/components/ui/RowActionsMenu";
 import { Factory, Eye, Loader2 } from "lucide-react";
 import { QuoteDetailsReadOnly } from "@/components/production/QuoteDetailsReadOnly";
 import { Sale } from "@/types";
-import { PRODUCTION_QUEUE_FILTER } from "@/core/sales/services/salesService";
-
-const QUEUE_FETCH_CAP = 500;
+import { PRODUCTION_QUEUE_FILTER, QUEUE_FETCH_CAP } from "@/core/sales/services/salesService";
 
 export default function ProductionQueuePage() {
   const router = useRouter();
