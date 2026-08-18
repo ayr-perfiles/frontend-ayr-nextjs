@@ -382,14 +382,14 @@ export default function Sidebar({
             href="/admin/sales/import"
             active={pathname === "/admin/sales/import"}
             collapsed={collapsed}
-          />
+          /> */}
           <NavItem
             icon="FileText"
             label="Cotizaciones"
             href="/admin/quotations"
             active={pathname === "/admin/quotations"}
             collapsed={collapsed}
-          /> */}
+          />
           <NavItem
             icon="Contact2"
             label="Clientes"
