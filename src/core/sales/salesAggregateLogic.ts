@@ -60,3 +60,19 @@ export function buildAlgoliaStatusFilter(statusFilter: string): string {
     .map((s) => `status:${s}`)
     .join(" OR ")})`;
 }
+
+/**
+ * Filtro CLIENT-SIDE de cotizaciones fuera de los resultados de búsqueda por texto de
+ * `/admin/sales` (Frente #9-B.1-E). Como `status` no es facetable en Algolia (ver
+ * `buildAlgoliaStatusFilter`), no se puede filtrar en la query — se filtra el array de
+ * docs YA TRAÍDOS de Firestore (docs completos y auténticos, no el hit crudo de Algolia).
+ * Mismo whitelist que `buildListStatusFilter('ALL')` — cubre perchas importadas
+ * (`status==='QUOTATION'`) Y cotizaciones nativas por igual, sin depender de
+ * `isImportedQuotation` (que solo detecta importadas, dejaría pasar una nativa). Un doc
+ * sin `status` queda excluido: una venta real siempre tiene status, uno sin status no
+ * debe colarse.
+ */
+export function filterSalesExcludingQuotations<T extends { status?: string }>(docs: T[]): T[] {
+  const allowed = new Set(buildListStatusFilter("ALL"));
+  return docs.filter((d) => d.status != null && allowed.has(d.status as SaleStatus));
+}
