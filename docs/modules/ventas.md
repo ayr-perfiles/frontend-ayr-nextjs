@@ -1,6 +1,7 @@
 # MÓDULO: ventas (sales) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-07-29 (importador detalle).
-> ⚠️ SE PUDRE. Antes de tocar lógica/costeo/writes de ventas: verificá (checklist §7). No confíes si la fecha está vieja.
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-18 (separación ventas/cotizaciones, §14).
+> ⚠️ SE PUDRE. Antes de tocar lógica/costeo/writes de ventas: verificá (checklist §11). No confíes si la fecha está vieja.
+> ⚠️ **§4 de este doc describe el modelo PRE-2026-08-18, hoy OBSOLETO en la parte de agregados de `/admin/sales`. Ver §14 antes de confiar en §4.**
 
 ## 1. Escritores vivos de `sales` (5)
 1. `src/app/admin/sales/import/page.tsx` — importador masivo. **Client-side directo** (`runTransaction`/`writeBatch`), NO pasa por callable. WRITE 9 pendiente (§9 roadmap CLAUDE.md) migrará esto.
@@ -25,8 +26,9 @@
 - Guard anti-aprobación de cotizaciones importadas: línea 231-233, `if (quoteData.relatedSaleId || quoteData.metadata?.isQuotation || quoteData.metadata?.isHistorical) throw`. Ver §5.
 
 ## 4. Agregados en `/admin/sales`: dos constraints SEPARADAS
-- **Tarjetas de dinero** (`aggregateCount` + montos) → filtran solo `status:'COMPLETED'`. Esto excluye tanto `QUOTATION` como `CONVERTED` — evita la doble-plata de §3.
-- **Pie de tabla / contador de lista** (`listTotalCount`) → cuenta `COMPLETED + QUOTATION + CONVERTED` (todo lo visible en la lista, independiente de si suma plata).
+> ⚠️ **OBSOLETO desde 2026-08-18 — ver §14.** El bullet de "Pie de tabla" de abajo describe el modelo PRE-#9-A. Hoy `/admin/sales` NUNCA muestra `QUOTATION`/`CONVERTED`, ni en tarjetas ni en pie de tabla ni en búsqueda — las cotizaciones viven en `/admin/quotations`.
+- **Tarjetas de dinero** (`aggregateCount` + montos) → filtran solo `status:'COMPLETED'`. Esto excluye tanto `QUOTATION` como `CONVERTED` — evita la doble-plata de §3. (Esto sigue vigente.)
+- ~~**Pie de tabla / contador de lista** (`listTotalCount`) → cuenta `COMPLETED + QUOTATION + CONVERTED` (todo lo visible en la lista, independiente de si suma plata).~~ **YA NO. Ver §14: hoy `listTotalCount` = `COMPLETED + VOIDED`, misma whitelist que las tarjetas.**
 - Rótulos de las tarjetas son dinámicos según el filtro de estado activo (no hardcodeados a "Ventas").
 - Guard de array vacío: si `statuses.length === 0` NO se dispara la query (`salesService.ts:556,564` — Firestore `where(field,'in',[])` explota en runtime si se le pasa un array vacío).
 - `dashboardService.ts` y `reportFunctions.ts` **ya filtraban `COMPLETED` estricto** antes de esta sesión — no tenían el bug de doble-conteo, solo `/admin/sales` lo tenía.
@@ -84,3 +86,32 @@ importar factura → nace venta COMPLETED + cotización COT-{documentNumber}
 - **Vista de Detalle:** El importador masivo en `/admin/sales/import` fue enriquecido con una vista de detalle por comprobante (acordeón por boleta) en lugar de un mero total consolidado. También incluye un panel para las filas descartadas/ignoradas (`skipReasonLabel`).
 - **Helper puro `parseImportRows`:** Función que procesa los datos del CSV (con tipado estricto `ParsedSaleItem`, sin `any`) devolviendo un objeto estructurado `{ parsedSales, skippedRows }`.
 - **Typing fuerte:** El tipado `ParsedSaleItem` erradicó bugs silenciosos (como el campo fantasma `item.amount` que antes pasaba por `any`). La lección arquitectónica: tipar desde la capa de parsing para que falle en BUILD y no en runtime.
+
+## 14. Separación TOTAL ventas/cotizaciones — Frentes #9-A / #9-B.1 (2026-08-18)
+
+Antes de esta sesión, `/admin/sales` mezclaba TODO en una sola vista: ventas reales + las ~130 perchas importadas `COT-*` + cotizaciones nativas `C-*` pendientes. Reemplaza el modelo descrito en §4 (marcado obsoleto arriba).
+
+**Modelo nuevo — dos vistas, un solo campo `status` como discriminante:**
+- **`/admin/sales`** = SOLO venta real. `status in ['COMPLETED','VOIDED']`. Fuente de verdad única: `buildListStatusFilter('ALL')` (`src/core/sales/salesAggregateLogic.ts`). Aplicado en las **3 vías de lectura**, no solo la principal:
+  1. Query Firestore (rama sin búsqueda de texto) — `where('status','in',[...])`.
+  2. Dropdown de filtro (`SalesFilters.tsx`) — las opciones "Cot. Pendientes"/"Cot. Aprobadas" fueron ELIMINADAS del select, solo quedan "Todas"/"Ventas Cerradas".
+  3. Búsqueda de texto (Algolia) — filtro **CLIENT-SIDE** (`filterSalesExcludingQuotations`, misma fuente `buildListStatusFilter`) sobre los docs Firestore reales ya traídos, NO sobre los hits crudos de Algolia (que el código solo usa para extraer `objectID`, ver §10). Detalle del porqué client-side y no server-side, abajo.
+- **`/admin/quotations`** (ruta nueva, antes un stub `InDevelopment` sin linkear desde Sprint 6B) = TODAS las cotizaciones: perchas importadas `COT-*` (range-query sobre `documentId()`, `>='COT-'` `<'COT-'`, índice automático `__name__`) + nativas `C-*` con `status in ['QUOTATION','CANCELLED']` — `fetchAllQuotations()` en `salesService.ts`, 2 queries dedupeadas por doc.id (sin `limit`, trae todas). Columnas: Documento · Cliente · Fecha · Estado de Cotización (Vigente/Cancelada) · Estado de Producción (derivado, ver abajo) · Origen (Importada/Nativa) · Comprobante Vinculado. **SIN acciones** — editar/anular/cascada es #9-B.2, no implementado.
+
+**Estado de producción de una cotización NO es un campo simple.** `isFulfilled` (booleano persistido en el doc) solo da 2 estados (true/false) — comprobado con datos reales de prod: dos perchas con `isFulfilled:false` idéntico, una sin ninguna producción y otra con producción parcial real, indistinguibles por el campo solo. El estado real (PENDIENTE/PARCIAL/CUMPLIDA/SOBRE_PRODUCIDA) se DERIVA cruzando `items` (lo pedido) contra `production_logs` filtrados por `source.id` — helper `buildQueueRow` (`src/core/production/queueLogic.ts`), REUSADO TAL CUAL (no reimplementado) entre la cola de producción metallic y `/admin/quotations`.
+
+**Origen (Importada/Nativa)** se determina con `isImportedQuotation(sale)` = `Boolean(sale.relatedSaleId || sale.metadata?.isQuotation)` (`src/core/import/salesImportLogic.ts`) — **NUNCA por el prefijo del id**. Confirmado 100% consistente en prod: las 130 `COT-*` dan `isImportedQuotation()===true`, cero excepciones.
+
+**`cancelQuotation` (`salesService.ts`) bloquea perchas importadas.** Guard dentro de la transacción, tras el check de status:
+```ts
+if (data.relatedSaleId || data.metadata?.isQuotation) {
+  throw new Error('No se puede cancelar una cotización importada: proviene de una venta ya facturada. Para revertir, anule la venta.');
+}
+```
+Antes de este guard, se podía cancelar una percha ya con producción real (`isFulfilled:true`, 74/130 en prod al momento de la sesión) sin avisar ni tocar la producción ni la venta gemela — dato inconsistente silencioso. Solo cotizaciones NATIVAS se pueden cancelar hoy.
+
+**"Editar Cotización" y "Duplicar Operación" ocultos en `/admin/sales`** (`SalesTable.tsx`, `hidden:true`) — eran botones muertos, no arreglados, solo tapados: Editar apunta a `/admin/sales/[id]/edit`, ruta INEXISTENTE (404); Duplicar tiene un mismatch de query param (`?from=` que manda `page.tsx`, vs `?duplicateId=` que lee `new/page.tsx`) — abría un formulario vacío, no duplicaba nada. `onEdit`/`onDuplicate` quedan cableados sin ruta/reglas reales hasta #9-B.2.
+
+**DEUDA VIVA — `status` no es atributo facetable en el índice Algolia `sales_index`.** Intentar filtrar server-side por status ahí (helper `buildAlgoliaStatusFilter`, escrito y testeado pero marcado `⚠️ NO USAR` en su docstring) **rompió la búsqueda de texto ENTERA en prod una vez** — con el filtro (aunque fuera un simple `status:COMPLETED`), Algolia respondía error de filtro inválido, el `catch` de `algoliaClient.ts` caía a `hits:[]`, y la búsqueda devolvía 0 resultados para CUALQUIER término, no solo para cotizaciones. Se revirtió el intento server-side y se resolvió filtrando client-side (ver arriba). Si algún día se configura `attributesForFaceting:['status',...]` en el dashboard de Algolia + se reindexa, `buildAlgoliaStatusFilter` queda lista para reemplazar el filtro client-side sin tocar la lógica de whitelist (misma fuente `buildListStatusFilter`).
+
+**Ampliación al §11 (checklist antes de cambio grande):** agregar — 6. ¿Tu cambio toca `/admin/sales` o `/admin/quotations`? Confirmá que sigue siendo imposible traer una cotización a `/admin/sales` por CUALQUIER vía (query/dropdown/búsqueda) antes de mergear.
