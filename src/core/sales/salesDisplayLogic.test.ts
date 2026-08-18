@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveCustomerDoc, getSaleStatusBadge } from "./salesDisplayLogic";
+import { resolveCustomerDoc, getSaleStatusBadge, canDuplicate } from "./salesDisplayLogic";
 
 describe("salesDisplayLogic - resolveCustomerDoc", () => {
   it("Venta nueva del POS (customerDocument presente, documentNumber vacío) -> Extrae rucDni y comprobante es null", () => {
@@ -67,5 +67,31 @@ describe("salesDisplayLogic - getSaleStatusBadge (Frente #9-A: fix binario Sales
   it("status desconocido o undefined -> fallback con el valor crudo o guion, nunca 'Cotización' por defecto", () => {
     expect(getSaleStatusBadge("RARO").label).toBe("RARO");
     expect(getSaleStatusBadge(undefined).label).toBe("—");
+  });
+});
+
+describe("salesDisplayLogic - canDuplicate (#9-B.2a: gating del botón Duplicar)", () => {
+  it("COMPLETED -> true", () => {
+    expect(canDuplicate("COMPLETED")).toBe(true);
+  });
+
+  it("QUOTATION -> true", () => {
+    expect(canDuplicate("QUOTATION")).toBe(true);
+  });
+
+  it("VOIDED -> false", () => {
+    expect(canDuplicate("VOIDED")).toBe(false);
+  });
+
+  it("CANCELLED -> false", () => {
+    expect(canDuplicate("CANCELLED")).toBe(false);
+  });
+
+  it("CONVERTED -> false", () => {
+    expect(canDuplicate("CONVERTED")).toBe(false);
+  });
+
+  it("undefined -> false (allowlist, status nuevo/desconocido queda oculto por defecto)", () => {
+    expect(canDuplicate(undefined)).toBe(false);
   });
 });

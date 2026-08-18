@@ -1,6 +1,6 @@
 import { Sale } from "@/types";
 import { isImportedQuotation } from "@/core/import/salesImportLogic";
-import { resolveCustomerDoc } from "@/core/sales/salesDisplayLogic";
+import { resolveCustomerDoc, canDuplicate } from "@/core/sales/salesDisplayLogic";
 import { TableFilters } from "@/components/ui/TableFilters";
 import { DataTable, ColumnDef } from "@/components/ui/DataTable";
 
@@ -282,8 +282,7 @@ export function SalesTable({
             icon: <Copy size={16} />,
             onClick: () => onDuplicate(sale.id!),
             variant: "primary",
-            // Ruta rota (?from= vs ?duplicateId= en /admin/sales/new) — reactivar en #9-B.2, no antes.
-            hidden: true,
+            hidden: !canDuplicate(sale.status),
           },
         ];
 

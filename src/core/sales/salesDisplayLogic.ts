@@ -1,4 +1,4 @@
-import { Sale } from "@/types";
+import { Sale, SaleStatus } from "@/types";
 
 export interface SaleStatusBadgeInfo {
   label: string;
@@ -30,6 +30,16 @@ export function getSaleStatusBadge(status: string | undefined): SaleStatusBadgeI
 export interface ResolvedSaleDocument {
   rucDni: string;
   comprobante: string | null;
+}
+
+/**
+ * Gating del botón "Duplicar Operación" (#9-B.2a). Allowlist a propósito (NO denylist):
+ * un status nuevo/desconocido queda oculto por defecto en vez de aparecer sin querer.
+ */
+const DUPLICATABLE_STATUSES: SaleStatus[] = ["COMPLETED", "QUOTATION"];
+
+export function canDuplicate(status: SaleStatus | undefined): boolean {
+  return !!status && DUPLICATABLE_STATUSES.includes(status);
 }
 
 export function resolveCustomerDoc(sale: Partial<Sale>): ResolvedSaleDocument {

@@ -198,7 +198,7 @@ export default function SalesPage() {
           role={role}
           currentPage={currentPage}
           pageSize={pageSize}
-          onDuplicate={(saleId) => (window.location.href = `/admin/sales/new?from=${saleId}`)}
+          onDuplicate={(saleId) => (window.location.href = `/admin/sales/new?duplicateId=${saleId}`)}
           onEdit={(saleId) => (window.location.href = `/admin/sales/${saleId}/edit`)}
         />
         {loading && (

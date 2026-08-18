@@ -143,11 +143,11 @@ export default function NewSalePage() {
         const snap = await getDoc(doc(db, "sales", duplicateId));
         if (snap.exists()) {
           const data = snap.data();
-          const docNum = data.documentNumber || "";
-          setDocumentNumber(docNum);
+          const custDoc = data.customerDocument || "";
+          setDocumentNumber(custDoc);
           setCustomerName(data.customerName || "");
-          setSearchTerm(docNum);
-          if (docNum) await fetchClientData(docNum);
+          setSearchTerm(custDoc);
+          if (custDoc) await fetchClientData(custDoc);
           setCart(
             (data.items || []).map((item: CartItem) => ({
               ...item,
