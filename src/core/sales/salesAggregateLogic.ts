@@ -31,12 +31,15 @@ export function buildAggregateStatusFilter(statusFilter: string): AggregateStatu
 }
 
 /**
- * Función pura que construye las restricciones para la lista (tabla) manteniendo
- * la paginación e historial intactos (en 'ALL' muestra COMPLETED + QUOTATION + CONVERTED).
+ * Función pura que construye las restricciones para la lista (tabla) de `/admin/sales`.
+ * 'ALL' = whitelist de estados de VENTA REAL (COMPLETED, VOIDED) — las cotizaciones
+ * (QUOTATION/CONVERTED/CANCELLED, incl. perchas COT-*) viven en `/admin/quotations`,
+ * fuera de esta vista. Whitelist en vez de blacklist por prefijo de id: compone con
+ * orderBy(timestamp) + paginación por cursor sin exigir índice nuevo (Frente #9-A).
  */
 export function buildListStatusFilter(statusFilter: string): SaleStatus[] {
   if (statusFilter === "ALL") {
-    return ["COMPLETED", "QUOTATION", "CONVERTED"];
+    return ["COMPLETED", "VOIDED"];
   }
   return [statusFilter as SaleStatus];
 }

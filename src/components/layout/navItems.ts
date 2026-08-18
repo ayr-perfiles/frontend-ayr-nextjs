@@ -58,6 +58,7 @@ const isCommercialItem = (label: string) => {
 const COMERCIAL_ITEMS: NavLeafItem[] = [
   { id: 'dashboard', label: 'Panel',    icon: 'LayoutDashboard', path: '/admin' },
   { id: 'sales',     label: 'Ventas',   icon: 'Receipt',         path: '/admin/sales' },
+  { id: 'quotations', label: 'Cotizaciones', icon: 'FileText',   path: '/admin/quotations' },
   { id: 'customers', label: 'Clientes', icon: 'Users',           path: '/admin/customers' },
   { id: 'reports',   label: 'Reportes', icon: 'BarChart3',       path: '/admin/reports' },
 ];
@@ -123,6 +124,7 @@ export const NAV: NavSection = {
 export const ROUTE_TITLES: Record<string, RouteTitle> = {
   '/admin':            { title: 'Panel general',  crumb: null },
   '/admin/sales':      { title: 'Ventas',         crumb: null },
+  '/admin/quotations': { title: 'Cotizaciones',   crumb: null },
   '/admin/customers':  { title: 'Clientes',       crumb: null },
   '/admin/reports':    { title: 'Reportes',       crumb: null },
   '/admin/purchases':  { title: 'Compras',        crumb: ['Abastecimiento'] },

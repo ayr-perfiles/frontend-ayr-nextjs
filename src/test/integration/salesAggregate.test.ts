@@ -99,10 +99,12 @@ describe("Agregados Sales - Corrección de Doble Conteo (RED PHASE)", () => {
     expect(result.totalCount).toBe(2); // FAILS IN RED! Expected: 2, Received: 4
   });
 
-  // 11. La LISTA en 'ALL' debe seguir devolviendo los 4 documentos (paginación e historial intactos)
-  it("11. Anti-regresión: La LISTA (tabla) en statusFilter 'ALL' devuelve los 4 documentos", async () => {
+  // 11. Frente #9-A: la LISTA en 'ALL' ahora es whitelist de venta real (COMPLETED+VOIDED) —
+  // las cotizaciones (QUOTATION/CONVERTED) quedan afuera de /admin/sales, viven en /admin/quotations.
+  it("11. Frente #9-A: La LISTA (tabla) en statusFilter 'ALL' devuelve solo los 2 COMPLETED, sin las cotizaciones", async () => {
     const result = await fetchSales({ pageSize: 10, statusFilter: "ALL", searchTerm: "", startDate: "", endDate: "", skipAggregates: true });
-    expect(result.sales.length).toBe(4);
+    expect(result.sales.length).toBe(2);
+    expect(result.sales.map((s) => s.documentNumber).sort()).toEqual(["V-TEST-A", "V-TEST-D"]);
   });
 
   // 12. Guard de array vacío: statusFilter 'VOIDED' no lanza excepción y retorna agregados en 0 sin consultar Firestore
@@ -112,12 +114,12 @@ describe("Agregados Sales - Corrección de Doble Conteo (RED PHASE)", () => {
     expect(result.aggregates).toEqual({ totalAmount: 0, totalProfit: 0, totalWeight: 0 });
   });
 
-  // 13. FIX PIE DE TABLA: statusFilter 'ALL' debe retornar listTotalCount === 4 y aggregateCount === 2
-  it("13. FIX PIE DE TABLA: statusFilter 'ALL' retorna listTotalCount (4) y aggregateCount (2) independientes", async () => {
+  // 13. Frente #9-A: statusFilter 'ALL' ahora coincide listTotalCount (2) y aggregateCount (2) —
+  // ambos son whitelist de venta real (COMPLETED+VOIDED para la lista, COMPLETED para el agregado
+  // de dinero), sin las 2 cotizaciones del fixture (QUOTATION/CONVERTED) de por medio.
+  it("13. Frente #9-A: statusFilter 'ALL' retorna listTotalCount (2) y aggregateCount (2) sin cotizaciones", async () => {
     const result = await fetchSales({ pageSize: 10, statusFilter: "ALL", searchTerm: "", startDate: "", endDate: "", skipAggregates: false });
-    // En el código actual (antes del FIX), res.listTotalCount no existe o es igual a 2 (el count del agregado).
-    // Esperado: listTotalCount === 4 para el pie de tabla, y totalCount (o aggregateCount) === 2 para la tarjeta.
-    expect((result as any).listTotalCount).toBe(4); // FAILS IN RED! Expected 4, Received undefined or 2
+    expect((result as any).listTotalCount).toBe(2);
     expect(result.totalCount).toBe(2);
   });
 

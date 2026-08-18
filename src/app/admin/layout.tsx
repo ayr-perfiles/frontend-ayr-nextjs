@@ -9,6 +9,7 @@ import { Loader2, Zap } from "lucide-react";
 
 const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/admin/sales": ["ADMIN"],
+  "/admin/quotations": ["ADMIN"],
   "/admin/settings": ["ADMIN"],
   "/admin/setup": ["ADMIN"],
   "/admin/users": ["ADMIN"],

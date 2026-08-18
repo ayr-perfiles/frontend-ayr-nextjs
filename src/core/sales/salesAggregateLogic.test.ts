@@ -45,11 +45,18 @@ describe("salesAggregateLogic - Lógica de Agregados de Ventas (RED PHASE)", () 
     expect(resCancelled.statuses).toEqual([]);
   });
 
-  // 7. Anti-regresión LISTA: buildListStatusFilter('ALL') mantiene COMPLETED + QUOTATION + CONVERTED
-  it("7. Anti-regresión: buildListStatusFilter('ALL') conserva los 3 estados para la tabla de lista", () => {
+  // 7. Frente #9-A: buildListStatusFilter('ALL') = whitelist de venta real (COMPLETED + VOIDED),
+  // ya NO incluye QUOTATION/CONVERTED — esas perchas viven en /admin/quotations.
+  it("7. Frente #9-A: buildListStatusFilter('ALL') incluye ÚNICAMENTE COMPLETED y VOIDED", () => {
     const listStatuses = buildListStatusFilter("ALL");
-    expect(listStatuses).toContain("COMPLETED");
-    expect(listStatuses).toContain("QUOTATION");
-    expect(listStatuses).toContain("CONVERTED");
+    expect(listStatuses).toEqual(["COMPLETED", "VOIDED"]);
+    expect(listStatuses).not.toContain("QUOTATION");
+    expect(listStatuses).not.toContain("CONVERTED");
+  });
+
+  // 8. buildListStatusFilter con un status concreto (ej. 'QUOTATION') sigue pasando 1:1, sin whitelist.
+  it("8. buildListStatusFilter con status concreto no aplica whitelist, pasa el valor tal cual", () => {
+    expect(buildListStatusFilter("QUOTATION")).toEqual(["QUOTATION"]);
+    expect(buildListStatusFilter("VOIDED")).toEqual(["VOIDED"]);
   });
 });
