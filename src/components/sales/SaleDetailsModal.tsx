@@ -34,6 +34,10 @@ import Link from "next/link";
 
 import { resolveCustomerDoc } from "@/core/sales/salesDisplayLogic";
 import { useConfirm } from "@/context/ConfirmContext";
+import { resolveSaleQuotationLink } from "@/core/sales/saleProductionLink";
+import { buildQueueRow, buildQuoteDetailView, formatQuoteDisplayId } from "@/core/production/queueLogic";
+import { getProductionStateLabel } from "@/core/sales/quotationsViewLogic";
+import type { QuotationProductionStatus } from "@/core/sales/quotationsViewLogic";
 
 interface SaleDetailsModalProps {
   sale: Sale;
@@ -353,15 +357,13 @@ export function SaleDetailsModal({
                 </p>
               )}
 
-              {/* FULFILLMENT: Producción contra Cotización */}
-              {sale.status === "QUOTATION" && sale.businessLines?.includes("metallic-roofing") && (
-                <ProductionFulfillment
-                  sale={sale}
-                  role={role || ""}
-                  userEmail={user?.email || ""}
-                  onConfirmed={refreshSale}
-                />
-              )}
+              {/* FULFILLMENT: Producción contra Cotización (propia, o vinculada via relatedQuotationId/originQuoteId) */}
+              <ProductionFulfillment
+                sale={sale}
+                role={role || ""}
+                userEmail={user?.email || ""}
+                onConfirmed={refreshSale}
+              />
             </div>
 
             {/* SECCIÓN 3: DATOS FINANCIEROS Y ACCIONES */}
@@ -495,7 +497,206 @@ export function SaleDetailsModal({
 
 // ─── Sub-Componente de Fulfillment ───────────────────────────────────────────
 
+/**
+ * Dispatcher: la venta puede SER la cotización (mode 'self', flujo de producción
+ * con escritura ya existente), estar VINCULADA a una (mode 'linked', importada vía
+ * relatedQuotationId o nativa convertida vía originQuoteId — solo lectura), o no
+ * tener cotización asociada (mode 'none').
+ */
 function ProductionFulfillment({
+  sale,
+  role,
+  userEmail,
+  onConfirmed,
+}: {
+  sale: Sale;
+  role: string;
+  userEmail: string;
+  onConfirmed?: () => void;
+}) {
+  const metallicItems = sale.items?.filter((i) => i.businessLine === "metallic-roofing") || [];
+  const hasMetallicItem = metallicItems.length > 0;
+  if (!hasMetallicItem) return null;
+
+  const link = resolveSaleQuotationLink(sale);
+
+  if (link.mode === "none") {
+    return (
+      <div className="mt-6 border-t border-dashed border-gray-200 pt-6">
+        <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+          <Factory size={16} className="text-orange-500" /> Estado de Producción
+        </h3>
+        <p className="text-xs text-slate-400 font-medium">
+          No aplica (venta sin cotización vinculada).
+        </p>
+      </div>
+    );
+  }
+
+  if (link.mode === "linked") {
+    return <LinkedQuotationFulfillment quotationId={link.quotationId} />;
+  }
+
+  return (
+    <SelfQuoteFulfillment
+      sale={sale}
+      role={role}
+      userEmail={userEmail}
+      onConfirmed={onConfirmed}
+    />
+  );
+}
+
+// ─── mode 'linked': solo lectura, cotización vinculada por relatedQuotationId/originQuoteId ──
+
+function LinkedQuotationFulfillment({ quotationId }: { quotationId: string }) {
+  type LinkedState =
+    | { phase: "loading" }
+    | { phase: "not-found" }
+    | { phase: "error" }
+    | {
+        phase: "ready";
+        statusLabel: string;
+        statusColorClass: string;
+        view: ReturnType<typeof buildQuoteDetailView>;
+      };
+
+  const [state, setState] = useState<LinkedState>({ phase: "loading" });
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setState({ phase: "loading" });
+
+    const fetchLinkedQuotation = async () => {
+      try {
+        const snap = await getDoc(doc(db, "sales", quotationId));
+        if (!snap.exists()) {
+          if (!cancelled) setState({ phase: "not-found" });
+          return;
+        }
+        const quote = { id: snap.id, ...snap.data() } as Sale;
+        const logs = await getQuoteFulfillmentLogs(quotationId);
+
+        // hasMetallicItems + NO_APLICA: mismo criterio que buildQuotationRow (quotationsViewLogic.ts),
+        // inlineado para no recomputar buildQueueRow dos veces sobre el mismo quote+logs.
+        const hasMetallicItems = (quote.items ?? []).some(
+          (item) => item.businessLine === "metallic-roofing",
+        );
+        const queueRow = buildQueueRow(quote, logs);
+        const view = buildQuoteDetailView(quote, queueRow);
+        const productionStatus: QuotationProductionStatus = hasMetallicItems
+          ? queueRow.status
+          : "NO_APLICA";
+        const statusInfo = getProductionStateLabel(productionStatus);
+
+        if (!cancelled) {
+          setState({
+            phase: "ready",
+            statusLabel: statusInfo.label,
+            statusColorClass: statusInfo.colorClass,
+            view,
+          });
+        }
+      } catch (err) {
+        console.error("Error al cargar la cotización vinculada", err);
+        if (!cancelled) setState({ phase: "error" });
+      }
+    };
+
+    fetchLinkedQuotation();
+    return () => {
+      cancelled = true;
+    };
+  }, [quotationId]);
+
+  return (
+    <div className="mt-6 border-t border-dashed border-gray-200 pt-6">
+      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+        <Factory size={16} className="text-orange-500" /> Estado de Producción
+      </h3>
+
+      {state.phase === "loading" && (
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <Loader2 size={14} className="animate-spin" /> Cargando producción de{" "}
+          {formatQuoteDisplayId(quotationId)}...
+        </div>
+      )}
+
+      {state.phase === "not-found" && (
+        <p className="text-xs text-slate-400 font-medium">
+          Cotización vinculada ({formatQuoteDisplayId(quotationId)}) no encontrada
+          (posible percha purgada).
+        </p>
+      )}
+
+      {state.phase === "error" && (
+        <p className="text-xs text-red-500 font-medium">
+          No se pudo cargar el estado de producción de la cotización vinculada.
+        </p>
+      )}
+
+      {state.phase === "ready" && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-gray-500">
+              Cotización vinculada:{" "}
+              <span className="font-bold text-gray-700">
+                {formatQuoteDisplayId(quotationId)}
+              </span>
+            </p>
+            <span
+              className={`text-[10px] font-black px-2 py-1 rounded-md tracking-wider border ${state.statusColorClass}`}
+            >
+              {state.statusLabel}
+            </span>
+          </div>
+
+          {state.view.rows.map((row, idx) => (
+            <div
+              key={idx}
+              className="bg-orange-50/50 p-4 rounded-xl border border-orange-100 flex flex-col sm:flex-row justify-between gap-4"
+            >
+              <div>
+                <p className="font-black text-gray-800">{row.sku}</p>
+                <p className="text-[11px] text-gray-500">{row.productName}</p>
+                <div className="flex gap-4 mt-2 text-xs">
+                  <div>
+                    <span className="text-gray-500 font-bold uppercase tracking-wider block text-[9px]">
+                      Solicitado
+                    </span>
+                    <span className="font-bold text-gray-700">
+                      {row.quantityRequested}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 font-bold uppercase tracking-wider block text-[9px]">
+                      Producido (por SKU)
+                    </span>
+                    <span className="font-bold text-blue-600">
+                      {row.producedForSku}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {state.view.hasSharedSku && (
+            <p className="text-[11px] text-amber-600 font-medium flex items-center gap-1.5">
+              <Factory size={12} className="shrink-0" />
+              Producido agrupado por producto: la producción no distingue TR4/TR5
+              dentro del mismo SKU.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── mode 'self': la venta ES la cotización (flujo original, con escritura) ──
+
+function SelfQuoteFulfillment({
   sale,
   role,
   userEmail,
