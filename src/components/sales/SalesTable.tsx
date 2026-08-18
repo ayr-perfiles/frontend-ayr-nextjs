@@ -282,6 +282,8 @@ export function SalesTable({
             icon: <Copy size={16} />,
             onClick: () => onDuplicate(sale.id!),
             variant: "primary",
+            // Ruta rota (?from= vs ?duplicateId= en /admin/sales/new) — reactivar en #9-B.2, no antes.
+            hidden: true,
           },
         ];
 
@@ -294,6 +296,8 @@ export function SalesTable({
               onClick: () => onEdit(sale.id!),
               variant: "warning",
               section: "quotation",
+              // Ruta /admin/sales/[id]/edit inexistente (404) — reactivar en #9-B.2, no antes.
+              hidden: true,
             },
             {
               id: "approve",
@@ -314,6 +318,10 @@ export function SalesTable({
               onClick: () => onCancel(sale.id!),
               variant: "danger",
               section: "quotation",
+              // Importada = percha de venta ya facturada; cancelarla sin cascada deja dato
+              // inconsistente (bug confirmado en el PASO 0 de #9-B). Bloqueado también en
+              // cancelQuotation (backend) — esto es defensa de UI, no el único guard.
+              hidden: isImportedQuotation(sale),
             }
           );
         }

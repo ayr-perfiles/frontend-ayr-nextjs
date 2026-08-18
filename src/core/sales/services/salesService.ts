@@ -1,6 +1,6 @@
 import { algoliaClient, ALGOLIA_INDICES } from '@/lib/algoliaClient';
 import { db } from '@/lib/firebase/clientApp';
-import { buildAggregateStatusFilter, buildListStatusFilter } from '@/core/sales/salesAggregateLogic';
+import { buildAggregateStatusFilter, buildListStatusFilter, buildAlgoliaStatusFilter } from '@/core/sales/salesAggregateLogic';
 import {
   collection,
   doc,
@@ -516,7 +516,7 @@ export const fetchSales = async (params: FetchSalesParams) => {
 
   // ── MOTOR ALGOLIA ─────────────────────────────────────────────────────────
   if (searchTerm.trim().length > 0 && !customerDoc) {
-    let filters = statusFilter !== 'ALL' ? `status:${statusFilter}` : '';
+    let filters = buildAlgoliaStatusFilter(statusFilter);
     if (sunatFilter && sunatFilter !== 'ALL') {
       filters += (filters ? ' AND ' : '') + `sunat.estado:${sunatFilter}`;
     }
@@ -786,7 +786,11 @@ export const cancelQuotation = async (
   await runTransaction(db, async (transaction) => {
     const quoteDoc = await transaction.get(quoteRef);
     if (!quoteDoc.exists()) throw new Error('La cotización no existe.');
-    if (quoteDoc.data().status !== 'QUOTATION') throw new Error('Solo puedes cancelar Cotizaciones.');
+    const data = quoteDoc.data();
+    if (data.status !== 'QUOTATION') throw new Error('Solo puedes cancelar Cotizaciones.');
+    if (data.relatedSaleId || data.metadata?.isQuotation) {
+      throw new Error('No se puede cancelar una cotización importada: proviene de una venta ya facturada. Para revertir, anule la venta.');
+    }
 
     transaction.update(quoteRef, {
       status: 'CANCELLED',

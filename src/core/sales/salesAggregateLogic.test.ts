@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildAggregateStatusFilter, buildListStatusFilter } from "./salesAggregateLogic";
+import { buildAggregateStatusFilter, buildListStatusFilter, buildAlgoliaStatusFilter } from "./salesAggregateLogic";
 
 describe("salesAggregateLogic - Lógica de Agregados de Ventas (RED PHASE)", () => {
   // 1. statusFilter 'ALL' -> statuses === ['COMPLETED']. NO incluye QUOTATION ni CONVERTED.
@@ -58,5 +58,21 @@ describe("salesAggregateLogic - Lógica de Agregados de Ventas (RED PHASE)", () 
   it("8. buildListStatusFilter con status concreto no aplica whitelist, pasa el valor tal cual", () => {
     expect(buildListStatusFilter("QUOTATION")).toEqual(["QUOTATION"]);
     expect(buildListStatusFilter("VOIDED")).toEqual(["VOIDED"]);
+  });
+
+  // 9. Frente #9-B.1: buildAlgoliaStatusFilter('ALL') arma el OR del whitelist, con paréntesis
+  // (necesario para componer con AND de otros filtros sin que Algolia lo parsee mal).
+  it("9. buildAlgoliaStatusFilter('ALL') produce '(status:COMPLETED OR status:VOIDED)'", () => {
+    expect(buildAlgoliaStatusFilter("ALL")).toBe("(status:COMPLETED OR status:VOIDED)");
+  });
+
+  // 10. buildAlgoliaStatusFilter con status concreto produce un solo término, igual entre paréntesis.
+  it("10. buildAlgoliaStatusFilter('COMPLETED') produce '(status:COMPLETED)'", () => {
+    expect(buildAlgoliaStatusFilter("COMPLETED")).toBe("(status:COMPLETED)");
+  });
+
+  // 11. Misma fuente que buildListStatusFilter: cualquier status concreto se refleja 1:1.
+  it("11. buildAlgoliaStatusFilter('QUOTATION') produce '(status:QUOTATION)' (sin whitelist)", () => {
+    expect(buildAlgoliaStatusFilter("QUOTATION")).toBe("(status:QUOTATION)");
   });
 });
