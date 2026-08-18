@@ -24,7 +24,8 @@ import {
   reverseCoilSplit,
   setCoilClosed,
 } from "@/core/coils/services/coilService";
-import { fetchAvailableCoilsForExport } from "@/core/coils/services/coilService";
+import { fetchCoilsForExport } from "@/core/coils/services/coilService";
+import { buildCoilExportRows, buildCoilExportSummary } from "@/core/coils/coilExportLogic";
 import { useAuth } from "@/context/AuthContext";
 import { useConfirm } from "@/context/ConfirmContext";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
@@ -38,6 +39,36 @@ import { InventoryMetrics } from "@/core/coils/components/InventoryMetrics";
 import { InventoryModals } from "@/core/coils/components/InventoryModals";
 import SendToCutModal from "@/core/coils/components/SendToCutModal";
 import { TablePagination } from "@/components/ui/TablePagination";
+
+/** Nombre de archivo: sin acentos ni espacios, seguro para cualquier SO. */
+const STATUS_FILTER_FILE_LABELS: Record<string, string> = {
+  ALL: "Todas",
+  AVAILABLE: "Disponibles",
+  IN_PROGRESS: "EnProceso",
+  PROCESSED: "Procesadas",
+  VOIDED: "Anuladas",
+  EN_TERCERO: "EnTercero",
+};
+
+/** Etiqueta legible de qué filtros trae el export, para la hoja "Resumen". */
+function describeExportFilters(filters: {
+  statusFilter: string;
+  finishFilter: string;
+  currencyFilter: string;
+  providerFilter: string;
+  startDate: string;
+  endDate: string;
+  searchTerm: string;
+}): string {
+  const parts: string[] = [];
+  parts.push(`Estado: ${STATUS_FILTER_FILE_LABELS[filters.statusFilter] ?? filters.statusFilter}`);
+  if (filters.finishFilter && filters.finishFilter !== "ALL") parts.push(`Acabado: ${filters.finishFilter}`);
+  if (filters.currencyFilter && filters.currencyFilter !== "ALL") parts.push(`Moneda: ${filters.currencyFilter}`);
+  if (filters.providerFilter.trim()) parts.push(`Proveedor: ${filters.providerFilter.trim()}`);
+  if (filters.startDate && filters.endDate) parts.push(`Fecha: ${filters.startDate} a ${filters.endDate}`);
+  if (filters.searchTerm.trim()) parts.push(`Búsqueda: "${filters.searchTerm.trim()}"`);
+  return parts.join(" | ");
+}
 
 export default function CoilsPage() {
   const { user, role } = useAuth();
@@ -422,42 +453,62 @@ export default function CoilsPage() {
   const exportToExcel = async () => {
     toast.loading("Descargando data y generando Excel...", { id: "excel" });
     try {
-      const availableCoils = await fetchAvailableCoilsForExport();
-      if (availableCoils.length === 0) {
-        toast.error("No hay bobinas disponibles para exportar.", { id: "excel" });
+      const exportedCoils = await fetchCoilsForExport({
+        statusFilter,
+        searchTerm,
+        finishFilter,
+        currencyFilter,
+        providerFilter,
+        startDate,
+        endDate,
+      });
+      if (exportedCoils.length === 0) {
+        toast.error("No hay bobinas para exportar con los filtros actuales.", { id: "excel" });
         return;
       }
-      const dataForExcel = availableCoils.map((coil) => {
-        const invoiceDate = coil.metadata?.invoiceDate?.toDate
-          ? coil.metadata.invoiceDate.toDate().toLocaleDateString("es-PE")
-          : "Sin fecha";
-        return {
-          "ID Bobina": coil.id,
-          Acabado: coil.finish || "N/A",
-          Proveedor: coil.metadata?.provider || "N/A",
-          "Factura N°": coil.metadata?.invoiceNumber || "S/N",
-          "Fecha de Compra": invoiceDate,
-          "Espesor (mm)": coil.thickness,
-          "Ancho Maestro (mm)": coil.masterWidth,
-          "Peso Compra (Kg)": coil.initialWeight,
-          "Stock Actual (Kg)": coil.currentWeight,
-          "Costo Unitario (S/ por Kg)": coil.pricePerKg,
-          "Valorización Total (S/)": Number(
-            ((coil.currentWeight || 0) * (coil.pricePerKg || 0)).toFixed(2),
-          ),
-          "Moneda Original": coil.metadata?.currency || "PEN",
-          "Tipo de Cambio": coil.metadata?.exchangeRate || 1,
-        };
+
+      const filterLabel = describeExportFilters({
+        statusFilter, finishFilter, currencyFilter, providerFilter, startDate, endDate, searchTerm,
       });
-      const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
-      const workbook = XLSX.utils.book_new();
-      worksheet["!cols"] = [
+      const rows = buildCoilExportRows(exportedCoils);
+      const summary = buildCoilExportSummary(exportedCoils, filterLabel, searchTerm);
+
+      const worksheetBobinas = XLSX.utils.json_to_sheet(rows);
+      worksheetBobinas["!cols"] = [
         { wch: 20 }, { wch: 15 }, { wch: 35 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
         { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 25 }, { wch: 25 },
-        { wch: 18 }, { wch: 15 },
+        { wch: 18 }, { wch: 15 }, { wch: 14 }, { wch: 24 },
       ];
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Stock Disponible");
-      const fileName = `Inventario_Bobinas_Disponibles_${new Date()
+
+      const summaryAoa: (string | number)[][] = [
+        ["Filtro aplicado", summary.filtro],
+        ["Total bobinas", summary.totalBobinas],
+        ...(summary.avisoBusqueda ? [[summary.avisoBusqueda]] : []),
+        [],
+        ["Conteo por estado"],
+        ...Object.entries(summary.conteoPorEstado),
+        [],
+        ["Totales BRUTOS (incluye anuladas y peso negativo)"],
+        ["Peso Compra (Kg)", summary.pesoCompraBrutoKg],
+        ["Stock Actual (Kg)", summary.stockBrutoKg],
+        [],
+        ["Totales NETOS (excluye anuladas y peso negativo — de confianza)"],
+        ["Peso Compra (Kg)", summary.pesoCompraNetoKg],
+        ["Stock Actual (Kg)", summary.stockNetoKg],
+        ["Bobinas excluidas del neto", summary.bobinasExcluidasDelNeto],
+        [],
+        ["Bobinas con peso negativo"],
+        ["ID Bobina", "Stock Actual (Kg)"],
+        ...summary.negativas.map((n): [string, number] => [n.id, n.currentWeight]),
+      ];
+      const worksheetResumen = XLSX.utils.aoa_to_sheet(summaryAoa);
+      worksheetResumen["!cols"] = [{ wch: 40 }, { wch: 18 }];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheetBobinas, "Bobinas");
+      XLSX.utils.book_append_sheet(workbook, worksheetResumen, "Resumen");
+
+      const fileName = `Inventario_Bobinas_${STATUS_FILTER_FILE_LABELS[statusFilter] ?? statusFilter}_${new Date()
         .toLocaleDateString("es-PE")
         .replace(/\//g, "-")}.xlsx`;
       XLSX.writeFile(workbook, fileName);
