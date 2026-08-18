@@ -42,10 +42,12 @@ export function SalesFilters(props: SalesFiltersProps) {
       value: statusFilter,
       onChange: (v) => setStatusFilter(v as string),
       options: [
+        // Frente #9-B.1: cotizaciones (QUOTATION/CONVERTED, incl. perchas COT-*) viven en
+        // /admin/quotations desde #9-A — sacadas de acá para que /admin/sales no pueda
+        // volver a mostrarlas ni por filtro. "Todas" sigue trayendo COMPLETED+VOIDED
+        // (whitelist de buildListStatusFilter, sin tocar).
         { value: "ALL", label: "Todas las Operaciones" },
         { value: "COMPLETED", label: "Ventas Cerradas" },
-        { value: "QUOTATION", label: "Cot. Pendientes" },
-        { value: "CONVERTED", label: "Cot. Aprobadas (Hist)" },
       ],
     },
     {

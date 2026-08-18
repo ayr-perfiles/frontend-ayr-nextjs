@@ -43,3 +43,17 @@ export function buildListStatusFilter(statusFilter: string): SaleStatus[] {
   }
   return [statusFilter as SaleStatus];
 }
+
+/**
+ * Mismo whitelist que `buildListStatusFilter`, en sintaxis de filtro Algolia — fuente
+ * única entre la rama Firestore y la rama de búsqueda de texto de `fetchSales` (Frente
+ * #9-B.1: sin esto, buscar texto con 'ALL' corría sin ningún filtro de status y volvía
+ * a mostrar cotizaciones en `/admin/sales`). Paréntesis siempre presentes: Algolia evalúa
+ * AND antes que OR, así que el grupo de status debe quedar aislado antes de combinarse
+ * con otros filtros (ej. `sunat.estado`) vía AND.
+ */
+export function buildAlgoliaStatusFilter(statusFilter: string): string {
+  return `(${buildListStatusFilter(statusFilter)
+    .map((s) => `status:${s}`)
+    .join(" OR ")})`;
+}
