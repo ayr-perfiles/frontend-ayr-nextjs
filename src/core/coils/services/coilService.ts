@@ -195,20 +195,121 @@ export const fetchInventory = async (params: FetchParams) => {
   };
 };
 
-export const fetchAvailableCoilsForExport = async (): Promise<Coil[]> => {
-  try {
-    const collRef = collection(db, "coils");
-    const exportQuery = query(
-      collRef,
-      where("status", "==", "AVAILABLE"),
-      orderBy("createdAt", "desc"),
-    );
+export interface CoilExportFilters {
+  statusFilter: string;
+  searchTerm?: string;
+  finishFilter?: string;
+  currencyFilter?: string;
+  providerFilter?: string;
+  startDate?: string;
+  endDate?: string;
+}
 
-    const snapshot = await getDocs(exportQuery);
-    return snapshot.docs.map((doc) => ({
+/**
+ * Trae TODAS las bobinas que matchean los filtros de pantalla (sin `limit`, sin paginar).
+ * A diferencia de `fetchInventory` (que arma la tabla en pantalla y excluye VOIDED cuando
+ * statusFilter==="ALL"), acá VOIDED SÍ se incluye en "ALL" — el export debe mostrar el
+ * inventario completo, la anulación se marca en la fila, no se esconde.
+ */
+export const fetchCoilsForExport = async (filters: CoilExportFilters): Promise<Coil[]> => {
+  const {
+    statusFilter,
+    searchTerm = "",
+    finishFilter,
+    currencyFilter,
+    providerFilter,
+    startDate,
+    endDate,
+  } = filters;
+
+  try {
+    if (searchTerm.trim().length > 0) {
+      const algoliaFilters: string[] = [];
+      if (statusFilter !== "ALL") algoliaFilters.push(`status:${statusFilter}`);
+      if (finishFilter && finishFilter !== "ALL") algoliaFilters.push(`finish:${finishFilter}`);
+      if (currencyFilter && currencyFilter !== "ALL") algoliaFilters.push(`metadata.currency:${currencyFilter}`);
+      if (providerFilter && providerFilter.trim() !== "") algoliaFilters.push(`metadata.provider:${providerFilter.trim()}`);
+
+      const allHitIds: string[] = [];
+      const hitsPerPage = 1000;
+      let page = 0;
+      let nbPages = 1;
+      do {
+        const { hits, nbPages: totalPages } = await algoliaClient.searchSingleIndex({
+          indexName: ALGOLIA_INDICES.COILS,
+          searchParams: { query: searchTerm, filters: algoliaFilters.join(" AND "), hitsPerPage, page },
+        });
+        allHitIds.push(...(hits as Array<{ objectID: string }>).map((h) => h.objectID));
+        nbPages = totalPages ?? 0;
+        page++;
+      } while (page < nbPages);
+
+      if (allHitIds.length === 0) return [];
+
+      const chunkSize = 30;
+      const chunks: string[][] = [];
+      for (let i = 0; i < allHitIds.length; i += chunkSize) {
+        chunks.push(allHitIds.slice(i, i + chunkSize));
+      }
+
+      const snapshots = await Promise.all(
+        chunks.map((chunk) =>
+          getDocs(query(collection(db, "coils"), where(documentId(), "in", chunk))),
+        ),
+      );
+
+      return snapshots.flatMap((snap) =>
+        snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as Coil[],
+      );
+    }
+
+    const collRef = collection(db, "coils");
+    const constraints: QueryConstraint[] = [];
+    const hasDateFilter = !!startDate && !!endDate;
+    // ALL: cero where de status -> robusto a cualquier status presente/futuro. finish/currency/provider
+    // a cliente para no exigir indice compuesto inexistente.
+    const isAllStatus = statusFilter === "ALL";
+
+    if (!isAllStatus) {
+      constraints.push(where("status", "==", statusFilter));
+      if (finishFilter && finishFilter !== "ALL") {
+        constraints.push(where("finish", "==", finishFilter));
+      }
+      if (currencyFilter && currencyFilter !== "ALL") {
+        constraints.push(where("metadata.currency", "==", currencyFilter));
+      }
+      if (providerFilter && providerFilter.trim() !== "") {
+        constraints.push(where("metadata.provider", "==", providerFilter.trim()));
+      }
+    }
+
+    if (hasDateFilter) {
+      constraints.push(where("metadata.invoiceDate", ">=", new Date(`${startDate}T00:00:00`)));
+      constraints.push(where("metadata.invoiceDate", "<=", new Date(`${endDate}T23:59:59`)));
+      constraints.push(orderBy("metadata.invoiceDate", "desc"));
+    } else {
+      constraints.push(orderBy("createdAt", "desc"));
+    }
+
+    const snapshot = await getDocs(query(collRef, ...constraints));
+    let coils = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     })) as Coil[];
+
+    if (isAllStatus) {
+      if (finishFilter && finishFilter !== "ALL") {
+        coils = coils.filter((c) => c.finish === finishFilter);
+      }
+      if (currencyFilter && currencyFilter !== "ALL") {
+        coils = coils.filter((c) => c.metadata?.currency === currencyFilter);
+      }
+      if (providerFilter && providerFilter.trim() !== "") {
+        coils = coils.filter((c) => c.metadata?.provider === providerFilter.trim());
+      }
+    }
+
+    return coils;
   } catch (error) {
     console.error("Error obteniendo bobinas para exportar:", error);
     throw new Error("No se pudo generar la data para el Excel.");
