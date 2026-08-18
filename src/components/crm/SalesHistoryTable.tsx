@@ -1,6 +1,7 @@
 "use client";
 
 import { Receipt } from "lucide-react";
+import { getSaleStatusBadge } from "@/core/sales/salesDisplayLogic";
 
 interface SaleRecord {
   id: string;
@@ -65,15 +66,16 @@ export function SalesHistoryTable({
                     </p>
                   </td>
                   <td className="p-4">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-black uppercase border ${
-                        sale.status === "COMPLETED"
-                          ? "bg-green-50 text-green-700 border-green-200"
-                          : "bg-orange-50 text-orange-700 border-orange-200"
-                      }`}
-                    >
-                      {sale.status === "COMPLETED" ? "Venta Cerrada" : "Cotización"}
-                    </span>
+                    {(() => {
+                      const badge = getSaleStatusBadge(sale.status);
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-black uppercase border ${badge.colorClass}`}
+                        >
+                          {badge.label}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="p-4 text-right font-mono font-black">
                     S/ {sale.totalAmount?.toFixed(2)}

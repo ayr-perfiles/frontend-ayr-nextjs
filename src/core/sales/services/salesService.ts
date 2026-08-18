@@ -25,7 +25,7 @@ import {
   DocumentData,
 } from 'firebase/firestore';
 import { getStockStrategy } from '../strategies';
-import type { BusinessLine, SaleItem } from '@/types';
+import type { BusinessLine, Sale, SaleItem } from '@/types';
 
 // Re-export para compatibilidad con consumidores que usen el tipo directamente
 export type { BusinessLine };
@@ -688,6 +688,36 @@ export const getProductionQueueCount = async (): Promise<number> => {
     ),
   );
   return snap.data().count;
+};
+
+// ─── fetchAllQuotations (Frente #9-A: /admin/quotations) ──────────────────────
+
+/**
+ * Trae TODAS las cotizaciones vivas en `sales`: perchas importadas (`COT-*`, cualquier status)
+ * + cotizaciones nativas (`status in ['QUOTATION','CANCELLED']`, id sin prefijo COT- por
+ * construcción — `createQuotation` siempre genera `C-*`). Sin `limit` (mismo criterio "no
+ * escondas nada" del export de bobinas, Frente #4) — el volumen hoy (~130) no lo justifica.
+ *
+ * 2 queries porque Firestore no puede combinar "id NOT LIKE 'COT-%'" con "status in [...]"
+ * en una sola. Dedup por doc.id: una COT-* con status QUOTATION matchea las 2 queries.
+ * Cero índice nuevo: el range-query sobre documentId() usa el índice automático de `__name__`;
+ * el `where('status','in',[...])` es filtro de un solo campo, autoindexado.
+ */
+export const fetchAllQuotations = async (): Promise<Sale[]> => {
+  const collRef = collection(db, 'sales');
+
+  const [cotSnap, nativeSnap] = await Promise.all([
+    getDocs(query(collRef, where(documentId(), '>=', 'COT-'), where(documentId(), '<', 'COT-'))),
+    getDocs(query(collRef, where('status', 'in', ['QUOTATION', 'CANCELLED']))),
+  ]);
+
+  const byId = new Map<string, Sale>();
+  cotSnap.docs.forEach((d) => byId.set(d.id, { id: d.id, ...d.data() } as Sale));
+  nativeSnap.docs.forEach((d) => {
+    if (!byId.has(d.id)) byId.set(d.id, { id: d.id, ...d.data() } as Sale);
+  });
+
+  return Array.from(byId.values());
 };
 
 // ─── updateQuotation ──────────────────────────────────────────────────────────
