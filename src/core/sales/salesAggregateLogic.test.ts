@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildAggregateStatusFilter, buildListStatusFilter, buildAlgoliaStatusFilter } from "./salesAggregateLogic";
+import {
+  buildAggregateStatusFilter,
+  buildListStatusFilter,
+  buildAlgoliaStatusFilter,
+  filterSalesExcludingQuotations,
+} from "./salesAggregateLogic";
 
 describe("salesAggregateLogic - Lógica de Agregados de Ventas (RED PHASE)", () => {
   // 1. statusFilter 'ALL' -> statuses === ['COMPLETED']. NO incluye QUOTATION ni CONVERTED.
@@ -74,5 +79,43 @@ describe("salesAggregateLogic - Lógica de Agregados de Ventas (RED PHASE)", () 
   // 11. Misma fuente que buildListStatusFilter: cualquier status concreto se refleja 1:1.
   it("11. buildAlgoliaStatusFilter('QUOTATION') produce '(status:QUOTATION)' (sin whitelist)", () => {
     expect(buildAlgoliaStatusFilter("QUOTATION")).toBe("(status:QUOTATION)");
+  });
+
+  // 12-16. Frente #9-B.1-E: filterSalesExcludingQuotations — filtro client-side de los
+  // resultados de búsqueda de Algolia (status no facetable, no se puede filtrar en la query).
+  describe("filterSalesExcludingQuotations", () => {
+    const fixture = [
+      { id: "V-000001", status: "COMPLETED" },
+      { id: "V-000002", status: "VOIDED" },
+      { id: "COT-BBV1-337", status: "QUOTATION", relatedSaleId: "BBV1-337" }, // percha importada
+      { id: "C-000020", status: "QUOTATION" }, // cotización nativa, sin relatedSaleId
+      { id: "C-000015", status: "CANCELLED" }, // cotización nativa cancelada
+      { id: "X-RARO", status: undefined }, // doc sin status
+    ];
+
+    it("12. devuelve SOLO los docs con status COMPLETED o VOIDED", () => {
+      const result = filterSalesExcludingQuotations(fixture);
+      expect(result.map((d) => d.id)).toEqual(["V-000001", "V-000002"]);
+    });
+
+    it("13. excluye la percha importada (QUOTATION con relatedSaleId)", () => {
+      const result = filterSalesExcludingQuotations(fixture);
+      expect(result.find((d) => d.id === "COT-BBV1-337")).toBeUndefined();
+    });
+
+    it("14. excluye la cotización NATIVA (QUOTATION sin relatedSaleId) — no depende de isImportedQuotation", () => {
+      const result = filterSalesExcludingQuotations(fixture);
+      expect(result.find((d) => d.id === "C-000020")).toBeUndefined();
+    });
+
+    it("15. excluye CANCELLED y docs sin status", () => {
+      const result = filterSalesExcludingQuotations(fixture);
+      expect(result.find((d) => d.id === "C-000015")).toBeUndefined();
+      expect(result.find((d) => d.id === "X-RARO")).toBeUndefined();
+    });
+
+    it("16. array vacío -> array vacío, sin explotar", () => {
+      expect(filterSalesExcludingQuotations([])).toEqual([]);
+    });
   });
 });

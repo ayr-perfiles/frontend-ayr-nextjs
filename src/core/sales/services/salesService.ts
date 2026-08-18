@@ -1,6 +1,6 @@
 import { algoliaClient, ALGOLIA_INDICES } from '@/lib/algoliaClient';
 import { db } from '@/lib/firebase/clientApp';
-import { buildAggregateStatusFilter, buildListStatusFilter } from '@/core/sales/salesAggregateLogic';
+import { buildAggregateStatusFilter, buildListStatusFilter, filterSalesExcludingQuotations } from '@/core/sales/salesAggregateLogic';
 import {
   collection,
   doc,
@@ -542,7 +542,16 @@ export const fetchSales = async (params: FetchSalesParams) => {
         .filter(Boolean) as Record<string, unknown>[];
     }
 
-    return { sales, isAlgolia: true, algoliaData: { totalPages: nbPages, currentPage, nbHits }, firstDoc: null, lastDoc: null, totalCount: nbHits, aggregates: null };
+    // #9-B.1-E: status no es facetable en Algolia (ver buildAlgoliaStatusFilter) — se filtra
+    // client-side sobre los docs Firestore ya traídos, mismo whitelist que la rama Firestore.
+    sales = filterSalesExcludingQuotations(sales);
+
+    // totalCount/listTotalCount = conteo de esta página YA filtrado (honesto), NO nbHits de
+    // Algolia (server-side, cuenta cotizaciones incluidas — es lo que causaba "2 Ventas"
+    // cuando 1 era una COT-*). aggregateCount (la tarjeta "N Ventas") lee totalCount
+    // directo sin fallback (useSales.ts:102), por eso ambos campos se corrigen igual acá.
+    // algoliaData.nbHits queda como venía (no tiene consumidor en useSales.ts, es informativo).
+    return { sales, isAlgolia: true, algoliaData: { totalPages: nbPages, currentPage, nbHits }, firstDoc: null, lastDoc: null, totalCount: sales.length, listTotalCount: sales.length, aggregates: null };
   }
 
   // ── MOTOR FIRESTORE ───────────────────────────────────────────────────────
