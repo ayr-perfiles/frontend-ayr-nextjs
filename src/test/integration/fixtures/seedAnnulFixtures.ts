@@ -1,5 +1,4 @@
 import type { Firestore, WriteBatch } from "firebase-admin/firestore";
-import { Timestamp } from "firebase-admin/firestore";
 
 export interface SeedAnnulFixturesOptions {
   /** default true: borra fixtures previos (metadata.isAnnulFixture==true) antes de seedear. */
@@ -81,7 +80,12 @@ export async function seedAnnulFixtures(
     await deleteWhereFixtureFlag(db, "production_logs");
   }
 
-  const now = Timestamp.now();
+  // Date nativo, no Timestamp.now(): este módulo se importa cross-boundary desde
+  // functions/ (que tiene su PROPIA copia de firebase-admin en su node_modules) —
+  // un Timestamp creado con la copia de la raíz no es `instanceof` el Timestamp
+  // que la copia de functions/ espera al validar el write ("dual package hazard").
+  // Date es una clase global, sin ese problema; el Admin SDK la autoconvierte igual.
+  const now = new Date();
   const batch = db.batch();
 
   const fixtureMeta = (fixtureId: string) => ({ isAnnulFixture: true, fixtureId });

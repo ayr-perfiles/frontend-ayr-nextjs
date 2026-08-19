@@ -1,15 +1,13 @@
 import { FieldValue } from "firebase-admin/firestore";
 import type { StockStrategy } from "./types";
 
-// StockWriteParams/ProductionIncrementParams/StockStrategy movidos a ./types.ts
-// (extraídos de acá, vivían duplicados inline) para que roofing/trading/services
-// los reusen sin re-declarar. Shape byte-idéntico, cero cambio de comportamiento.
-export const metallicRoofingStockStrategy: StockStrategy = {
-  stockCollection: 'metallic_roofing_stock',
-  movementsCollection: 'metallic_roofing_stock_movements',
+/** Copia server-side de tradingStockStrategy en src/core/sales/strategies/index.ts. */
+export const tradingStockStrategy: StockStrategy = {
+  stockCollection: 'trading_stock',
+  movementsCollection: 'trading_stock_movements',
 
   getStockRef(sku, db) {
-    return db.collection('metallic_roofing_stock').doc(sku);
+    return db.collection('trading_stock').doc(sku);
   },
 
   extractQuantity(snap) {
@@ -23,7 +21,7 @@ export const metallicRoofingStockStrategy: StockStrategy = {
   },
 
   writeSaleDecrement({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx, db) {
-    const stockRef = db.collection('metallic_roofing_stock').doc(sku);
+    const stockRef = db.collection('trading_stock').doc(sku);
     const currentAvgCost = snap?.exists ? ((snap.data()?.avgCost as number) ?? 0) : 0;
     const productName = snap?.exists ? ((snap.data()?.productName as string) ?? sku) : sku;
 
@@ -44,20 +42,20 @@ export const metallicRoofingStockStrategy: StockStrategy = {
       });
     }
 
-    tx.set(db.collection('metallic_roofing_stock_movements').doc(), {
+    tx.set(db.collection('trading_stock_movements').doc(), {
       sku,
       type: 'SALIDA',
       quantity,
       costPerUnit: currentAvgCost,
       reason: `Venta ${saleId} — ${customerName}`,
-      businessLine: 'metallic-roofing',
+      businessLine: 'trading',
       createdBy: sellerId,
       createdAt: FieldValue.serverTimestamp(),
     });
   },
 
   writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId, motivo, ref, frozenCost }, snap, tx, db) {
-    const stockRef = db.collection('metallic_roofing_stock').doc(sku);
+    const stockRef = db.collection('trading_stock').doc(sku);
     const currentQty = snap?.exists ? ((snap.data()?.quantity as number) ?? 0) : 0;
     const currentAvgCost = snap?.exists ? ((snap.data()?.avgCost as number) ?? 0) : 0;
     const currentTotalValue = snap?.exists ? ((snap.data()?.totalValue as number) ?? (currentQty * currentAvgCost)) : 0;
@@ -85,21 +83,21 @@ export const metallicRoofingStockStrategy: StockStrategy = {
       });
     }
 
-    tx.set(db.collection('metallic_roofing_stock_movements').doc(), {
+    tx.set(db.collection('trading_stock_movements').doc(), {
       sku,
       type: 'ENTRADA',
       quantity,
       costPerUnit: frozenCost ?? 0,
       reason: motivo || `Anulación Venta ${saleId} — ${customerName}`,
       adjustedDocument: ref || null,
-      businessLine: 'metallic-roofing',
+      businessLine: 'trading',
       createdBy: sellerId,
       createdAt: FieldValue.serverTimestamp(),
     });
   },
 
   writeProductionIncrement({ sku, quantity, newBalance, newAverageCost, reference, operatorId, description }, snap, tx, db) {
-    const stockRef = db.collection('metallic_roofing_stock').doc(sku);
+    const stockRef = db.collection('trading_stock').doc(sku);
     const productName = snap?.exists ? ((snap.data()?.productName as string) ?? sku) : sku;
 
     tx.set(
@@ -115,13 +113,13 @@ export const metallicRoofingStockStrategy: StockStrategy = {
       { merge: true },
     );
 
-    tx.set(db.collection('metallic_roofing_stock_movements').doc(), {
+    tx.set(db.collection('trading_stock_movements').doc(), {
       sku,
       type: 'ENTRADA',
       quantity,
       costPerUnit: newAverageCost,
-      reason: description || 'Ingreso por Producción',
-      businessLine: 'metallic-roofing',
+      reason: description || 'Ingreso por Compra/Ajuste',
+      businessLine: 'trading',
       createdBy: operatorId,
       createdAt: FieldValue.serverTimestamp(),
     });

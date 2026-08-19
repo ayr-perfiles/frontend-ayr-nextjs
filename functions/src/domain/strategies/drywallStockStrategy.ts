@@ -1,17 +1,14 @@
 import { FieldValue } from "firebase-admin/firestore";
 import * as admin from 'firebase-admin';
+import type { StockStrategy, ProductionIncrementParams } from "./types";
 
-export interface DrywallProductionIncrementParams {
-  sku: string;
-  quantity: number;
-  newBalance: number;
-  newAverageCost: number;
-  newTotalWeight: number; // For inventory_stock
-  reference: string;
-  operatorId: string;
-  description?: string;
-  userEmail?: string;
-}
+/**
+ * @deprecated usar `ProductionIncrementParams` (./types.ts) directamente — este
+ * alias queda solo por si algo externo lo importa por nombre; `newTotalWeight`
+ * ahora vive en el tipo compartido (antes duplicado acá con firma distinta, lo
+ * que chocaba con StockStrategy.writeProductionIncrement al unificar el objeto).
+ */
+export type DrywallProductionIncrementParams = ProductionIncrementParams;
 
 export interface DrywallStockStrategy {
   stockCollection: string;
@@ -20,10 +17,10 @@ export interface DrywallStockStrategy {
   extractQuantity(snap: admin.firestore.DocumentSnapshot): number;
   extractAvgCost(snap: admin.firestore.DocumentSnapshot): number;
   extractTotalWeight(snap: admin.firestore.DocumentSnapshot): number;
-  writeProductionIncrement(params: DrywallProductionIncrementParams, snap: admin.firestore.DocumentSnapshot | null, tx: admin.firestore.Transaction, db: admin.firestore.Firestore): void;
+  writeProductionIncrement(params: ProductionIncrementParams, snap: admin.firestore.DocumentSnapshot | null, tx: admin.firestore.Transaction, db: admin.firestore.Firestore): void;
 }
 
-export const drywallStockStrategy: DrywallStockStrategy = {
+export const drywallStockStrategy: DrywallStockStrategy & StockStrategy = {
   stockCollection: 'inventory_stock',
   movementsCollection: 'kardex_movements', // Not metallic_roofing_stock_movements! Drywall uses kardex_movements
 
@@ -47,6 +44,53 @@ export const drywallStockStrategy: DrywallStockStrategy = {
     return (snap.data()?.totalWeight as number) ?? 0;
   },
 
+  // writeSaleDecrement/writeSaleReversal agregados aditivamente (copia server-side
+  // de src/core/sales/strategies/index.ts drywallStockStrategy) para satisfacer
+  // StockStrategy — necesarios recién ahora por el callable annulSale. No tocan
+  // writeProductionIncrement ni los consumidores existentes (production.ts,
+  // drywallProduction.ts), que siguen usando DrywallStockStrategy sin cambios.
+  writeSaleDecrement({ sku, quantity, newBalance, saleId, customerName, sellerId }, snap, tx, db) {
+    const stockRef = db.collection('inventory_stock').doc(sku);
+
+    if (snap?.exists) {
+      tx.update(stockRef, { totalQuantity: newBalance, lastUpdate: FieldValue.serverTimestamp() });
+    } else {
+      tx.set(stockRef, { sku, totalQuantity: newBalance, totalWeight: 0, lastUpdate: FieldValue.serverTimestamp() });
+    }
+
+    tx.set(db.collection('kardex_movements').doc(), {
+      sku,
+      date: FieldValue.serverTimestamp(),
+      type: 'OUT',
+      quantity,
+      balance: newBalance,
+      reference: saleId,
+      description: `Venta a ${customerName}`,
+      user: sellerId,
+    });
+  },
+
+  writeSaleReversal({ sku, quantity, newBalance, saleId, customerName, sellerId, motivo, ref }, snap, tx, db) {
+    const stockRef = db.collection('inventory_stock').doc(sku);
+
+    if (snap?.exists) {
+      tx.update(stockRef, { totalQuantity: newBalance, lastUpdate: FieldValue.serverTimestamp() });
+    } else {
+      tx.set(stockRef, { sku, totalQuantity: newBalance, totalWeight: 0, lastUpdate: FieldValue.serverTimestamp() });
+    }
+
+    tx.set(db.collection('kardex_movements').doc(), {
+      sku,
+      date: FieldValue.serverTimestamp(),
+      type: 'IN',
+      quantity,
+      balance: newBalance,
+      reference: ref || saleId,
+      description: motivo || `Anulación de Venta: ${customerName}`,
+      user: sellerId,
+    });
+  },
+
   writeProductionIncrement({ sku, quantity, newBalance, newAverageCost, newTotalWeight, reference, operatorId, description, userEmail }, snap, tx, db) {
     const stockRef = db.collection('inventory_stock').doc(sku);
 
@@ -55,7 +99,7 @@ export const drywallStockStrategy: DrywallStockStrategy = {
       stockRef,
       {
         totalQuantity: newBalance,
-        totalWeight: newTotalWeight,
+        totalWeight: newTotalWeight ?? 0,
         lastCostPerPiece: newAverageCost,
         lastUpdate: FieldValue.serverTimestamp(),
       },
