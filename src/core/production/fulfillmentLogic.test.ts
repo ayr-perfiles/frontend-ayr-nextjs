@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { quoteFulfillmentRows, bucketLogsBySourceId } from "./fulfillmentLogic";
+import { quoteFulfillmentRows, bucketLogsBySourceId, hasActiveProduction } from "./fulfillmentLogic";
 
 describe("quoteFulfillmentRows", () => {
   it("dos líneas mismo SKU (360+1440), producido 1800 → 1 fila, requested 1800, produced 1800, pending 0, pct 100", () => {
@@ -136,5 +136,23 @@ describe("bucketLogsBySourceId", () => {
     expect(buckets.has("QUOTE1")).toBe(true);
     expect(buckets.get("QUOTE1")).toHaveLength(1);
     expect(buckets.has(undefined as never)).toBe(false);
+  });
+});
+
+describe("hasActiveProduction", () => {
+  it("array vacío → false", () => {
+    expect(hasActiveProduction([])).toBe(false);
+  });
+
+  it("solo VOIDED → false", () => {
+    expect(hasActiveProduction([{ status: "VOIDED" }])).toBe(false);
+  });
+
+  it("solo ACTIVE → true", () => {
+    expect(hasActiveProduction([{ status: "ACTIVE" }])).toBe(true);
+  });
+
+  it("mezcla ACTIVE+VOIDED → true", () => {
+    expect(hasActiveProduction([{ status: "VOIDED" }, { status: "ACTIVE" }])).toBe(true);
   });
 });

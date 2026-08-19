@@ -47,6 +47,10 @@ export function quoteFulfillmentRows(items: SaleItem[], logs: ProductionLog[]): 
   });
 }
 
+export function hasActiveProduction(logs: { status?: string }[]): boolean {
+  return logs.some((log) => log.status === "ACTIVE");
+}
+
 export function bucketLogsBySourceId(logs: ProductionLog[]): Map<string, ProductionLog[]> {
   const buckets = new Map<string, ProductionLog[]>();
   for (const log of logs) {

@@ -3,6 +3,7 @@ import { db } from '@/lib/firebase/clientApp';
 import { buildAggregateStatusFilter, buildListStatusFilter, filterSalesExcludingQuotations } from '@/core/sales/salesAggregateLogic';
 import {
   collection,
+  deleteField,
   doc,
   documentId,
   endBefore,
@@ -10,6 +11,7 @@ import {
   getAggregateFromServer,
   sum,
   count,
+  getDoc,
   getDocs,
   limit,
   limitToLast,
@@ -25,6 +27,8 @@ import {
   DocumentData,
 } from 'firebase/firestore';
 import { getStockStrategy } from '../strategies';
+import { resolveSaleQuotationLink } from '@/core/sales/saleProductionLink';
+import { hasActiveProduction } from '@/core/production/fulfillmentLogic';
 import type { BusinessLine, Sale, SaleItem } from '@/types';
 
 // Re-export para compatibilidad con consumidores que usen el tipo directamente
@@ -374,6 +378,32 @@ export const annulSale = async ({ saleId, userEmail }: AnnulSaleParams): Promise
   const saleRef = doc(db, 'sales', saleId);
   const auditRef = doc(collection(db, 'audit_logs'));
 
+  // PRE-TXN: resolver la percha vinculada (importada vía relatedQuotationId, nativa vía
+  // originQuoteId — resolveSaleQuotationLink cubre ambas) y bloquear si tiene producción ACTIVE
+  // (incl. parcial, no solo CUMPLIDA). Firestore no admite queries dentro de una transacción
+  // (mismo patrón PRE-txn que produceFromCoils/voidProductionFromCoils, functions/src/callables/production.ts).
+  const preCheckSnap = await getDoc(saleRef);
+  if (preCheckSnap.exists()) {
+    const preCheckData = preCheckSnap.data();
+    const link = resolveSaleQuotationLink({
+      id: saleId,
+      status: preCheckData.status,
+      relatedQuotationId: preCheckData.relatedQuotationId,
+      originQuoteId: preCheckData.originQuoteId,
+    });
+    if (link.mode === 'linked') {
+      const logsSnap = await getDocs(
+        query(collection(db, 'production_logs'), where('source.id', '==', link.quotationId)),
+      );
+      const logs = logsSnap.docs.map((d) => d.data());
+      if (hasActiveProduction(logs)) {
+        throw new Error(
+          `No se puede anular la venta: la cotización vinculada ${link.quotationId} tiene producción activa. Anulá la producción primero.`,
+        );
+      }
+    }
+  }
+
   await runTransaction(db, async (transaction) => {
     // ── LECTURAS ────────────────────────────────────────────────────────────
     const saleDoc = await transaction.get(saleRef);
@@ -457,6 +487,7 @@ export const annulSale = async ({ saleId, userEmail }: AnnulSaleParams): Promise
         status: 'QUOTATION',
         updatedAt: serverTimestamp(),
         annulledSaleRef: saleId,
+        convertedToId: deleteField(),
       });
     }
 
