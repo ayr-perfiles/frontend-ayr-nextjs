@@ -12,6 +12,7 @@ import {
 import toast from "react-hot-toast";
 
 import { approveQuotation, cancelQuotation } from "@/services/salesService";
+import { duplicateIntentFromStatus } from "@/core/sales/salesDisplayLogic";
 import { useAuth } from "@/context/AuthContext";
 import { useConfirm } from "@/context/ConfirmContext";
 import { useSales } from "@/core/hooks/useSales";
@@ -198,7 +199,13 @@ export default function SalesPage() {
           role={role}
           currentPage={currentPage}
           pageSize={pageSize}
-          onDuplicate={(saleId) => (window.location.href = `/admin/sales/new?duplicateId=${saleId}`)}
+          onDuplicate={(saleId, status) => {
+            const intent = duplicateIntentFromStatus(status);
+            const url = intent
+              ? `/admin/sales/new?duplicateId=${saleId}&as=${intent}`
+              : `/admin/sales/new?duplicateId=${saleId}`;
+            window.location.href = url;
+          }}
           onEdit={(saleId) => (window.location.href = `/admin/sales/${saleId}/edit`)}
         />
         {loading && (

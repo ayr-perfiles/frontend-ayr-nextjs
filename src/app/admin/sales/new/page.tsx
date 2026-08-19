@@ -22,6 +22,7 @@ import {
   type CartItem,
 } from "@/services/salesService";
 import { useAuth } from "@/context/AuthContext";
+import { parseDuplicateIntent } from "@/core/sales/salesDisplayLogic";
 import { useForm } from "@/core/hooks/useForm";
 import { saleCustomerSchema, type SaleCustomerForm } from "@/core/schemas/sale";
 import ProductSelector from "@/core/sales/components/ProductSelector";
@@ -42,6 +43,10 @@ export default function NewSalePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const duplicateId = searchParams.get("duplicateId");
+  const suggestedIntent = parseDuplicateIntent(searchParams.get("as"));
+  const [duplicateOriginLabel, setDuplicateOriginLabel] = useState<
+    string | null
+  >(null);
   const { user } = useAuth();
 
   const [settings, setSettings] = useState<SystemSettings | null>(null);
@@ -144,6 +149,7 @@ export default function NewSalePage() {
         if (snap.exists()) {
           const data = snap.data();
           const custDoc = data.customerDocument || "";
+          setDuplicateOriginLabel(data.documentNumber || duplicateId);
           setDocumentNumber(custDoc);
           setCustomerName(data.customerName || "");
           setSearchTerm(custDoc);
@@ -465,6 +471,8 @@ export default function NewSalePage() {
             onRemove={(idx) => setCart(cart.filter((_, i) => i !== idx))}
             onQuote={() => void handleAction("QUOTE")}
             onSell={() => void handleAction("SALE")}
+            suggestedIntent={suggestedIntent}
+            originLabel={duplicateOriginLabel}
           />
         </div>
       </div>

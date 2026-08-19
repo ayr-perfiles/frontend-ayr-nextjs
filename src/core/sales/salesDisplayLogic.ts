@@ -42,6 +42,28 @@ export function canDuplicate(status: SaleStatus | undefined): boolean {
   return !!status && DUPLICATABLE_STATUSES.includes(status);
 }
 
+export type DuplicateIntent = "SALE" | "QUOTE";
+
+/**
+ * Deriva el intent sugerido al duplicar según el status del origen (#9-B.2a-2).
+ * COMPLETED->SALE (era venta), QUOTATION->QUOTE (era cotización). Fuera de la
+ * allowlist de canDuplicate -> null (sin sugerencia, nunca debería llegar acá).
+ */
+export function duplicateIntentFromStatus(status: string | undefined): DuplicateIntent | null {
+  if (status === "COMPLETED") return "SALE";
+  if (status === "QUOTATION") return "QUOTE";
+  return null;
+}
+
+/**
+ * Whitelist estricta del query param `?as=`. Nunca uppercase-coerce: solo
+ * los literales exactos "SALE"/"QUOTE" cuentan, cualquier otra cosa -> null.
+ */
+export function parseDuplicateIntent(raw: string | null | undefined): DuplicateIntent | null {
+  if (raw === "SALE" || raw === "QUOTE") return raw;
+  return null;
+}
+
 export function resolveCustomerDoc(sale: Partial<Sale>): ResolvedSaleDocument {
   const isDigitsOnly = (str?: string) => /^\d+$/.test(str || "");
   const fallbackToDoc = !sale.customerDocument && isDigitsOnly(sale.documentNumber);

@@ -81,7 +81,7 @@ interface SalesTableProps {
   isProcessing: boolean;
   currentPage: number;
   pageSize: number;
-  onDuplicate: (saleId: string) => void;
+  onDuplicate: (saleId: string, status: Sale["status"]) => void;
   onApprove: (sale: Sale) => void;
   onViewDetails: (sale: Sale) => void;
   onEdit: (saleId: string) => void;
@@ -280,7 +280,7 @@ export function SalesTable({
             id: "duplicate",
             label: "Duplicar Operación",
             icon: <Copy size={16} />,
-            onClick: () => onDuplicate(sale.id!),
+            onClick: () => onDuplicate(sale.id!, sale.status),
             variant: "primary",
             hidden: !canDuplicate(sale.status),
           },

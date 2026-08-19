@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { resolveCustomerDoc, getSaleStatusBadge, canDuplicate } from "./salesDisplayLogic";
+import {
+  resolveCustomerDoc,
+  getSaleStatusBadge,
+  canDuplicate,
+  duplicateIntentFromStatus,
+  parseDuplicateIntent,
+} from "./salesDisplayLogic";
 
 describe("salesDisplayLogic - resolveCustomerDoc", () => {
   it("Venta nueva del POS (customerDocument presente, documentNumber vacío) -> Extrae rucDni y comprobante es null", () => {
@@ -93,5 +99,50 @@ describe("salesDisplayLogic - canDuplicate (#9-B.2a: gating del botón Duplicar)
 
   it("undefined -> false (allowlist, status nuevo/desconocido queda oculto por defecto)", () => {
     expect(canDuplicate(undefined)).toBe(false);
+  });
+});
+
+describe("salesDisplayLogic - duplicateIntentFromStatus (#9-B.2a-2: default por tipo al duplicar)", () => {
+  it("COMPLETED -> 'SALE'", () => {
+    expect(duplicateIntentFromStatus("COMPLETED")).toBe("SALE");
+  });
+
+  it("QUOTATION -> 'QUOTE'", () => {
+    expect(duplicateIntentFromStatus("QUOTATION")).toBe("QUOTE");
+  });
+
+  it("VOIDED -> null (fuera de la allowlist de duplicable, sin intent)", () => {
+    expect(duplicateIntentFromStatus("VOIDED")).toBeNull();
+  });
+
+  it("string basura -> null", () => {
+    expect(duplicateIntentFromStatus("RARO")).toBeNull();
+  });
+});
+
+describe("salesDisplayLogic - parseDuplicateIntent (#9-B.2a-2: whitelist estricta del query param ?as=)", () => {
+  it("'SALE' -> 'SALE'", () => {
+    expect(parseDuplicateIntent("SALE")).toBe("SALE");
+  });
+
+  it("'QUOTE' -> 'QUOTE'", () => {
+    expect(parseDuplicateIntent("QUOTE")).toBe("QUOTE");
+  });
+
+  it("null -> null", () => {
+    expect(parseDuplicateIntent(null)).toBeNull();
+  });
+
+  it("undefined -> null", () => {
+    expect(parseDuplicateIntent(undefined)).toBeNull();
+  });
+
+  it("string vacío -> null", () => {
+    expect(parseDuplicateIntent("")).toBeNull();
+  });
+
+  it("string basura -> null (sin uppercase-coerce: 'sale' minúscula NO cuenta)", () => {
+    expect(parseDuplicateIntent("sale")).toBeNull();
+    expect(parseDuplicateIntent("XYZ")).toBeNull();
   });
 });

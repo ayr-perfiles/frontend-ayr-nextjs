@@ -29,7 +29,18 @@ interface CartSummaryProps {
   onRemove: (idx: number) => void;
   onQuote: () => void;
   onSell: () => void;
+  /** #9-B.2a-2: intent sugerido al duplicar (null = comportamiento neutro, sin cambio visual). */
+  suggestedIntent?: "SALE" | "QUOTE" | null;
+  /** #9-B.2a-2: identificador del origen duplicado, solo para el label informativo. */
+  originLabel?: string | null;
 }
+
+const CTA_GHOST =
+  "flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-gray-700 text-white font-black hover:bg-gray-800 disabled:opacity-50 transition active:scale-95";
+const CTA_QUOTE_PRIMARY =
+  "flex items-center justify-center gap-2 p-4 rounded-xl bg-orange-500 text-white font-black hover:bg-orange-400 disabled:opacity-50 transition shadow-lg shadow-orange-900/40 active:scale-95 ring-2 ring-orange-300 ring-offset-2 ring-offset-gray-900";
+const CTA_SELL_PRIMARY =
+  "flex items-center justify-center gap-2 p-4 rounded-xl bg-blue-600 text-white font-black hover:bg-blue-500 disabled:opacity-50 transition shadow-lg shadow-blue-900/50 active:scale-95";
 
 export function CartSummary({
   cart,
@@ -44,7 +55,11 @@ export function CartSummary({
   onRemove,
   onQuote,
   onSell,
+  suggestedIntent = null,
+  originLabel = null,
 }: CartSummaryProps) {
+  const quoteClass = suggestedIntent === "QUOTE" ? CTA_QUOTE_PRIMARY : CTA_GHOST;
+  const sellClass = suggestedIntent === "QUOTE" ? CTA_GHOST : CTA_SELL_PRIMARY;
   return (
     <div className="bg-white p-6 rounded-3xl shadow-xl shadow-blue-100/50 border border-blue-100 flex flex-col h-full sticky top-6">
       <h2 className="text-xl font-black text-gray-800 mb-4 border-b border-gray-100 pb-4 flex justify-between items-center">
@@ -174,18 +189,27 @@ export function CartSummary({
             </span>
           </div>
         )}
+        {suggestedIntent && (
+          <p className="text-[11px] font-bold text-gray-400 text-center -mb-1">
+            Duplicando {suggestedIntent === "SALE" ? "venta" : "cotización"}
+            {originLabel ? ` ${originLabel}` : ""} → sugerido{" "}
+            <span className="text-white">
+              {suggestedIntent === "SALE" ? "VENDER" : "COTIZAR"}
+            </span>
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3 pt-4">
           <button
             onClick={onQuote}
             disabled={isSubmitting || cart.length === 0}
-            className="flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-gray-700 text-white font-black hover:bg-gray-800 disabled:opacity-50 transition active:scale-95"
+            className={quoteClass}
           >
             <FileText size={18} /> COTIZAR
           </button>
           <button
             onClick={onSell}
             disabled={isSubmitting || cart.length === 0}
-            className="flex items-center justify-center gap-2 p-4 rounded-xl bg-blue-600 text-white font-black hover:bg-blue-500 disabled:opacity-50 transition shadow-lg shadow-blue-900/50 active:scale-95"
+            className={sellClass}
           >
             <CheckCircle2 size={18} /> VENDER
           </button>
