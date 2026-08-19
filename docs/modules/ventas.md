@@ -1,5 +1,5 @@
 # MÓDULO: ventas (sales) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-18 (separación ventas/cotizaciones, §14).
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-19 (annulSale bloquea con producción viva, §15).
 > ⚠️ SE PUDRE. Antes de tocar lógica/costeo/writes de ventas: verificá (checklist §11). No confíes si la fecha está vieja.
 > ⚠️ **§4 de este doc describe el modelo PRE-2026-08-18, hoy OBSOLETO en la parte de agregados de `/admin/sales`. Ver §14 antes de confiar en §4.**
 
@@ -115,3 +115,23 @@ Antes de este guard, se podía cancelar una percha ya con producción real (`isF
 **DEUDA VIVA — `status` no es atributo facetable en el índice Algolia `sales_index`.** Intentar filtrar server-side por status ahí (helper `buildAlgoliaStatusFilter`, escrito y testeado pero marcado `⚠️ NO USAR` en su docstring) **rompió la búsqueda de texto ENTERA en prod una vez** — con el filtro (aunque fuera un simple `status:COMPLETED`), Algolia respondía error de filtro inválido, el `catch` de `algoliaClient.ts` caía a `hits:[]`, y la búsqueda devolvía 0 resultados para CUALQUIER término, no solo para cotizaciones. Se revirtió el intento server-side y se resolvió filtrando client-side (ver arriba). Si algún día se configura `attributesForFaceting:['status',...]` en el dashboard de Algolia + se reindexa, `buildAlgoliaStatusFilter` queda lista para reemplazar el filtro client-side sin tocar la lógica de whitelist (misma fuente `buildListStatusFilter`).
 
 **Ampliación al §11 (checklist antes de cambio grande):** agregar — 6. ¿Tu cambio toca `/admin/sales` o `/admin/quotations`? Confirmá que sigue siendo imposible traer una cotización a `/admin/sales` por CUALQUIER vía (query/dropdown/búsqueda) antes de mergear.
+
+## 15. `annulSale` bloquea anulación con producción viva + limpia twin nativo — #9-B.2b (2026-08-19, commit `a7e06d9c`)
+
+`annulSale` (`salesService.ts`, client-side) antes anulaba una venta sin mirar si su percha de cotización gemela tenía producción activa — podía dejar el sistema en un estado inconsistente (venta VOIDED, pero bobinas ya consumidas / stock de PT ya movido contra esa cotización, sin ningún rastro de la inconsistencia).
+
+**D1 — bloquear, no cascadear.** Antes de anular, `annulSale` resuelve la percha vinculada con `resolveSaleQuotationLink` (§ ver `saleProductionLink.ts` — cubre AMBOS campos: `relatedQuotationId` para importadas Y `originQuoteId` para nativas, ya usado desde #9-B.1b). Si hay percha, corre una query PRE-transacción sobre `production_logs` (`source.id == perchaId`) y evalúa el helper puro `hasActiveProduction(logs)` (`src/core/production/fulfillmentLogic.ts`) — `true` si ALGÚN log tiene `status==='ACTIVE'`, incluida producción parcial (no exige que esté cumplida). Si `true`, `annulSale` hace `throw` con el `perchaId` en el mensaje y **nunca abre la transacción** — no hay cascada automática, no llama a `voidProductionFromCoils`, no toca el guard `laterSales`.
+
+**Por qué la query va PRE-transacción, no dentro:** una transacción de Firestore no puede correr queries arbitrarias (solo `get()` de documentos puntuales), y no existe un flag denormalizado de "producción viva" en la percha — `isFulfilled` no sirve para esto: distingue cumplida/no-cumplida, pero NO distingue "sin ninguna producción" de "con producción parcial en curso" (mismo hallazgo que ya documentó §14 para el estado de producción de una cotización). Consecuencia aceptada: existe una mini-race teórica entre la query y la escritura (alguien podría iniciar producción justo en el medio) — ver deuda "hardening futuro" en HANDOFF.md/CLAUDE.md v6.48.6 para el plan de cerrarla (denormalizar el flag y mover el check dentro de la txn).
+
+**D2 — la gemela es asimétrica, cada camino según su semántica real:**
+- **Nativa (`originQuoteId`):** al anular, además del revert existente (la cotización vuelve a `status:'QUOTATION'`), ahora también se limpia `convertedToId` con `deleteField()` — antes quedaba un puntero fantasma a una venta ya anulada.
+- **Importada (`relatedQuotationId`):** 100% intacta, sin cambios. El campo `annulledSaleRef` que se había planeado en el recon se DROPEÓ del plan final — habría sido write-only (nada lo lee), y el link forward `relatedQuotationId` ya sobrevive naturalmente cuando la venta pasa a `VOIDED` (no hace falta un puntero nuevo).
+
+**D3 — el costo sincronizado por A1 (`costSyncedAt`/`costSource:'PRODUCTION'`) NO se revierte.** Si la cascada de write-back de costo (v6.34, A1) ya sincronizó el costo de producción a la venta antes de que esta se anule, ese costo queda como dato histórico válido — anular la venta no lo deshace. Decisión consciente, no un gap.
+
+**UI:** sin frente propio — el `throw` de `annulSale` lo captura el catch ya existente del modal de anulación (mismo patrón que cualquier otro error de negocio de este flujo), confirmado en runtime. No hubo que tocar componentes de UI.
+
+**Tests:** 10+ nuevos RED→GREEN — unit de `hasActiveProduction` (`fulfillmentLogic.test.ts`) + 5 escenarios de integración contra emulador real (`annulSaleCascade.integration.test.ts`, `src/test/integration/`). Runtime end-to-end validado por el dueño: bloqueo en vivo (intentar anular con producción activa → rechazado) y release (anular producción primero vía void → luego SÍ se puede anular la venta).
+
+**Relación con el fix void 500 (§ ver `docs/modules/metallic.md` §4):** el smoke de cierre de #9-B.2b en prod quedó parcialmente tapado por un bug AJENO — el guard `laterSales` de `voidProductionFromCoils` crasheaba con 500 crudo ante un `timestamp` corrupto en una venta de TEST, lo que bloqueaba poder re-anular producción para probar el release. Ambos frentes se cerraron en la misma sesión; el bug del void NO es de `annulSale` ni de este §15.

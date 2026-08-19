@@ -1,7 +1,7 @@
 # Módulo Metallic (Aluzinc)
 
 Esta ficha contiene la verdad operativa del módulo de Conformado Aluzinc (Metallic Roofing).
-Fecha de última verificación: **2026-07-29**
+Fecha de última verificación: **2026-08-19** (guards `laterSales` endurecidos con `toMillisSafe`, §4)
 
 ## 1. Catálogo Multi-acabado (RAL)
 - **`finishes` (array opcional):** El catálogo soporta múltiples acabados por SKU. Se agregó soporte retrocompatible vía `getFinishArray()` (que lee de `finishes` o hace fallback al viejo escalar `finish`). NO hubo migración masiva, conviven ambos modelos.
@@ -22,3 +22,13 @@ Fecha de última verificación: **2026-07-29**
 ## 3. Ventas y Estado de Producción
 - **Cotizaciones importadas:** Para integraciones (importaciones masivas de facturas aluzinc), se generan cotizaciones con identificador `COT-{documentNumber}`. Nacen con `productionStatus: 'CONFIRMED'`. 
 - **Estado de Producción:** Las cotizaciones normales nacen con `productionStatus: 'PENDING'`. Al validarse, se pasan a `'CONFIRMED'` a través del callable `confirmQuotationForProduction` (agregando `confirmedForProductionAt`/`confirmedBy`). Este campo es aditivo y NO afecta a `sales.status`.
+
+## 4. Guard `laterSales` de anulación — endurecido con `toMillisSafe` (2026-08-19, commit `5f17db81`)
+
+`voidProductionFromCoils` (y su gemelo dentro de `revertProductionLog`, drywall) tienen un guard "GUARD POSTERIOR" (`production.ts:423-442`) que, antes de anular un `production_log`, busca ventas `status:'COMPLETED'` del mismo SKU y bloquea si alguna es posterior a la producción (`saleData.approvedAt ?? saleData.timestamp`, comparado contra `logTimestamp`).
+
+- **Bug real (no teórico):** el guard asumía que ese campo siempre era un `Timestamp` de Firestore real (llamaba `.toMillis()` directo). Si el campo venía guardado como objeto plano `{_seconds,_nanoseconds}` (visto en test, ver abajo), el guard **crasheaba con `TypeError` no manejado** — el cliente solo veía un `500 Internal` genérico, sin mensaje de negocio.
+- **Fix:** helper puro `toMillisSafe(v): number | null` (`functions/src/domain/timestamps.ts`) — tolera `Timestamp` real, `{_seconds,_nanoseconds}`, `{seconds,nanoseconds}`, `Date`, `number` (ya millis); cualquier otra cosa (incluido falsy) → `null`. Ambos guards (`production.ts` y `drywallProduction.ts`) lo consumen — mata la duplicación entre los dos. Si `toMillisSafe` da `null` para cualquiera de los dos lados de la comparación, el guard mantiene el mismo bloqueo conservador que ya existía (`HttpsError('failed-precondition', ...)`, texto sin cambios) — **nunca crashea, nunca deja pasar una anulación que no puede verificar**.
+- **Alcance real en prod (2026-08-19):** 0/328 docs de `sales` con `timestamp`/`approvedAt` corrupto — el fix es preventivo en prod, no repara ningún dato existente. La corrupción confirmada era específica de `ayrsteel-test` (al menos `sales/FFA1-1289` y `sales/FFA1-1290`, mismo epoch que sus contrapartes sanas en prod — la causa exacta, qué script de seed/restore de TEST serializó el timestamp como JSON crudo, no se investigó).
+- **No tocado a propósito:** `functions/src/callables/scrap.ts:150/164` tiene el mismo patrón `.toMillis()` sin guardia (sobre `createdAt`, no `sales.timestamp`) — no se extendió `toMillisSafe` ahí, ni se investigó si hay corrupción (fuera del alcance del sizing de esta sesión). Ver deuda en CLAUDE.md/HANDOFF.md v6.48.6.
+- **Recon/sizing/deploy crudos:** `scripts/local/recon-void500.md` (diagnóstico del 500), `scripts/local/recon-void-sizing.md` (conteo en prod + alcance del daño), `scripts/local/impl-void.md` (RED→GREEN del fix), `scripts/local/deploy-void.md` (deploy test→prod, incluye el hallazgo de que `firebase-functions-hash` no es comparable cross-project).
