@@ -9,7 +9,7 @@ import type { UserRole } from '@/context/AuthContext';
 import {
   User, LogOut, PanelLeft, Menu,
 } from 'lucide-react';
-import Sidebar from './sidebar';
+import Sidebar from './Sidebar';
 
 type Viewport = 'lg' | 'md' | 'sm';
 
