@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchAllQuotations } from "@/core/sales/services/salesService";
 import { getAllActiveFulfillmentLogs } from "@/modules/metallic-roofing/services/productionService";
 import { bucketLogsBySourceId } from "@/core/production/fulfillmentLogic";
-import { getTimestampMillis, formatQuoteDisplayId } from "@/core/production/queueLogic";
+import { getTimestampMillis } from "@/core/production/queueLogic";
 import {
   buildQuotationRow,
   getProductionStateLabel,
@@ -79,12 +79,7 @@ export default function QuotationsPage() {
         key: "id",
         header: "Documento",
         render: (row) => (
-          <div>
-            <p className="font-semibold text-slate-800">{formatQuoteDisplayId(row.id)}</p>
-            {row.documentNumber && (
-              <p className="text-[10px] font-bold text-slate-400">{row.documentNumber}</p>
-            )}
-          </div>
+          <p className="font-semibold text-slate-800">{row.id}</p>
         ),
       },
       {
