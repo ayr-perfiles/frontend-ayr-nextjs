@@ -4,6 +4,7 @@ import * as admin from "firebase-admin";
 import { calcProductionFromStrip, calcRevertProductionFromStrip, calcRevertProductionFromCoil } from "../domain/drywallProduction";
 import { determineCoilStatusAfterReversal } from "../domain/scrap";
 import { drywallStockStrategy } from "../domain/strategies/drywallStockStrategy";
+import { toMillisSafe } from "../domain/timestamps";
 
 export const produceFromStrip = onCall(async (request) => {
   if (!request.auth) {
@@ -252,10 +253,12 @@ export const revertProductionLog = onCall(async (request) => {
   for (const doc of laterSales.docs) {
     const saleData = doc.data();
     const comparableTimestamp = saleData.approvedAt ?? saleData.timestamp;
-    if (!comparableTimestamp) {
+    const saleMs = toMillisSafe(comparableTimestamp);
+    const logMs = toMillisSafe(logTimestamp);
+    if (saleMs === null || logMs === null) {
       throw new HttpsError("failed-precondition", "No se puede verificar el orden de movimientos; anulación bloqueada por seguridad.");
     }
-    if (comparableTimestamp.toMillis() > logTimestamp.toMillis()) {
+    if (saleMs > logMs) {
       throw new HttpsError("failed-precondition", "El producto tiene ventas posteriores; no se puede anular la producción.");
     }
   }

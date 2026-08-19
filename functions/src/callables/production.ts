@@ -11,6 +11,7 @@ import {
   productionUnitCostBySku,
   applyCostCascade,
 } from "../domain/quoteFulfillment";
+import { toMillisSafe } from "../domain/timestamps";
 
 export const produceFromCoils = onCall(async (request) => {
   if (!request.auth) {
@@ -431,10 +432,12 @@ export const voidProductionFromCoils = onCall(async (request) => {
     // approvedAt = momento real de consumo en ventas ex-cotización (timestamp ahí es el de creación de la cotización, obsoleto).
     // timestamp = momento real de consumo en ventas directas (nunca tienen approvedAt).
     const comparableTimestamp = saleData.approvedAt ?? saleData.timestamp;
-    if (!comparableTimestamp) {
+    const saleMs = toMillisSafe(comparableTimestamp);
+    const logMs = toMillisSafe(logTimestamp);
+    if (saleMs === null || logMs === null) {
       throw new HttpsError("failed-precondition", "No se puede verificar el orden de movimientos; anulación bloqueada por seguridad.");
     }
-    if (comparableTimestamp.toMillis() > logTimestamp.toMillis()) {
+    if (saleMs > logMs) {
       throw new HttpsError("failed-precondition", "El producto tiene ventas posteriores; no se puede anular la producción.");
     }
   }

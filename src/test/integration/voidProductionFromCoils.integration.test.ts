@@ -469,4 +469,81 @@ describe('voidProductionFromCoils — Anulación de Aluzinc (Integration)', () =
     expect(quoteSnap.data()!.isFulfilled).toBe(true);
   });
 
+  it('11a. GUARD toMillisSafe: venta con timestamp OBJETO PLANO corrupto {_seconds,_nanoseconds} POSTERIOR al log → failed-precondition legible, sin crashear (repro real FFA1-1289/1290, ver scripts/local/recon-void500.md)', async () => {
+    const adminDb = admin.firestore();
+    const logTimestampMs = Date.now();
+
+    await seedScenario(adminDb, {
+      logId: "PROD-11A",
+      sku: "COB-ALU-11A",
+      coils: [{ id: "BOB-11A", initialWeight: 1000, currentWeight: 700, pricePerKg: 3.5 }],
+      breakdown: [{ coilId: "BOB-11A", mlFromCoil: 300, weightConsumedKg: 300, costPEN: 1050 }],
+      piecesProduced: 300,
+      stockQuantity: 300,
+      stockTotalValue: 1050,
+      logTimestampMs,
+    });
+
+    // Shape corrupto real visto en prod-test: objeto plano {_seconds,_nanoseconds}, NO un admin.firestore.Timestamp
+    // (constructor Object, sin .toMillis()). Posterior al log.
+    await adminDb.collection("sales").doc("SALE-CORRUPT-LATER").set({
+      customerName: "Cliente Corrupto Posterior",
+      items: [{ sku: "COB-ALU-11A", quantity: 100, unitPrice: 10, unitValue: 8, baseCost: 3.5, unitWeight: 1 }],
+      skus: ["COB-ALU-11A"],
+      businessLines: ["metallic-roofing"],
+      totalAmount: 1000,
+      totalCost: 350,
+      status: "COMPLETED",
+      sellerId: "seller1",
+      timestamp: { _seconds: Math.floor((logTimestampMs + 60_000) / 1000), _nanoseconds: 0 },
+    });
+
+    await expect(
+      voidProductionFromCoils.run({ data: { logId: "PROD-11A" }, auth: getAdminAuth() } as any)
+    ).rejects.toMatchObject({ code: "failed-precondition" });
+
+    const coil = (await adminDb.collection("coils").doc("BOB-11A").get()).data()!;
+    expect(coil.currentWeight).toBe(700); // sin cambio
+
+    const log = (await adminDb.collection("production_logs").doc("PROD-11A").get()).data()!;
+    expect(log.status).toBe("ACTIVE"); // sin cambio
+  });
+
+  it('11b. GUARD toMillisSafe: venta con timestamp OBJETO PLANO corrupto ANTERIOR al log → NO bloquea, anula normal (no crashea)', async () => {
+    const adminDb = admin.firestore();
+    const logTimestampMs = Date.now();
+
+    await seedScenario(adminDb, {
+      logId: "PROD-11B",
+      sku: "COB-ALU-11B",
+      coils: [{ id: "BOB-11B", initialWeight: 1000, currentWeight: 700, pricePerKg: 3.5 }],
+      breakdown: [{ coilId: "BOB-11B", mlFromCoil: 300, weightConsumedKg: 300, costPEN: 1050 }],
+      piecesProduced: 300,
+      stockQuantity: 300,
+      stockTotalValue: 1050,
+      logTimestampMs,
+    });
+
+    await adminDb.collection("sales").doc("SALE-CORRUPT-EARLIER").set({
+      customerName: "Cliente Corrupto Previo",
+      items: [{ sku: "COB-ALU-11B", quantity: 50, unitPrice: 10, unitValue: 8, baseCost: 3.5, unitWeight: 1 }],
+      skus: ["COB-ALU-11B"],
+      businessLines: ["metallic-roofing"],
+      totalAmount: 500,
+      totalCost: 175,
+      status: "COMPLETED",
+      sellerId: "seller1",
+      timestamp: { _seconds: Math.floor((logTimestampMs - 60_000) / 1000), _nanoseconds: 0 },
+    });
+
+    const result = await voidProductionFromCoils.run({ data: { logId: "PROD-11B" }, auth: getAdminAuth() } as any);
+    expect(result.success).toBe(true);
+
+    const coil = (await adminDb.collection("coils").doc("BOB-11B").get()).data()!;
+    expect(coil.currentWeight).toBe(1000); // se anuló normalmente
+
+    const log = (await adminDb.collection("production_logs").doc("PROD-11B").get()).data()!;
+    expect(log.status).toBe("VOIDED");
+  });
+
 });
