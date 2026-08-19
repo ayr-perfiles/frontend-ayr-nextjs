@@ -35,6 +35,8 @@ import Link from "next/link";
 import { resolveCustomerDoc } from "@/core/sales/salesDisplayLogic";
 import { useConfirm } from "@/context/ConfirmContext";
 import { resolveSaleQuotationLink } from "@/core/sales/saleProductionLink";
+import { parseAnnulError } from "@/core/sales/annulment/parseAnnulError";
+import { ProductionBlockedAnnulModal } from "./ProductionBlockedAnnulModal";
 import { buildQueueRow, buildQuoteDetailView, formatQuoteDisplayId } from "@/core/production/queueLogic";
 import { getProductionStateLabel } from "@/core/sales/quotationsViewLogic";
 import type { QuotationProductionStatus } from "@/core/sales/quotationsViewLogic";
@@ -107,9 +109,15 @@ export function SaleDetailsModal({
   };
 
   // Lógica de Anulación
+  const [blockedModal, setBlockedModal] = useState<{
+    open: boolean;
+    quotationId?: string;
+    activeLogIds?: string[];
+  }>({ open: false });
+
   const handleAnnul = async () => {
     const confirmMsg = `¿ESTÁS SEGURO?\n\nEsta acción anulará la factura ${sale.id}, devolverá el stock al inventario y creará un registro en auditoría.\n\nESTA ACCIÓN NO SE PUEDE DESHACER.`;
-    
+
     if (
       !(await confirm({
         title: "Anular Venta",
@@ -123,20 +131,24 @@ export function SaleDetailsModal({
     setIsAnnuling(true);
     toast.loading("Anulando operación...", { id: "annul" });
     try {
-      await annulSale({
-        saleId: sale.id!,
-        userEmail: user?.email || "usuario@empresa.com",
-      });
+      await annulSale({ saleId: sale.id! });
       toast.success("Venta anulada y stock restaurado.", { id: "annul" });
       if (onSuccess) onSuccess();
       onClose();
     } catch (error: any) {
-      toast.error(error.message, { id: "annul" });
+      const parsed = parseAnnulError(error);
+      if (parsed.type === "production-block" && parsed.quotationId) {
+        toast.dismiss("annul");
+        setBlockedModal({ open: true, quotationId: parsed.quotationId, activeLogIds: parsed.activeLogIds });
+      } else {
+        toast.error(parsed.message, { id: "annul" });
+      }
       setIsAnnuling(false);
     }
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       {/* 🚀 CONTENEDOR PRINCIPAL: Alto máximo 95vh y estructura Flex Col para Scrolling Interno */}
       <div className="flex flex-col bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-hidden animate-in fade-in zoom-in-95">
@@ -492,6 +504,13 @@ export function SaleDetailsModal({
         </div>
       </div>
     </div>
+    <ProductionBlockedAnnulModal
+      open={blockedModal.open}
+      onClose={() => setBlockedModal({ open: false })}
+      quotationId={blockedModal.quotationId ?? ""}
+      activeLogIds={blockedModal.activeLogIds}
+    />
+    </>
   );
 }
 

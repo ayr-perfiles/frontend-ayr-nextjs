@@ -1,9 +1,9 @@
 import { algoliaClient, ALGOLIA_INDICES } from '@/lib/algoliaClient';
-import { db } from '@/lib/firebase/clientApp';
+import { db, functions } from '@/lib/firebase/clientApp';
+import { httpsCallable } from 'firebase/functions';
 import { buildAggregateStatusFilter, buildListStatusFilter, filterSalesExcludingQuotations } from '@/core/sales/salesAggregateLogic';
 import {
   collection,
-  deleteField,
   doc,
   documentId,
   endBefore,
@@ -11,7 +11,6 @@ import {
   getAggregateFromServer,
   sum,
   count,
-  getDoc,
   getDocs,
   limit,
   limitToLast,
@@ -27,8 +26,6 @@ import {
   DocumentData,
 } from 'firebase/firestore';
 import { getStockStrategy } from '../strategies';
-import { resolveSaleQuotationLink } from '@/core/sales/saleProductionLink';
-import { hasActiveProduction } from '@/core/production/fulfillmentLogic';
 import type { BusinessLine, Sale, SaleItem } from '@/types';
 
 // Re-export para compatibilidad con consumidores que usen el tipo directamente
@@ -368,145 +365,21 @@ export const approveQuotation = async (quotationId: string): Promise<{ success: 
 };
 
 // ─── annulSale ────────────────────────────────────────────────────────────────
+// Thin-client: la lógica de bloqueo/cascada/reversión vive server-side ahora
+// (functions/src/callables/sales.ts, callable `annulSale`, deployed en
+// ayrsteel-test). El error crudo del callable (code/message/details) se propaga
+// tal cual al caller — SaleDetailsModal lo parsea con parseAnnulError para
+// distinguir bloqueo por producción activa (modal) de cualquier otro error (toast).
 
 export interface AnnulSaleParams {
   saleId: string;
-  userEmail: string;
+  reason?: string;
 }
 
-export const annulSale = async ({ saleId, userEmail }: AnnulSaleParams): Promise<{ success: true }> => {
-  const saleRef = doc(db, 'sales', saleId);
-  const auditRef = doc(collection(db, 'audit_logs'));
-
-  // PRE-TXN: resolver la percha vinculada (importada vía relatedQuotationId, nativa vía
-  // originQuoteId — resolveSaleQuotationLink cubre ambas) y bloquear si tiene producción ACTIVE
-  // (incl. parcial, no solo CUMPLIDA). Firestore no admite queries dentro de una transacción
-  // (mismo patrón PRE-txn que produceFromCoils/voidProductionFromCoils, functions/src/callables/production.ts).
-  const preCheckSnap = await getDoc(saleRef);
-  if (preCheckSnap.exists()) {
-    const preCheckData = preCheckSnap.data();
-    const link = resolveSaleQuotationLink({
-      id: saleId,
-      status: preCheckData.status,
-      relatedQuotationId: preCheckData.relatedQuotationId,
-      originQuoteId: preCheckData.originQuoteId,
-    });
-    if (link.mode === 'linked') {
-      const logsSnap = await getDocs(
-        query(collection(db, 'production_logs'), where('source.id', '==', link.quotationId)),
-      );
-      const logs = logsSnap.docs.map((d) => d.data());
-      if (hasActiveProduction(logs)) {
-        throw new Error(
-          `No se puede anular la venta: la cotización vinculada ${link.quotationId} tiene producción activa. Anulá la producción primero.`,
-        );
-      }
-    }
-  }
-
-  await runTransaction(db, async (transaction) => {
-    // ── LECTURAS ────────────────────────────────────────────────────────────
-    const saleDoc = await transaction.get(saleRef);
-    if (!saleDoc.exists()) throw new Error('La venta no existe.');
-
-    const saleData = saleDoc.data();
-    if (saleData.status === 'VOIDED') throw new Error('Esta venta ya ha sido anulada.');
-
-    const stockSnapshots = new Map<string, DocumentSnapshot>();
-    const coilSnapshots = new Map<string, DocumentSnapshot>();
-
-    for (const item of saleData.items as CartItem[]) {
-      if (item.isCoil) {
-        coilSnapshots.set(item.sku, await transaction.get(doc(db, 'coils', item.sku)));
-      } else if (item.sku && item.sku !== 'GENERIC') {
-        const line: BusinessLine = item.businessLine ?? 'drywall';
-        const key = `${line}:${item.sku}`;
-        if (!stockSnapshots.has(key)) {
-          const strategy = getStockStrategy(line);
-          stockSnapshots.set(key, await transaction.get(strategy.getStockRef(item.sku)));
-        }
-      }
-    }
-
-    let quoteSnap = null;
-    let quoteRef = null;
-    if (saleData.originQuoteId) {
-      quoteRef = doc(db, 'sales', saleData.originQuoteId);
-      quoteSnap = await transaction.get(quoteRef);
-    }
-
-    // ── ESCRITURAS ──────────────────────────────────────────────────────────
-    for (const item of saleData.items as CartItem[]) {
-      if (item.isCoil) {
-        const coilSnap = coilSnapshots.get(item.sku);
-        const coilData = coilSnap?.data();
-        transaction.update(doc(db, 'coils', item.sku), {
-          status: 'AVAILABLE',
-          soldAt: null,
-          soldBy: null,
-          saleReference: null,
-          updatedAt: serverTimestamp(),
-        });
-        transaction.set(doc(collection(db, 'kardex_movements')), {
-          sku: item.sku,
-          date: serverTimestamp(),
-          type: 'IN',
-          quantity: 1,
-          weightKg: coilData?.currentWeight ?? 0,
-          costPerKg: coilData?.pricePerKg ?? 0,
-          balance: 1,
-          reference: saleId,
-          description: `Anulación Venta MP: ${saleData.customerName}`,
-          user: userEmail,
-        });
-      } else if (item.sku && item.sku !== 'GENERIC') {
-        const line: BusinessLine = item.businessLine ?? 'drywall';
-        const strategy = getStockStrategy(line);
-        const snap = stockSnapshots.get(`${line}:${item.sku}`) ?? null;
-        const currentQty = snap ? strategy.extractQuantity(snap) : 0;
-        const newBalance = currentQty + item.quantity;
-
-        strategy.writeSaleReversal(
-          {
-            sku: item.sku,
-            quantity: item.quantity,
-            newBalance,
-            saleId,
-            customerName: saleData.customerName,
-            sellerId: userEmail,
-            frozenCost: item.baseCost ?? 0,
-          },
-          snap,
-          transaction,
-        );
-      }
-    }
-
-    if (quoteRef && quoteSnap?.exists()) {
-      transaction.update(quoteRef, {
-        status: 'QUOTATION',
-        updatedAt: serverTimestamp(),
-        annulledSaleRef: saleId,
-        convertedToId: deleteField(),
-      });
-    }
-
-    transaction.update(saleRef, {
-      status: 'VOIDED',
-      voidedAt: serverTimestamp(),
-      voidedBy: userEmail,
-    });
-
-    transaction.set(auditRef, {
-      action: 'VOID_SALE',
-      entityId: saleId,
-      userEmail,
-      details: `Se anuló la venta ${saleId}. El stock fue devuelto.`,
-      timestamp: serverTimestamp(),
-    });
-  });
-
-  return { success: true };
+export const annulSale = async (params: AnnulSaleParams): Promise<{ success: true }> => {
+  const callable = httpsCallable<AnnulSaleParams, { success: true }>(functions, 'annulSale');
+  const result = await callable(params);
+  return result.data;
 };
 
 // ─── fetchSales ───────────────────────────────────────────────────────────────
