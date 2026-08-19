@@ -1,5 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { resolveSaleQuotationLink } from "../domain/annulment/saleQuotationLink";
 import { canAnnulSale, type AnnulBlockReason } from "../domain/annulment/canAnnulSale";
 import { resolveSaleTwinPath } from "../domain/annulment/resolveSaleTwinPath";
@@ -159,11 +160,11 @@ export const annulSale = onCall<AnnulSaleData>(async (request) => {
           soldAt: null,
           soldBy: null,
           saleReference: null,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         });
         tx.set(db.collection("kardex_movements").doc(), {
           sku: item.sku,
-          date: admin.firestore.FieldValue.serverTimestamp(),
+          date: FieldValue.serverTimestamp(),
           type: "IN",
           quantity: 1,
           weightKg: (coilData?.currentWeight as number) ?? 0,
@@ -199,7 +200,7 @@ export const annulSale = onCall<AnnulSaleData>(async (request) => {
 
     for (const write of cascadePlan.writes) {
       const targetRef = db.doc(write.docPath);
-      const translated = translateCascadeFields(write.fields, admin.firestore.FieldValue);
+      const translated = translateCascadeFields(write.fields, FieldValue);
       tx.update(targetRef, translated);
     }
 
@@ -209,7 +210,7 @@ export const annulSale = onCall<AnnulSaleData>(async (request) => {
       entityId: saleId,
       userEmail,
       details: cascadePlan.auditDetails,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: FieldValue.serverTimestamp(),
     });
   });
 
