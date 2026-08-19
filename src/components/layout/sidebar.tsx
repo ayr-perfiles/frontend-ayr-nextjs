@@ -8,6 +8,11 @@ import { businessLines } from "@/core/registry/businessLineRegistry";
 import type { BusinessLineModule, MenuItem } from "@/core/contracts";
 import { getProductionQueueCount } from "@/core/sales/services/salesService";
 import {
+  nextOpenGroup,
+  resolveInitialOpenGroup,
+  shouldShowGroupItems,
+} from "./sidebarAccordion";
+import {
   LayoutDashboard,
   Factory,
   ShoppingCart,
@@ -163,32 +168,64 @@ function NavItem({
 function Group({
   icon,
   title,
-  children,
+  groupId,
+  openGroup,
+  onToggleGroup,
   collapsed,
+  children,
+  hasVisibleChildren = true,
 }: {
   icon: string;
   title: string;
-  children: React.ReactNode;
+  groupId: string;
+  openGroup: string | null;
+  onToggleGroup: (groupId: string) => void;
   collapsed: boolean;
+  children: React.ReactNode;
+  hasVisibleChildren?: boolean;
 }) {
+  if (!hasVisibleChildren) return null;
+
   const Icon = getIcon(icon);
+  const isExpanded = openGroup === groupId;
+  const showItems = shouldShowGroupItems({ collapsed, openGroup, groupId });
+
   return (
     <div className="space-y-1.5">
       {!collapsed && (
-        <div className="flex items-center gap-2 px-3 py-1.5">
+        <button
+          type="button"
+          onClick={() => onToggleGroup(groupId)}
+          className={`
+            w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors duration-200
+            ${
+              isExpanded
+                ? "text-[var(--color-primary)] bg-[var(--color-primary-soft)]"
+                : "text-[var(--color-fg-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-soft)]"
+            }
+          `}
+        >
           <Icon
             size={14}
-            className="text-[var(--color-fg-subtle)] opacity-60"
+            className={
+              isExpanded
+                ? "text-[var(--color-primary)]"
+                : "text-[var(--color-fg-subtle)] opacity-70"
+            }
           />
-          <span className="text-[10px] font-black text-[var(--color-fg-subtle)] uppercase tracking-widest">
-            {title}
-          </span>
-        </div>
+          <span className="flex-1 text-left truncate">{title}</span>
+          <ChevronRight
+            size={14}
+            className={`shrink-0 transition-transform duration-200 ${
+              isExpanded ? "rotate-90 text-[var(--color-primary)]" : "text-[var(--color-fg-subtle)]"
+            }`}
+          />
+        </button>
       )}
       {collapsed && (
         <div className="h-px bg-[var(--color-border)] mx-4 my-2 opacity-50" />
       )}
-      <div className="space-y-0.5">{children}</div>
+      {showItems && <div className="space-y-0.5">{children}</div>}
     </div>
   );
 }
@@ -330,6 +367,89 @@ export default function Sidebar({
     };
   }, [canSeeProductionQueue]);
 
+  // ── Predicados de ruta activa por ítem (nombrados, reusados tal cual abajo
+  // en cada NavItem y para derivar qué grupo top contiene la ruta activa) ──
+  const isPanelActive = pathname === "/admin";
+  const isSalesActive = pathname === "/admin/sales";
+  const isQuotationsActive = pathname === "/admin/quotations";
+  const isCustomersActive = pathname === "/admin/customers";
+  const isReportsActive = pathname.startsWith("/admin/reports");
+
+  const productionLines = businessLines.filter(
+    (l) => l.productionEngine || l.id === "metallic-roofing",
+  );
+  const isAnyProductionLineActive = productionLines.some(
+    (l) => pathname === `/admin/lines/${l.id}/production`,
+  );
+  const isQueueActive =
+    pathname === "/admin/lines/metallic-roofing/production/queue";
+
+  const isPurchasesActive = pathname.startsWith("/admin/purchases");
+  const isCutOrdersActive = pathname === "/admin/coils/cut-orders";
+
+  const isCoilsActive = pathname === "/admin/coils";
+  const isStripsActive = pathname === "/admin/coils/strips";
+  const isFinishesActive = pathname === "/admin/coils/finishes";
+
+  const isAnyLineCatalogOrInventoryActive = businessLines.some(
+    (l) =>
+      pathname === `/admin/lines/${l.id}/catalog` ||
+      pathname === `/admin/lines/${l.id}/inventory`,
+  );
+
+  const isKardexActive = pathname === "/admin/kardex";
+  const isUsersActive = pathname === "/admin/users";
+  const isAuditActive = pathname === "/admin/audit";
+  const isSettingsActive = pathname === "/admin/settings";
+
+  // ── Acordeón EXCLUSIVO de los 6 grupos top (distinto de `openLines`,
+  // que sigue siendo el acordeón no-exclusivo por-línea dentro de "Líneas de negocio") ──
+  const groupsForSync = [
+    {
+      id: "comercial",
+      hasActiveChild:
+        isPanelActive ||
+        isSalesActive ||
+        isQuotationsActive ||
+        isCustomersActive ||
+        isReportsActive,
+    },
+    {
+      id: "produccion",
+      hasActiveChild: isAnyProductionLineActive || isQueueActive,
+    },
+    {
+      id: "abastecimiento",
+      hasActiveChild: isPurchasesActive || isCutOrdersActive,
+    },
+    {
+      id: "materiaPrima",
+      hasActiveChild: isCoilsActive || isStripsActive || isFinishesActive,
+    },
+    {
+      id: "lineasNegocio",
+      hasActiveChild: isAnyLineCatalogOrInventoryActive,
+    },
+    {
+      id: "administracion",
+      hasActiveChild:
+        isKardexActive || isUsersActive || isAuditActive || isSettingsActive,
+    },
+  ];
+
+  const [openGroup, setOpenGroup] = useState<string | null>(() =>
+    resolveInitialOpenGroup(groupsForSync),
+  );
+
+  useEffect(() => {
+    setOpenGroup(resolveInitialOpenGroup(groupsForSync));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  const handleToggleGroup = (groupId: string) => {
+    setOpenGroup((current) => nextOpenGroup(current, groupId));
+  };
+
   return (
     <aside
       className={`
@@ -361,19 +481,26 @@ export default function Sidebar({
       {/* NAVIGATION */}
       <nav className="flex-1 p-3 space-y-6 overflow-y-auto custom-scrollbar">
         {/* COMERCIAL */}
-        <Group icon="TrendingUp" title="Comercial" collapsed={collapsed}>
+        <Group
+          icon="TrendingUp"
+          title="Comercial"
+          groupId="comercial"
+          openGroup={openGroup}
+          onToggleGroup={handleToggleGroup}
+          collapsed={collapsed}
+        >
           <NavItem
             icon="LayoutDashboard"
             label="Panel"
             href="/admin"
-            active={pathname === "/admin"}
+            active={isPanelActive}
             collapsed={collapsed}
           />
           <NavItem
             icon="ShoppingCart"
             label="Ventas"
             href="/admin/sales"
-            active={pathname === "/admin/sales"}
+            active={isSalesActive}
             collapsed={collapsed}
           />
           {/* <NavItem
@@ -387,45 +514,51 @@ export default function Sidebar({
             icon="FileText"
             label="Cotizaciones"
             href="/admin/quotations"
-            active={pathname === "/admin/quotations"}
+            active={isQuotationsActive}
             collapsed={collapsed}
           />
           <NavItem
             icon="Contact2"
             label="Clientes"
             href="/admin/customers"
-            active={pathname === "/admin/customers"}
+            active={isCustomersActive}
             collapsed={collapsed}
           />
           <NavItem
             icon="BarChart3"
             label="Reportes"
             href="/admin/reports"
-            active={pathname.startsWith("/admin/reports")}
+            active={isReportsActive}
             collapsed={collapsed}
           />
         </Group>
 
         {/* PRODUCCIÓN */}
-        <Group icon="Factory" title="Producción" collapsed={collapsed}>
-          {businessLines
-            .filter((l) => l.productionEngine || l.id === "metallic-roofing")
-            .map((l) => (
-              <NavItem
-                key={l.id}
-                icon="Factory"
-                label={`Producción ${l.displayName.split(" ")[0]}`}
-                href={`/admin/lines/${l.id}/production`}
-                active={pathname === `/admin/lines/${l.id}/production`}
-                collapsed={collapsed}
-              />
-            ))}
+        <Group
+          icon="Factory"
+          title="Producción"
+          groupId="produccion"
+          openGroup={openGroup}
+          onToggleGroup={handleToggleGroup}
+          collapsed={collapsed}
+          hasVisibleChildren={productionLines.length > 0 || canSeeProductionQueue}
+        >
+          {productionLines.map((l) => (
+            <NavItem
+              key={l.id}
+              icon="Factory"
+              label={`Producción ${l.displayName.split(" ")[0]}`}
+              href={`/admin/lines/${l.id}/production`}
+              active={pathname === `/admin/lines/${l.id}/production`}
+              collapsed={collapsed}
+            />
+          ))}
           {canSeeProductionQueue && (
             <NavItem
               icon="ListChecks"
               label="Cola de Producción"
               href="/admin/lines/metallic-roofing/production/queue"
-              active={pathname === "/admin/lines/metallic-roofing/production/queue"}
+              active={isQueueActive}
               badge={productionQueueCount}
               collapsed={collapsed}
             />
@@ -433,50 +566,71 @@ export default function Sidebar({
         </Group>
 
         {/* ABASTECIMIENTO */}
-        <Group icon="Truck" title="Abastecimiento" collapsed={collapsed}>
+        <Group
+          icon="Truck"
+          title="Abastecimiento"
+          groupId="abastecimiento"
+          openGroup={openGroup}
+          onToggleGroup={handleToggleGroup}
+          collapsed={collapsed}
+        >
           <NavItem
             icon="PackagePlus"
             label="Compras"
             href="/admin/purchases"
-            active={pathname.startsWith("/admin/purchases")}
+            active={isPurchasesActive}
             collapsed={collapsed}
           />
           <NavItem
             icon="Scissors"
             label="Órdenes de corte"
             href="/admin/coils/cut-orders"
-            active={pathname === "/admin/coils/cut-orders"}
+            active={isCutOrdersActive}
             collapsed={collapsed}
           />
         </Group>
 
         {/* MATERIA PRIMA */}
-        <Group icon="Layers" title="Materia prima" collapsed={collapsed}>
+        <Group
+          icon="Layers"
+          title="Materia prima"
+          groupId="materiaPrima"
+          openGroup={openGroup}
+          onToggleGroup={handleToggleGroup}
+          collapsed={collapsed}
+        >
           <NavItem
             icon="Layers"
             label="Inventario Bobinas"
             href="/admin/coils"
-            active={pathname === "/admin/coils"}
+            active={isCoilsActive}
             collapsed={collapsed}
           />
           <NavItem
             icon="AlignJustify"
             label="Inventario Flejes"
             href="/admin/coils/strips"
-            active={pathname === "/admin/coils/strips"}
+            active={isStripsActive}
             collapsed={collapsed}
           />
           <NavItem
             icon="Tag"
             label="Acabados"
             href="/admin/coils/finishes"
-            active={pathname === "/admin/coils/finishes"}
+            active={isFinishesActive}
             collapsed={collapsed}
           />
         </Group>
 
         {/* LÍNEAS DE NEGOCIO */}
-        <Group icon="Boxes" title="Líneas de negocio" collapsed={collapsed}>
+        <Group
+          icon="Boxes"
+          title="Líneas de negocio"
+          groupId="lineasNegocio"
+          openGroup={openGroup}
+          onToggleGroup={handleToggleGroup}
+          collapsed={collapsed}
+        >
           {businessLines.map((l) => (
             <LineGroup
               key={l.id}
@@ -491,33 +645,40 @@ export default function Sidebar({
 
         {/* ADMINISTRACIÓN */}
         {role === "ADMIN" && (
-          <Group icon="Settings" title="Administración" collapsed={collapsed}>
+          <Group
+            icon="Settings"
+            title="Administración"
+            groupId="administracion"
+            openGroup={openGroup}
+            onToggleGroup={handleToggleGroup}
+            collapsed={collapsed}
+          >
             <NavItem
               icon="History"
               label="Kardex productos"
               href="/admin/kardex"
-              active={pathname === "/admin/kardex"}
+              active={isKardexActive}
               collapsed={collapsed}
             />
             <NavItem
               icon="Users"
               label="Usuarios"
               href="/admin/users"
-              active={pathname === "/admin/users"}
+              active={isUsersActive}
               collapsed={collapsed}
             />
             <NavItem
               icon="ShieldAlert"
               label="Auditoría"
               href="/admin/audit"
-              active={pathname === "/admin/audit"}
+              active={isAuditActive}
               collapsed={collapsed}
             />
             <NavItem
               icon="Settings"
               label="Configuración"
               href="/admin/settings"
-              active={pathname === "/admin/settings"}
+              active={isSettingsActive}
               collapsed={collapsed}
             />
           </Group>
