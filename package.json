@@ -18,7 +18,8 @@
     "test:integration": "vitest src/test/integration",
     "test:emu": "firebase emulators:exec --project ayrsteel-test \"vitest run src/test/integration --no-file-parallelism --maxWorkers 1\" --only auth,firestore,storage,functions",
     "emulators": "firebase emulators:start --import=./firebase-data --export-on-exit",
-    "emulate": "concurrently \"npm run emulators\" \"npm run dev\""
+    "emulate": "concurrently \"npm run emulators\" \"npm run dev\"",
+    "seed:annul-fixtures": "tsx src/test/integration/fixtures/seedAnnulFixtures.cli.ts"
   },
   "dependencies": {
     "algoliasearch": "^5.49.2",
