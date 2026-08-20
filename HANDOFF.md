@@ -1,7 +1,7 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
 > Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.52.0).
-> **BASELINE (2026-08-20):** develop==master==origin/develop==origin/master == `b6216e0a` (4 refs verificados por `git rev-parse`; batch `chore/batch-cleanup` mergeado LINEAL con ff-only, 15 commits atomicos + 1 commit de docs).
+> **BASELINE (2026-08-20):** develop == master == origin/develop == origin/master, los 4 al MISMO hash (verificar con `git rev-parse` al arrancar — un commit de docs no puede nombrar su propio hash). **Tip de CODIGO: `b6216e0a`**; encima van solo commits de docs de este cierre. Batch `chore/batch-cleanup` mergeado **LINEAL con ff-only** (sin merge commit, sin squash): 15 commits atomicos, uno por item. La rama `chore/batch-cleanup` queda local en `b6216e0a`, ya mergeada.
 > Backend en prod: `produceFromCoils` redeployado a `ayrsteel-test` Y `ayrsteel-2026` (368.3 KB ambos, blob `2d301aad`).
 > **El batch v6.52.0 fue 100% frontend/tests/docs: CERO deploy de Functions, CERO indice, CERO write a prod.**
 > **Suite ENTERA en verde:** `test:emu` 222/3skip/0 (225) + `test:emu:functions` 14/14 + unit 994/994 = **1230 verdes, 0 rojos**. `tsc --noEmit` 0 errores.
