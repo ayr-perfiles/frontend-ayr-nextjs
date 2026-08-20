@@ -290,12 +290,10 @@ function DropdownItem({
 // ── AdminShell ────────────────────────────────────────────────────────────
 
 interface AdminShellProps {
-  /** Omit in production; set to 'dev' or 'emul' to show the env banner */
-  env?: 'dev' | 'emul' | 'prod';
   children: React.ReactNode;
 }
 
-export default function AdminShell({ env = 'prod', children }: AdminShellProps) {
+export default function AdminShell({ children }: AdminShellProps) {
   const { role } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -352,8 +350,6 @@ export default function AdminShell({ env = 'prod', children }: AdminShellProps) 
 
   if (!role) return null;
 
-  const withEnv = env !== 'prod';
-
   // Layout calculations
   const isLg = viewport === 'lg';
   const isMd = viewport === 'md';
@@ -374,23 +370,6 @@ export default function AdminShell({ env = 'prod', children }: AdminShellProps) 
 
   return (
     <div className="min-h-screen bg-[var(--color-background)] flex flex-col overflow-x-hidden">
-      {withEnv && (
-        <div
-          className="shrink-0 flex items-center justify-center text-[11px] font-medium uppercase text-white z-50 sticky top-0"
-          style={{
-            height: 24,
-            background:
-              env === 'dev' ? 'var(--color-env-dev)' : 'var(--color-env-emul)',
-            borderBottom: '1px solid rgb(0 0 0 / 0.1)',
-            letterSpacing: '0.06em',
-          }}
-        >
-          {env === 'dev'
-            ? 'Entorno: DEV — datos no productivos'
-            : 'Entorno: EMULADOR — Firebase local'}
-        </div>
-      )}
-
       <div className="flex flex-1 relative min-h-0">
         {/* Backdrop for mobile/tablet overlay */}
         {((isSm || isMd) && isOpen) && (
@@ -406,7 +385,6 @@ export default function AdminShell({ env = 'prod', children }: AdminShellProps) 
             transform: showSidebar
               ? 'translateX(0)'
               : 'translateX(-100%)',
-            top: withEnv ? 24 : 0,
             width: isSm ? '100%' : ((isMd && !isOpen) || (isLg && collapsed)) ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED,
           }}
         >
