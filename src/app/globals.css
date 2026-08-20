@@ -66,7 +66,6 @@ body {
   --color-role-operator:   oklch(0.55 0.04 250);
 
   --color-env-dev:         oklch(0.72 0.16 60);
-  --color-env-emul:        oklch(0.65 0.12 290);
 
   --radius-sm: 4px;
   --radius-md: 6px;
