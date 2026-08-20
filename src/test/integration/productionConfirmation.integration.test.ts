@@ -167,13 +167,19 @@ describe('confirmQuotationForProduction - Frente 1 productionStatus (RED PHASE)'
     expect(data.confirmedBy).toBe('primer-admin@ayrsteel.com');
   });
 
+  // Usa el SDK CLIENTE (`db`), igual que los 9 tests de arriba. Antes pedía
+  // `(await import('firebase-admin')).firestore()`, que resuelve la app DEFAULT de
+  // firebase-admin — y `setupIntegrationTest` inicializa una app NOMBRADA
+  // (`admin.initializeApp({projectId}, projectId)`, firestore-helpers.ts:29), nunca la
+  // default. De ahí el "The default Firebase app does not exist". El test no necesita
+  // privilegios de admin: sus hermanos hacen exactamente los mismos writes por el cliente.
   it('10. RED 1x1 (M2): Cotización confirmada nace isFulfilled: false', async () => {
-    const adminDb = (await import('firebase-admin')).firestore();
     const quoteId = 'COT-ISFULFILLED';
-    await adminDb.collection('sales').doc(quoteId).set({ ...baseQuotation, documentNumber: 'ISFULFILLED' });
+    await setDoc(doc(db, 'sales', quoteId), { ...baseQuotation, documentNumber: 'ISFULFILLED' });
+
     await confirmQuotationForProduction(quoteId, 'admin@test.com');
-    
-    const snap = await adminDb.collection('sales').doc(quoteId).get();
+
+    const snap = await getDoc(doc(db, 'sales', quoteId));
     expect(snap.data()!.isFulfilled).toBe(false);
   });
 });
