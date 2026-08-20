@@ -136,11 +136,20 @@ export const produceFromCoils = onCall(async (request) => {
       quoteSnap = await tx.get(quoteRef);
       if (quoteSnap.exists) {
         const quoteData = quoteSnap.data()!;
-        const relatedSaleId = quoteData.relatedSaleId || quoteId.replace(/^COT-/, "");
-        if (relatedSaleId) {
+        // El write-back de costo aplica SOLO a perchas importadas: son las únicas con
+        // `relatedSaleId` apuntando a su venta gemela (buildImportWrites lo escribe
+        // siempre, salesImportLogic.ts:60). Una cotización NATIVA (C-*) no tiene venta
+        // gemela y debe saltearse. El fallback que había acá
+        // (`|| quoteId.replace(/^COT-/, "")`) era un no-op sobre un id sin ese prefijo
+        // y dejaba saleRef apuntando a la PROPIA cotización -> el cascade se escribía
+        // sobre sí misma (caso real en prod: C-000020). Mismo criterio que
+        // backfillQuoteCost.ts:65-68, que ya skipea cuando falta `relatedSaleId`.
+        // INVARIANTE: saleRef nunca puede ser la percha misma.
+        const relatedSaleId = quoteData.relatedSaleId;
+        if (relatedSaleId && relatedSaleId !== quoteId) {
           saleRef = db.collection("sales").doc(relatedSaleId);
           saleSnap = await tx.get(saleRef);
-          if (!saleSnap.exists && relatedSaleId !== quoteId) {
+          if (!saleSnap.exists) {
             saleRef = null;
             saleSnap = null;
           }

@@ -617,4 +617,82 @@ describe('produceFromCoils Integration Tests', () => {
     expect(quoteSnap.data()!.isFulfilled).toBe(true);
   });
 
+  // ── Fix cascade A1 self-write sobre cotizaciones NATIVAS ────────────────────
+  // El write-back de costo (test 13) debe aplicar SOLO a perchas importadas, que
+  // son las que tienen `relatedSaleId` apuntando a su venta gemela. En una nativa
+  // (C-*, sin relatedSaleId) el fallback `quoteId.replace(/^COT-/, "")` de
+  // production.ts:139 es un no-op sobre un id sin ese prefijo -> saleRef termina
+  // apuntando a la PROPIA cotización y el cascade se escribe sobre sí misma.
+  // Verificado en prod: C-000020 quedó con costSyncedAt sin ser una venta.
+  //
+  // El guard de no-regresión del lado importado es el test 13 de este mismo
+  // archivo ("Write-back de costo..."), que corre en esta misma suite.
+  it('15. RED: cotización NATIVA (sin relatedSaleId) NO recibe el cascade de costo sobre sí misma', async () => {
+    await db.collection('coil_finishes').doc('F-NAT').set({
+      active: true, lines: ['metallic-roofing'], densityFactor: 0.00785
+    });
+    await db.collection('coils').doc('COIL-NAT').set({
+      id: 'COIL-NAT', status: 'AVAILABLE', finish: 'F-NAT',
+      masterWidth: 1000, thickness: 1, pricePerKg: 10,
+      currentWeight: 1000, initialWeight: 1000
+    });
+
+    // Cotización NATIVA: id sin prefijo COT-, sin relatedSaleId, sin metadata.
+    // Réplica del shape que deja createQuotation cuando el SKU tiene WAC 0
+    // (caso real de C-000020: baseCost 0 -> el builder añade el flag 'sin costo').
+    await db.collection('sales').doc('C-000099').set({
+      status: 'QUOTATION',
+      productionStatus: 'CONFIRMED',
+      isFulfilled: false,
+      totalAmount: 1000,
+      totalCost: 0,
+      totalProfit: 0,
+      allFlags: ['sin costo'],
+      items: [{
+        sku: 'SKU-NAT',
+        productName: 'COBERTURA NATIVA',
+        quantity: 10,
+        unitPrice: 100,
+        unitValue: 84.75,
+        baseCost: 0,
+        profit: 0,
+        businessLine: 'metallic-roofing',
+        flags: ['sin costo']
+      }]
+    });
+
+    const res = await produceFromCoils.run({
+      data: {
+        targetSku: 'SKU-NAT',
+        productKind: 'COBERTURA_ML',
+        coilInputs: [{ coilId: 'COIL-NAT', declared: 10 }],
+        requestId: 'req-nat-1',
+        source: { type: 'QUOTE', id: 'C-000099' }
+      },
+      auth: { uid: 'user-nat', token: { role: 'ADMIN', email: 'admin@ayr.pe' } }
+    } as any);
+    expect(res.success).toBe(true);
+
+    const quoteSnap = await db.collection('sales').doc('C-000099').get();
+    const quote = quoteSnap.data()!;
+
+    // isFulfilled SÍ debe escribirse: es el flag de la percha, no del cascade.
+    // El skip tiene que ser quirúrgico (solo el write-back), no un early-return global.
+    expect(quote.isFulfilled).toBe(true);
+
+    // Nada del cascade de costo debe haber tocado la cotización.
+    expect(quote.costSyncedAt).toBeUndefined();
+    expect(quote.items[0].baseCost).toBe(0);
+    expect(quote.items[0].profit).toBe(0);
+    expect(quote.items[0].costSource).toBeUndefined();
+    expect(quote.items[0].flags).toContain('sin costo');
+    expect(quote.totalCost).toBe(0);
+    expect(quote.totalProfit).toBe(0);
+    expect(quote.allFlags).toContain('sin costo');
+
+    // El resto de la producción sí ocurrió con normalidad (no es un abort).
+    const stockSnap = await db.collection('metallic_roofing_stock').doc('SKU-NAT').get();
+    expect(stockSnap.data()!.quantity).toBe(10);
+  });
+
 });
