@@ -169,10 +169,12 @@ export const receiveStrips = async (params: {
         const { snap: coilSnap, ref: coilRef } = coilSnaps[coilInfo.coilId];
         const coil = coilSnap.data() as Coil;
 
-        let materialCostPEN = coilInfo.sentWeight * coil.pricePerKg;
-        if (coil.metadata?.currency === 'USD' && coil.metadata?.exchangeRate) {
-          materialCostPEN = materialCostPEN * coil.metadata.exchangeRate;
-        }
+        // `pricePerKg` YA está en PEN: `computePricePerKg` (coilPricing.ts) aplica el TC al
+        // registrar la bobina. Volver a multiplicar por `metadata.exchangeRate` inflaba el
+        // costo ~TC veces y contaminaba `costPerKgUtil` -> `strips_stock.avgCostPerKg`.
+        // Invariante "Mundo A" (v6.42). La única conversión legítima acá es la del costo de
+        // SERVICIO (`serviceCostPEN`, arriba), que sí viene crudo de la factura del tercero.
+        const materialCostPEN = coilInfo.sentWeight * coil.pricePerKg;
 
         const proportionalServiceCost = serviceCostPEN * (coilInfo.sentWeight / sentWeightTotal);
         const totalCoilCostPEN = materialCostPEN + proportionalServiceCost;

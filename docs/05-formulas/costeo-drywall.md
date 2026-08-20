@@ -125,11 +125,10 @@ WAC ponderado por **peso** (no por cantidad), con prorrateo del costo de servici
 
 **Implementación:** `src/core/coils/services/cutOrderService.ts:155-205` (recepción) y `:328-341` (ajuste por factura)
 ```typescript
+// El costo de SERVICIO sí se convierte: `gravada` viene crudo de la factura del tercero.
 const serviceCostPEN = invoice.gravada * invoice.exchangeRate;
-let materialCostPEN = coilInfo.sentWeight * coil.pricePerKg;
-if (coil.metadata?.currency === 'USD' && coil.metadata?.exchangeRate) {
-  materialCostPEN = materialCostPEN * coil.metadata.exchangeRate;
-}
+// El costo de MATERIAL NO se reconvierte: `pricePerKg` ya está en PEN (invariante Mundo A).
+const materialCostPEN = coilInfo.sentWeight * coil.pricePerKg;
 const proportionalServiceCost = serviceCostPEN * (coilInfo.sentWeight / sentWeightTotal);
 const totalCoilCostPEN = materialCostPEN + proportionalServiceCost;
 const costPerKgUtil = coilReceivedWeight > 0 ? totalCoilCostPEN / coilReceivedWeight : 0;
@@ -140,6 +139,17 @@ const newAvgCostPerKg = newTotalWeight > 0
 ```
 **Costo:** WAC-ACTUAL sobre `strips_stock` (Principio 2), con costo de material congelado (`coil.pricePerKg`).
 **Paridad:** solo cliente — cutOrder es WRITE 8 pendiente ("el monstruo", CLAUDE.md roadmap).
+
+> **Corregido (batch `chore/batch-cleanup`, ítem 19): doble conversión USD→PEN del costo de material.**
+> Esta ficha documentaba —sin flaggearlo— un `if (coil.metadata?.currency === 'USD') materialCostPEN *= coil.metadata.exchangeRate`
+> que violaba el invariante **Mundo A** (v6.42): `computePricePerKg` (`coilPricing.ts:16-22`) ya aplica el TC al
+> registrar la bobina, así que `coil.pricePerKg` **siempre está en PEN**. Volver a multiplicarlo inflaba el costo de
+> material ~TC veces (≈3.4×) y ese número contaminaba `costPerKgUtil` → `strips_stock.avgCostPerKg`.
+> El recálculo por cambio de factura (`:328-341`) nunca tuvo el bug: solo usa `invoice.exchangeRate`.
+> **Sin dato corrupto en prod** (recon del ítem 16: 1 sola `cut_order`, ANULADA, sobre bobina PEN; `strips_movements` en 0),
+> pero con 54 bobinas USD en catálogo la precondición ya existía. Anclado por
+> `src/test/integration/cutOrderCost.integration.test.ts` (3 tests: USD, PEN de no-regresión, y USD + servicio en USD
+> que fija que la conversión del servicio sí se preserva).
 
 ---
 
