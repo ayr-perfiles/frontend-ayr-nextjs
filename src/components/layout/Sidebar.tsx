@@ -67,6 +67,20 @@ export type NavLineGroup = {
 
 export type NavEntry = NavGroup | NavLineGroup;
 
+/**
+ * Ancho del sidebar, en px. FUENTE ÚNICA: la consume este componente (para su propio
+ * `<aside>`) y `AdminShell` (para el ancho del wrapper y el margen del main). Antes cada
+ * uno tenía los literales por su cuenta — `w-[260px]`/`w-[72px]` acá y `260`/`72` allá —
+ * y podían divergir sin que nada lo avisara.
+ *
+ * Se aplican por `style` y no por clase de Tailwind a propósito: `w-[260px]` es un valor
+ * arbitrario que el JIT solo genera si encuentra la clase LITERAL en el fuente. Construirla
+ * como `w-[${X}px]` desde la constante haría que Tailwind no emita nada y el sidebar quede
+ * sin ancho.
+ */
+export const SIDEBAR_WIDTH_EXPANDED = 260;
+export const SIDEBAR_WIDTH_COLLAPSED = 72;
+
 export function isNavLineGroup(entry: NavEntry): entry is NavLineGroup {
   return entry.id === "lineasNegocio";
 }
@@ -748,9 +762,8 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
 
   return (
     <aside
-      className={`bg-white border-r border-[var(--color-border)] flex flex-col h-screen sticky top-0 z-40 transition-all duration-300 ease-in-out ${
-        collapsed ? "w-[72px]" : "w-[260px]"
-      }`}
+      className="bg-white border-r border-[var(--color-border)] flex flex-col h-screen sticky top-0 z-40 transition-all duration-300 ease-in-out"
+      style={{ width: collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED }}
     >
       <div
         className={`h-[58px] flex items-center gap-2.5 border-b border-[var(--color-border)] shrink-0 ${

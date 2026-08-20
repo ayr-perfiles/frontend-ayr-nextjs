@@ -9,7 +9,7 @@ import type { UserRole } from '@/context/AuthContext';
 import {
   User, LogOut, PanelLeft, Menu,
 } from 'lucide-react';
-import Sidebar from './Sidebar';
+import Sidebar, { SIDEBAR_WIDTH_EXPANDED, SIDEBAR_WIDTH_COLLAPSED } from './Sidebar';
 
 type Viewport = 'lg' | 'md' | 'sm';
 
@@ -365,8 +365,8 @@ export default function AdminShell({ env = 'prod', children }: AdminShellProps) 
 
   // Sidebar width & Main margin
   let sidebarWidth = 0;
-  if (isLg) sidebarWidth = collapsed ? 72 : 260;
-  else if (isMd) sidebarWidth = 72;
+  if (isLg) sidebarWidth = collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED;
+  else if (isMd) sidebarWidth = SIDEBAR_WIDTH_COLLAPSED;
   else sidebarWidth = 0; // Fixed 0 for main margin, sidebar is overlay
 
   // Padding based on viewport
@@ -407,7 +407,7 @@ export default function AdminShell({ env = 'prod', children }: AdminShellProps) 
               ? 'translateX(0)'
               : 'translateX(-100%)',
             top: withEnv ? 24 : 0,
-            width: isSm ? '100%' : ((isMd && !isOpen) || (isLg && collapsed)) ? 72 : 260,
+            width: isSm ? '100%' : ((isMd && !isOpen) || (isLg && collapsed)) ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED,
           }}
         >
           <Sidebar
