@@ -65,8 +65,20 @@ service cloud.firestore {
       allow read: if isStaff();
       // FASE 2: cerrar a if false cuando exista la Cloud Function createSale
       allow create: if isStaff();
-      // Protegemos el SNAPSHOT financiero de la venta. Se permite cambiar 'status' o 'comments' en anulaciones legítimas
-      allow update: if isStaff() && fieldsUnchanged(['totalAmount', 'subtotal', 'igv', 'exchangeRate', 'currency', 'items', 'paymentType']);
+      // Protegemos el SNAPSHOT financiero de la venta. 'status' sigue mutable client-side
+      // (approveQuotation -> CONVERTED, cancelQuotation -> CANCELLED, ambos vivos y
+      // client-side todavía) con 2 excepciones candadas al callable annulSale
+      // (functions/src/callables/sales.ts, Admin SDK, bypassea esta regla):
+      // 1) nadie transiciona a VOIDED desde el cliente (cierra el bypass documentado de
+      //    anular sin pasar por el bloqueo de producción activa ni la cascada — ver
+      //    CLAUDE.md deuda "annulSale D1 es client-side").
+      // 2) un doc ya VOIDED queda terminal/congelado — ningún campo se toca desde el
+      //    cliente una vez anulado (cierra tambien el gap de approveQuotation, cuyo
+      //    guard hoy es negativo y no excluye VOIDED explicitamente — ver recon).
+      allow update: if isStaff()
+        && fieldsUnchanged(['totalAmount', 'subtotal', 'igv', 'exchangeRate', 'currency', 'items', 'paymentType'])
+        && !(request.resource.data.status == 'VOIDED' && resource.data.status != 'VOIDED')
+        && !(resource.data.status == 'VOIDED');
       allow delete: if isAdmin();
       
       match /history/{historyId} {
