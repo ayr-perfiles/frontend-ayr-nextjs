@@ -7,6 +7,14 @@ import AdminShell from "@/components/layout/AdminShell";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { Loader2, Zap } from "lucide-react";
 
+/**
+ * ⚠️ EL ORDEN DE INSERCIÓN ES EL GATE VIVO. El matcher de abajo usa
+ * `Object.keys(...).find(...)`, que devuelve el PRIMER prefijo que matchea — no el más
+ * específico. Una clave más larga declarada DESPUÉS de un prefijo suyo queda sombreada y
+ * nunca se evalúa (ej.: `/admin/lines/...` jamás se alcanza porque `/admin/lines` matchea
+ * antes). Para dar acceso distinto a una subruta hay que declararla ANTES de su prefijo,
+ * no después.
+ */
 const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/admin/sales": ["ADMIN"],
   "/admin/quotations": ["ADMIN"],
@@ -16,8 +24,6 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
   "/admin/reports": ["ADMIN", "SUPERVISOR"],
   "/admin/coils": ["ADMIN", "SUPERVISOR"],
   "/admin/lines": ["ADMIN", "SUPERVISOR"],
-  "/admin/lines/drywall/operator": ["ADMIN", "SUPERVISOR", "OPERATOR"],
-  "/admin/lines/metallic-roofing/production": ["ADMIN", "SUPERVISOR", "OPERATOR"],
   "/admin": ["ADMIN", "SUPERVISOR"],
 };
 
