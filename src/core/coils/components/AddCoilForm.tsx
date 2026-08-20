@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
+import { fetchTipoCambio } from "@/core/coils/services/tipoCambio";
 import { useForm } from "@/core/hooks/useForm";
 import {
   coilInvoiceHeaderSchema,
@@ -98,30 +99,24 @@ export function AddCoilForm({ onOpenChange }: AddCoilFormProps) {
 
 
   // --- FETCH EXCHANGE RATE ---
+  // Usa el servicio compartido `fetchTipoCambio` (mismo que EditCoilModal y
+  // PurchaseCoilFromXml). Antes tenía su propia copia del fetch, y cuando la respuesta
+  // no traía `venta` no decía NADA: el usuario quedaba con el TC viejo sin enterarse.
+  // Ahora avisa explícitamente, igual que los otros dos forms.
   useEffect(() => {
     if (values.currency === "USD" && values.invoiceDate) {
-      const fetchRate = async () => {
-        setFetchingRate(true);
-        try {
-          const res = await fetch(
-            `/api/tipo-cambio?fecha=${values.invoiceDate}`,
-          );
-          if (res.ok) {
-            const data = await res.json();
-            if (data.venta) {
-              setValues((prev) => ({ ...prev, exchangeRate: data.venta }));
-              if (data.fallback)
-                toast.error(`TC Referencial: S/ ${data.venta}`);
-              else toast.success(`TC Obtenido: S/ ${data.venta}`);
-            }
+      setFetchingRate(true);
+      fetchTipoCambio(values.invoiceDate)
+        .then(({ venta, fallback }) => {
+          if (venta != null) {
+            setValues((prev) => ({ ...prev, exchangeRate: venta }));
+            if (fallback) toast.error(`TC Referencial: S/ ${venta}`);
+            else toast.success(`TC Obtenido: S/ ${venta}`);
+          } else {
+            toast.error("TC real no disponible, ingresá el del día de la factura.");
           }
-        } catch {
-          toast.error("Error de conexión TC");
-        } finally {
-          setFetchingRate(false);
-        }
-      };
-      fetchRate();
+        })
+        .finally(() => setFetchingRate(false));
     } else {
       setValues((prev) => ({ ...prev, exchangeRate: 1 }));
     }

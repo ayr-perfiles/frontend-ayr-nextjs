@@ -18,6 +18,7 @@ import { db, functions } from "@/lib/firebase/clientApp";
 import { writeBatch, doc, serverTimestamp, getDoc } from "firebase/firestore";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
+import { fetchTipoCambio } from "@/core/coils/services/tipoCambio";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { parseCoilDescription } from "@/core/coils/parseCoilDescription";
 import { TOKEN_TO_FINISH, isValidUsdExchangeRate } from "@/core/coils/bulkUploadLogic";
@@ -164,26 +165,23 @@ export function PurchaseCoilFromXml() {
   };
 
   // --- EFECTO TIPO DE CAMBIO AUTOMÁTICO ---
+  // Usa el servicio compartido `fetchTipoCambio` (mismo que EditCoilModal y AddCoilForm).
+  // El TC se limpia antes de pedir: si no vuelve valor, el campo queda vacío y el submit
+  // guard USD lo bloquea (regla v6.20 — nunca asumir 3.75).
   useEffect(() => {
     if (currency === "USD" && invoiceDate) {
-      const fetchRate = async () => {
-        setFetchingRate(true);
-        setExchangeRate("");
-        try {
-          const res = await fetch(`/api/tipo-cambio?fecha=${invoiceDate}`);
-          const data = await res.json();
-          if (data.venta && !data.fallback) {
-            setExchangeRate(data.venta);
+      setFetchingRate(true);
+      setExchangeRate("");
+      fetchTipoCambio(invoiceDate)
+        .then(({ venta, fallback }) => {
+          if (venta != null) {
+            setExchangeRate(venta);
+            if (fallback) toast.error(`TC Referencial: S/ ${venta}`);
           } else {
             toast.error("TC real no disponible, ingresá el del día de la factura.");
           }
-        } catch {
-          toast.error("Error al obtener TC. Ingresá el del día de la factura.");
-        } finally {
-          setFetchingRate(false);
-        }
-      };
-      fetchRate();
+        })
+        .finally(() => setFetchingRate(false));
     } else {
       setExchangeRate(1);
     }
