@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll, beforeAll } from "vitest";
 import * as admin from "firebase-admin";
 import { backfillQuoteCost } from "./backfillQuoteCost";
-import { CallableContextOptions } from "firebase-functions-test/lib/main";
 import fft from "firebase-functions-test";
 
 const testEnv = fft({ projectId: "demo-ayrsteel-test" });
@@ -31,9 +30,13 @@ describe("backfillQuoteCost", () => {
     testEnv.cleanup();
   });
 
-  const adminContext: CallableContextOptions = {
-    auth: { uid: "admin-uid", token: { role: "ADMIN" } } as any,
-  };
+  // backfillQuoteCost es onCall v2 (`functions.https.onCall(async (request) => ...)`, un
+  // solo argumento). `testEnv.wrap` de un v2 devuelve `(req) => cloudFunction.run(req)`,
+  // así que hay que pasarle `{data, auth}` en UN objeto. La forma v1 `wrapped(data, context)`
+  // dejaba `request.auth` undefined y hacía que los 4 tests murieran en el guard
+  // "Only ADMIN can backfill quote costs". Mismo patrón que
+  // `__tests__/annulSale.integration.test.ts`, que ya lo hacía bien.
+  const adminAuth = { uid: "admin-uid", token: { role: "ADMIN" } };
 
   it("RED-A: no-op si ya sincronizada (costSyncedAt presente)", async () => {
     const quoteId = "COT-FFA1-1289";
@@ -58,7 +61,7 @@ describe("backfillQuoteCost", () => {
       status: "ACTIVE"
     });
 
-    const res = await wrapped({ quoteId }, adminContext);
+    const res = await wrapped({ data: { quoteId }, auth: adminAuth });
     expect(res).toEqual({ skipped: true, reason: "already-synced" });
 
     // Validate sale was not modified
@@ -90,7 +93,7 @@ describe("backfillQuoteCost", () => {
       status: "ACTIVE"
     });
 
-    const res = await wrapped({ quoteId }, adminContext);
+    const res = await wrapped({ data: { quoteId }, auth: adminAuth });
     expect(res.skipped).toBe(false);
     expect(res.success).toBe(true);
 
@@ -109,7 +112,7 @@ describe("backfillQuoteCost", () => {
   });
 
   it("RED-C: whitelist (rechaza si no está en whitelist)", async () => {
-    const res = await wrapped({ quoteId: "COT-NOT-IN-LIST" }, adminContext);
+    const res = await wrapped({ data: { quoteId: "COT-NOT-IN-LIST" }, auth: adminAuth });
     expect(res).toEqual({ skipped: true, reason: "not-in-whitelist" });
   });
 
@@ -136,7 +139,7 @@ describe("backfillQuoteCost", () => {
       status: "ACTIVE"
     });
 
-    const res = await wrapped({ quoteId }, adminContext);
+    const res = await wrapped({ data: { quoteId }, auth: adminAuth });
     expect(res).toEqual({ skipped: true, reason: "quote-not-fulfilled" });
     
     const saleSnap = await db.collection("sales").doc(saleId).get();
