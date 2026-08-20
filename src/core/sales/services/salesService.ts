@@ -420,10 +420,11 @@ export const fetchSales = async (params: FetchSalesParams) => {
 
   // ── MOTOR ALGOLIA ─────────────────────────────────────────────────────────
   if (searchTerm.trim().length > 0 && !customerDoc) {
-    // Revertido a status:${statusFilter} simple (Frente #9-B.1-E, ver DEUDA en HANDOFF):
-    // buildAlgoliaStatusFilter('ALL') mandaba '(status:COMPLETED OR status:VOIDED)' en el
-    // camino default, y `status` no es facetable en sales_index → Algolia tiraba error →
-    // catch de algoliaClient.ts devolvía hits:[] → 0 resultados para TODA búsqueda en prod.
+    // Filtro simple por status concreto, VACÍO en 'ALL' (Frente #9-B.1-E, ver DEUDA en
+    // HANDOFF). Un whitelist tipo '(status:COMPLETED OR status:VOIDED)' en el camino default
+    // rompía TODA búsqueda en prod: `status` no es facetable en sales_index → Algolia tiraba
+    // error → el catch de algoliaClient.ts devolvía hits:[] → 0 resultados para todo.
+    // La exclusión de cotizaciones se hace client-side más abajo.
     let filters = statusFilter !== 'ALL' ? `status:${statusFilter}` : '';
     if (sunatFilter && sunatFilter !== 'ALL') {
       filters += (filters ? ' AND ' : '') + `sunat.estado:${sunatFilter}`;
@@ -446,8 +447,8 @@ export const fetchSales = async (params: FetchSalesParams) => {
         .filter(Boolean) as Record<string, unknown>[];
     }
 
-    // #9-B.1-E: status no es facetable en Algolia (ver buildAlgoliaStatusFilter) — se filtra
-    // client-side sobre los docs Firestore ya traídos, mismo whitelist que la rama Firestore.
+    // #9-B.1-E: status no es facetable en Algolia — se filtra client-side sobre los docs
+    // Firestore ya traídos, mismo whitelist que la rama Firestore.
     sales = filterSalesExcludingQuotations(sales);
 
     // totalCount/listTotalCount = conteo de esta página YA filtrado (honesto), NO nbHits de

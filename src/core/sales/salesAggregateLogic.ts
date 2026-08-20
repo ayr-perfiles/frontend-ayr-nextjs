@@ -45,26 +45,11 @@ export function buildListStatusFilter(statusFilter: string): SaleStatus[] {
 }
 
 /**
- * ⚠️ NO USAR todavía (Frente #9-B.1-E, revertido en prod): `status` no está declarado
- * como atributo facetable en el índice Algolia `sales_index`. Usar este filtro ahí hace
- * que CUALQUIER búsqueda de texto en `/admin/sales` falle (Algolia responde error →
- * `algoliaClient.ts` cae a `hits:[]` → 0 resultados para todo, no solo para cotizaciones).
- * Queda escrita y testeada para cuando `status` sea facetable (config en el dashboard de
- * Algolia + reindexar) — ver DEUDA en HANDOFF.md. Mismo whitelist que `buildListStatusFilter`,
- * en sintaxis de filtro Algolia. Paréntesis siempre presentes: Algolia evalúa AND antes
- * que OR, el grupo de status debe quedar aislado antes de combinarse con otros filtros
- * (ej. `sunat.estado`) vía AND.
- */
-export function buildAlgoliaStatusFilter(statusFilter: string): string {
-  return `(${buildListStatusFilter(statusFilter)
-    .map((s) => `status:${s}`)
-    .join(" OR ")})`;
-}
-
-/**
  * Filtro CLIENT-SIDE de cotizaciones fuera de los resultados de búsqueda por texto de
- * `/admin/sales` (Frente #9-B.1-E). Como `status` no es facetable en Algolia (ver
- * `buildAlgoliaStatusFilter`), no se puede filtrar en la query — se filtra el array de
+ * `/admin/sales` (Frente #9-B.1-E). `status` NO es un atributo facetable del índice
+ * Algolia `sales_index`, así que no se puede filtrar en la query — cualquier filtro
+ * Algolia sobre `status` hace fallar la búsqueda entera (Algolia responde error →
+ * `algoliaClient.ts` cae a `hits:[]` → 0 resultados para todo). Por eso se filtra el array de
  * docs YA TRAÍDOS de Firestore (docs completos y auténticos, no el hit crudo de Algolia).
  * Mismo whitelist que `buildListStatusFilter('ALL')` — cubre perchas importadas
  * (`status==='QUOTATION'`) Y cotizaciones nativas por igual, sin depender de
