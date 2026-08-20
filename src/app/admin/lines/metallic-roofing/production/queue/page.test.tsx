@@ -4,6 +4,7 @@ import ProductionQueuePage from "./page";
 import * as useSalesModule from "@/core/hooks/useSales";
 import * as productionServiceModule from "@/modules/metallic-roofing/services/productionService";
 import { useTableData } from "@/hooks/useTableData";
+import type { ProductionLog } from "@/types";
 
 vi.mock("@/components/ui/TableFilters", () => {
   return {
@@ -53,7 +54,7 @@ describe("ProductionQueuePage", () => {
     // Ninguna CUMPLIDA a propósito: el default hideCompleted=true (desde 3f5adb2f) oculta filas CUMPLIDA,
     // y este test verifica que 2 filas con distinto avance conviven en la tabla, no el filtro de cumplidas.
     mockGetLogs.mockResolvedValueOnce([
-      { sku: "SKU2", piecesProduced: 10, status: "ACTIVE", source: { id: "COT-FFA1-102" } },
+      { sku: "SKU2", piecesProduced: 10, status: "ACTIVE", source: { type: "QUOTE" as const, id: "COT-FFA1-102" } } as unknown as ProductionLog,
     ]);
 
     render(<ProductionQueuePage />);
@@ -92,8 +93,8 @@ describe("ProductionQueuePage", () => {
 
     // 1 sola query trae todos los logs activos; COT-FFA1-201 no tiene logs (PENDIENTE).
     mockGetLogs.mockResolvedValue([
-      { sku: "SKU2", piecesProduced: 20, status: "ACTIVE", source: { id: "COT-FFA1-202" } }, // CUMPLIDA
-      { sku: "SKU3", piecesProduced: 12, status: "ACTIVE", source: { id: "COT-FFA1-203" } }, // SOBRE_PRODUCIDA
+      { sku: "SKU2", piecesProduced: 20, status: "ACTIVE", source: { type: "QUOTE" as const, id: "COT-FFA1-202" } } as unknown as ProductionLog, // CUMPLIDA
+      { sku: "SKU3", piecesProduced: 12, status: "ACTIVE", source: { type: "QUOTE" as const, id: "COT-FFA1-203" } } as unknown as ProductionLog, // SOBRE_PRODUCIDA
     ]);
 
     render(<ProductionQueuePage />);
