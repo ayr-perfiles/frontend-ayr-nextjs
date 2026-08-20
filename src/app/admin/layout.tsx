@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { AuthProvider, useAuth, UserRole } from "@/context/AuthContext";
 import AdminShell from "@/components/layout/AdminShell";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { DevEnvironmentRibbon } from "@/components/layout/DevEnvironmentRibbon";
 import { Loader2, Zap } from "lucide-react";
 
 /**
@@ -137,6 +138,9 @@ export default function AdminLayout({
 }) {
   return (
     <AuthProvider>
+      {/* Fuera del AuthGuard a propósito: la franja debe verse también en las pantallas
+          de carga y de error de sesión, que son justo donde uno se confunde de entorno. */}
+      <DevEnvironmentRibbon />
       <AuthGuard>
         <AdminShell>
           <ErrorBoundary>{children}</ErrorBoundary>
