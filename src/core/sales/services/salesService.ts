@@ -638,60 +638,6 @@ export const fetchAllQuotations = async (): Promise<Sale[]> => {
   return Array.from(byId.values());
 };
 
-// ─── updateQuotation ──────────────────────────────────────────────────────────
-
-export const updateQuotation = async (
-  quotationId: string,
-  customerName: string,
-  documentNumber: string,
-  cart: CartItem[],
-  customerAddress = '',
-  contactName = '',
-  contactPhone = '',
-): Promise<{ success: true }> => {
-  const quoteRef = doc(db, 'sales', quotationId);
-
-  await runTransaction(db, async (transaction) => {
-    const quoteDoc = await transaction.get(quoteRef);
-    if (!quoteDoc.exists()) throw new Error('La cotización no existe.');
-    if (quoteDoc.data().status !== 'QUOTATION') {
-      throw new Error('Solo puedes editar documentos en estado COTIZACIÓN.');
-    }
-
-    let totalAmount = 0;
-    let totalCost = 0;
-    let totalWeight = 0;
-    const businessLines = new Set<BusinessLine>();
-
-    for (const item of cart) {
-      totalAmount += item.quantity * item.unitPrice;
-      totalCost += item.quantity * item.baseCost;
-      totalWeight += item.quantity * (item.unitWeight ?? 0);
-      businessLines.add(item.businessLine ?? 'drywall');
-    }
-
-    const skusArray = Array.from(new Set(cart.map((i) => i.sku)));
-
-    transaction.update(quoteRef, {
-      customerName,
-      documentNumber,
-      customerAddress,
-      contactName,
-      contactPhone,
-      items: cart,
-      skus: skusArray,
-      businessLines: Array.from(businessLines),
-      totalAmount,
-      totalCost,
-      totalProfit: totalAmount - totalCost,
-      totalWeight,
-      updatedAt: serverTimestamp(),
-    });
-  });
-
-  return { success: true };
-};
-
 // ─── cancelQuotation ──────────────────────────────────────────────────────────
 
 export const cancelQuotation = async (
