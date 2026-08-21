@@ -6,6 +6,9 @@ export interface ImportWritesResult {
   quotationDoc: any | null;
 }
 
+/** documentType que puede generar percha de producción (COT-*). NC/ND/POS quedan fuera. */
+const PRODUCTION_DOC_TYPES = ["FACTURA", "BOLETA"] as const;
+
 export function isImportedQuotation(sale: any): boolean {
   return Boolean(sale && (sale.relatedSaleId || sale.metadata?.isQuotation));
 }
@@ -16,6 +19,11 @@ export function buildImportWrites(sale: any, injectedUploadedAt?: any): ImportWr
   const timestamp = sale.timestamp;
 
   const hasMetallicItem = items.some((i: any) => i.businessLine === "metallic-roofing");
+
+  // La percha COT-* (quotationDoc) solo aplica a un comprobante de VENTA real: una NC ya
+  // movió stock vía writeSaleReversal al importarse (nada que producir) y un POS sin
+  // documentType es venta de mostrador, no el flujo cotización→venta de metallic-roofing.
+  const createsProductionPercha = hasMetallicItem && PRODUCTION_DOC_TYPES.includes(sale.documentType);
 
   // Call the builder — pass timestamp as the injected value
   const baseSaleDoc = buildSaleDoc({
@@ -49,7 +57,7 @@ export function buildImportWrites(sale: any, injectedUploadedAt?: any): ImportWr
 
   const saleDoc = {
     ...baseSaleDoc,
-    ...(hasMetallicItem ? { relatedQuotationId: `COT-${sale.documentNumber}` } : {}),
+    ...(createsProductionPercha ? { relatedQuotationId: `COT-${sale.documentNumber}` } : {}),
     ...(uploadedAt ? { uploadedAt } : {}),
     metadata: importMetadata,
     currency: sale.currency,
@@ -60,7 +68,7 @@ export function buildImportWrites(sale: any, injectedUploadedAt?: any): ImportWr
 
   let quotationDoc: any | null = null;
 
-  if (hasMetallicItem) {
+  if (createsProductionPercha) {
     const baseQuotationDoc = buildQuotationDoc({
       ...sale,
       timestamp

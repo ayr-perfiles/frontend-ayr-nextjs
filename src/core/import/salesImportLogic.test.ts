@@ -312,16 +312,15 @@ describe("buildImportWrites - Cotización Aluzinc en Importador (RED PHASE)", ()
     expect(result.saleDoc.ncStockAction).toBe("RETURNS_STOCK");
   });
 
-  it("P1: quotationDoc (la percha COT-) también lo persiste", () => {
+  it("P1 (INVERTIDO): una NOTA CRÉDITO NO genera quotationDoc — no hay percha que persista ncStockAction", () => {
     const result = buildImportWrites(sampleNCSale);
-    expect(result.quotationDoc).not.toBeNull();
-    expect(result.quotationDoc?.ncStockAction).toBe("RETURNS_STOCK");
+    expect(result.quotationDoc).toBeNull();
   });
 
-  it("P1: MONEY_ONLY se persiste tal cual (no se normaliza ni se omite)", () => {
+  it("P1 (INVERTIDO): MONEY_ONLY se persiste tal cual en saleDoc; quotationDoc sigue sin existir para NC", () => {
     const result = buildImportWrites({ ...sampleNCSale, ncStockAction: "MONEY_ONLY" });
     expect(result.saleDoc.ncStockAction).toBe("MONEY_ONLY");
-    expect(result.quotationDoc?.ncStockAction).toBe("MONEY_ONLY");
+    expect(result.quotationDoc).toBeNull();
   });
 
   it("P1: UNDECIDED se persiste tal cual", () => {
@@ -336,11 +335,57 @@ describe("buildImportWrites - Cotización Aluzinc en Importador (RED PHASE)", ()
     const result = buildImportWrites(sinCampo);
     // Firestore rechaza `undefined`; la clave no debe existir en absoluto.
     expect("ncStockAction" in result.saleDoc).toBe(false);
-    expect("ncStockAction" in (result.quotationDoc as Record<string, unknown>)).toBe(false);
+    // NC no genera quotationDoc (ver allowlist) — nada que chequear del lado de la percha.
+    expect(result.quotationDoc).toBeNull();
   });
 
   it("P1: manuallyResolvedNC sigue SIN persistirse (fuera de alcance, deuda nombrada)", () => {
     const result = buildImportWrites({ ...sampleNCSale, manuallyResolvedNC: true });
     expect("manuallyResolvedNC" in result.saleDoc).toBe(false);
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // ALLOWLIST DE PERCHA POR documentType (fix "NC no es orden de producción")
+  //
+  // La percha COT-* (quotationDoc) solo tiene sentido para un comprobante de VENTA
+  // real (FACTURA/BOLETA): una NC ya movió stock vía writeSaleReversal al importarse
+  // (no hay nada que "producir"), y un POS sin documentType es venta de mostrador,
+  // no el flujo cotización→venta de metallic-roofing.
+  // ────────────────────────────────────────────────────────────────────────────
+
+  describe("Allowlist de percha por documentType", () => {
+    it("FACTURA con ítem metallic -> quotationDoc NO null, relatedQuotationId presente", () => {
+      const result = buildImportWrites(sampleMetallicSale);
+      expect(result.quotationDoc).not.toBeNull();
+      expect(result.saleDoc.relatedQuotationId).toBe("COT-FFA1-1262");
+    });
+
+    it("BOLETA con ítem metallic -> quotationDoc NO null, relatedQuotationId presente", () => {
+      const boletaMetallic = { ...sampleMetallicSale, documentType: "BOLETA", documentNumber: "BBV1-999" };
+      const result = buildImportWrites(boletaMetallic);
+      expect(result.quotationDoc).not.toBeNull();
+      expect(result.saleDoc.relatedQuotationId).toBe("COT-BBV1-999");
+    });
+
+    it("NOTA CRÉDITO con ítem metallic -> quotationDoc null Y relatedQuotationId ausente", () => {
+      const result = buildImportWrites(sampleNCSale);
+      expect(result.quotationDoc).toBeNull();
+      expect(result.saleDoc.relatedQuotationId).toBeUndefined();
+      expect("relatedQuotationId" in result.saleDoc).toBe(false);
+    });
+
+    it("documentType AUSENTE (POS) con ítem metallic -> quotationDoc null Y relatedQuotationId ausente", () => {
+      const { documentType, ...posMetallicSinTipo } = sampleMetallicSale;
+      const posMetallic = { ...posMetallicSinTipo, documentNumber: "POS-0001" };
+      const result = buildImportWrites(posMetallic);
+      expect(result.quotationDoc).toBeNull();
+      expect("relatedQuotationId" in result.saleDoc).toBe(false);
+    });
+
+    it("FACTURA SIN ítem metallic -> quotationDoc null (comportamiento preexistente, no roto por el fix)", () => {
+      const result = buildImportWrites(sampleDrywallOnlySale);
+      expect(result.quotationDoc).toBeNull();
+      expect("relatedQuotationId" in result.saleDoc).toBe(false);
+    });
   });
 });
