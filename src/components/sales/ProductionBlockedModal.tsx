@@ -5,19 +5,33 @@ import { AlertTriangle, X } from "lucide-react";
 
 const PRODUCTION_QUEUE_PATH = "/admin/lines/metallic-roofing/production/queue";
 
-export interface ProductionBlockedAnnulModalProps {
+/**
+ * Modal de bloqueo por produccion activa. Lo usan DOS flujos:
+ *   - anular venta (`SaleDetailsModal`), que no pasa copy y usa los defaults;
+ *   - editar cotizacion (E3), que pasa su propia copy.
+ * Por eso el nombre ya no dice "Annul": los defaults siguen siendo los de anular, asi
+ * que el consumidor viejo no cambia de comportamiento.
+ */
+export interface ProductionBlockedModalProps {
   open: boolean;
   onClose: () => void;
   quotationId: string;
   activeLogIds?: string[];
+  /** Copy opcional. Sin estas props, el modal muestra los textos de ANULAR (default historico). */
+  title?: string;
+  body?: React.ReactNode;
+  ctaLabel?: string;
 }
 
-export function ProductionBlockedAnnulModal({
+export function ProductionBlockedModal({
   open,
   onClose,
   quotationId,
   activeLogIds,
-}: ProductionBlockedAnnulModalProps) {
+  title = "No se puede anular la venta",
+  body,
+  ctaLabel = "Ir a anular producción",
+}: ProductionBlockedModalProps) {
   const router = useRouter();
 
   if (!open) return null;
@@ -43,13 +57,17 @@ export function ProductionBlockedAnnulModal({
             </div>
             <div>
               <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                No se puede anular la venta
+                {title}
               </h3>
               <div className="text-slate-500 font-medium mt-1 text-sm leading-relaxed">
-                La cotización vinculada <span className="font-bold text-slate-700">{quotationId}</span> tiene
-                producción activa.
-                <br />
-                Debés anular la producción primero para poder anular esta venta.
+                {body ?? (
+                  <>
+                    La cotización vinculada <span className="font-bold text-slate-700">{quotationId}</span> tiene
+                    producción activa.
+                    <br />
+                    Debés anular la producción primero para poder anular esta venta.
+                  </>
+                )}
                 {activeLogIds && activeLogIds.length > 0 && (
                   <p className="mt-2 text-[10px] font-black text-red-500 uppercase tracking-widest">
                     {activeLogIds.length} proceso{activeLogIds.length === 1 ? "" : "s"} de producción activo
@@ -75,7 +93,7 @@ export function ProductionBlockedAnnulModal({
             onClick={handleGoToQueue}
             className="px-8 py-3 text-white rounded-xl text-xs font-black uppercase tracking-widest transition shadow-lg bg-red-600 hover:bg-red-700 shadow-red-100"
           >
-            Ir a anular producción
+            {ctaLabel}
           </button>
         </div>
       </div>

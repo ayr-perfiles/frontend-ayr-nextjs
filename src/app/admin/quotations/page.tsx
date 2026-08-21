@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Pencil } from "lucide-react";
 import { fetchAllQuotations } from "@/core/sales/services/salesService";
 import { getAllActiveFulfillmentLogs } from "@/modules/metallic-roofing/services/productionService";
 import { bucketLogsBySourceId } from "@/core/production/fulfillmentLogic";
@@ -9,6 +11,7 @@ import {
   buildQuotationRow,
   getProductionStateLabel,
   getQuotationStateLabel,
+  canEditQuotation,
   QuotationRow,
 } from "@/core/sales/quotationsViewLogic";
 import { DataTable, ColumnDef } from "@/components/ui/DataTable";
@@ -19,6 +22,7 @@ import type { Sale } from "@/types";
 import toast from "react-hot-toast";
 
 export default function QuotationsPage() {
+  const router = useRouter();
   const [rows, setRows] = useState<QuotationRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -150,8 +154,25 @@ export default function QuotationsPage() {
         header: "Comprobante Vinculado",
         render: (row) => row.linkedDocument || <span className="text-slate-400">—</span>,
       },
+      {
+        key: "actions",
+        header: "",
+        render: (row) =>
+          // E3-2: el boton solo aparece donde el callable aceptaria la edicion
+          // (NATIVA + QUOTATION). Nunca se ofrece algo que el backend rechazaria.
+          canEditQuotation(row) ? (
+            <button
+              onClick={() => router.push(`/admin/quotations/${row.id}/edit`)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition"
+            >
+              <Pencil size={12} /> Editar
+            </button>
+          ) : null,
+      },
     ],
-    [],
+    // `router` VA en las deps: el render de esta columna cierra sobre el. Sin esto se
+    // reintroduce el stale closure de v6.43 que dejo "Ver cotizacion" muerto en la cola.
+    [router],
   );
 
   return (

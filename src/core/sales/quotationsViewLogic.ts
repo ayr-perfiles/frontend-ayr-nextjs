@@ -88,3 +88,24 @@ export function buildQuotationRow(quote: Sale, fulfillmentLogs: any[]): Quotatio
     productionStatus,
   };
 }
+
+/**
+ * ¿Esta cotización es editable? (E3-2, allowlist)
+ *
+ * Espeja EXACTAMENTE lo que el callable `editQuotation` acepta, para que el botón nunca
+ * ofrezca algo que el backend va a rechazar:
+ *   - D1: solo origen NATIVA (una percha importada es el espejo de una factura emitida).
+ *   - solo estado `QUOTATION` (una CANCELLED/CONVERTED no se edita).
+ *
+ * Allowlist estricta y sensible a mayúsculas: cualquier otro origen o estado —incluido uno
+ * nuevo que se agregue en el futuro— queda FUERA por defecto. Mismo criterio que
+ * `canDuplicate` (salesDisplayLogic.ts).
+ *
+ * NO cubre el bloqueo por producción activa: eso no se puede saber desde la fila (haría
+ * falta la query de `production_logs`). Lo aplica el callable y la UI lo muestra con el
+ * modal de bloqueo.
+ */
+export function canEditQuotation(row: QuotationRow | null | undefined): boolean {
+  if (!row) return false;
+  return row.origin === "NATIVA" && row.quotationStatus === "QUOTATION";
+}

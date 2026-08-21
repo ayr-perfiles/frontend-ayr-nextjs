@@ -4,6 +4,8 @@ import {
   getQuotationStateLabel,
   getProductionStateLabel,
   buildQuotationRow,
+  canEditQuotation,
+  type QuotationRow,
 } from "./quotationsViewLogic";
 import type { Sale } from "@/types";
 
@@ -124,5 +126,54 @@ describe("buildQuotationRow", () => {
 
     const nativePending = buildQuotationRow(mkQuote({ id: "C-000020" }), []);
     expect(nativePending.linkedDocument).toBeNull();
+  });
+});
+
+// ── E3: canEditQuotation (allowlist origen × estado) ─────────────────────────
+describe("canEditQuotation (E3-2)", () => {
+  const row = (origin: string, quotationStatus: string): QuotationRow =>
+    ({
+      id: "C-000021",
+      documentNumber: "",
+      customerName: "CLIENTE",
+      timestamp: null,
+      origin: origin as QuotationRow["origin"],
+      quotationStatus,
+      linkedDocument: null,
+      productionStatus: "PENDIENTE",
+    }) as QuotationRow;
+
+  // Las 4 combinaciones origen × estado: SOLO una es editable.
+  it("NATIVA + QUOTATION -> editable (unico caso true)", () => {
+    expect(canEditQuotation(row("NATIVA", "QUOTATION"))).toBe(true);
+  });
+
+  it("IMPORTADA + QUOTATION -> NO editable (D1: es el espejo de una factura emitida)", () => {
+    expect(canEditQuotation(row("IMPORTADA", "QUOTATION"))).toBe(false);
+  });
+
+  it("NATIVA + CANCELLED -> NO editable", () => {
+    expect(canEditQuotation(row("NATIVA", "CANCELLED"))).toBe(false);
+  });
+
+  it("IMPORTADA + CANCELLED -> NO editable", () => {
+    expect(canEditQuotation(row("IMPORTADA", "CANCELLED"))).toBe(false);
+  });
+
+  // Allowlist: cualquier estado que no sea exactamente QUOTATION queda fuera.
+  it.each(["CONVERTED", "COMPLETED", "VOIDED", "", "quotation", "QUOTATION "])(
+    "NATIVA + %s -> NO editable (allowlist estricta, sensible a mayusculas y espacios)",
+    (status) => {
+      expect(canEditQuotation(row("NATIVA", status))).toBe(false);
+    },
+  );
+
+  it("origen desconocido -> NO editable (default deniega)", () => {
+    expect(canEditQuotation(row("OTRO", "QUOTATION"))).toBe(false);
+  });
+
+  it("row null/undefined -> NO editable, no lanza", () => {
+    expect(canEditQuotation(null as unknown as QuotationRow)).toBe(false);
+    expect(canEditQuotation(undefined as unknown as QuotationRow)).toBe(false);
   });
 });

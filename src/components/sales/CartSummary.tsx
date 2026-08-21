@@ -27,8 +27,15 @@ interface CartSummaryProps {
   minMarginAlert: number;
   isSubmitting: boolean;
   onRemove: (idx: number) => void;
-  onQuote: () => void;
-  onSell: () => void;
+  /** Requeridos SOLO en el modo por defecto (2 botones COTIZAR/VENDER). Ignorados si viene `actions`. */
+  onQuote?: () => void;
+  onSell?: () => void;
+  /**
+   * E3: acciones a medida en el pie del resumen. Si viene, REEMPLAZA el grid de
+   * COTIZAR/VENDER — lo usa la página de edición de cotización, que necesita un solo
+   * botón (Guardar cambios). Si no viene, el componente se comporta igual que siempre.
+   */
+  actions?: React.ReactNode;
   /** #9-B.2a-2: intent sugerido al duplicar (null = comportamiento neutro, sin cambio visual). */
   suggestedIntent?: "SALE" | "QUOTE" | null;
   /** #9-B.2a-2: identificador del origen duplicado, solo para el label informativo. */
@@ -55,6 +62,7 @@ export function CartSummary({
   onRemove,
   onQuote,
   onSell,
+  actions,
   suggestedIntent = null,
   originLabel = null,
 }: CartSummaryProps) {
@@ -198,22 +206,26 @@ export function CartSummary({
             </span>
           </p>
         )}
-        <div className="grid grid-cols-2 gap-3 pt-4">
-          <button
-            onClick={onQuote}
-            disabled={isSubmitting || cart.length === 0}
-            className={quoteClass}
-          >
-            <FileText size={18} /> COTIZAR
-          </button>
-          <button
-            onClick={onSell}
-            disabled={isSubmitting || cart.length === 0}
-            className={sellClass}
-          >
-            <CheckCircle2 size={18} /> VENDER
-          </button>
-        </div>
+        {actions ? (
+          <div className="pt-4">{actions}</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 pt-4">
+            <button
+              onClick={onQuote}
+              disabled={isSubmitting || cart.length === 0}
+              className={quoteClass}
+            >
+              <FileText size={18} /> COTIZAR
+            </button>
+            <button
+              onClick={onSell}
+              disabled={isSubmitting || cart.length === 0}
+              className={sellClass}
+            >
+              <CheckCircle2 size={18} /> VENDER
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

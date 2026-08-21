@@ -382,6 +382,60 @@ export const annulSale = async (params: AnnulSaleParams): Promise<{ success: tru
   return result.data;
 };
 
+// ─── editQuotation ────────────────────────────────────────────────────────────
+// Thin-client: toda la logica (guards, bloqueo por produccion, recompute de baseCost,
+// update selectivo) vive server-side en functions/src/callables/editQuotation.ts.
+// NO se hace catch/rewrap del error: `parseEditError` necesita leer `error.code` y
+// `error.details` del HttpsError crudo para distinguir el bloqueo por produccion de los
+// otros guards (aprendizaje v6.50.0 — el patron de productionService.ts es el
+// contraejemplo, ahi el rewrap pierde .details).
+
+export interface EditQuotationItemPayload {
+  sku: string;
+  productName?: string;
+  quantity: number;
+  unitPrice: number;
+  unitValue?: number;
+  baseCost?: number;
+  businessLine?: string;
+  unitWeight?: number;
+  calculatedWeight?: number;
+  unitOfMeasure?: string;
+  isCoil?: boolean;
+  weightSnapshot?: unknown;
+  piecesCount?: number;
+  pieceLengthM?: number;
+  flags?: string[];
+}
+
+/**
+ * UI-T1: este tipo NO declara totales (totalAmount/totalCost/totalProfit/totalWeight).
+ * El callable los ignora igual, pero el form tampoco los arma — defensa en profundidad.
+ */
+export interface EditQuotationParams {
+  quotationId: string;
+  items: EditQuotationItemPayload[];
+  customerName?: string;
+  customerDocument?: string;
+  documentNumber?: string;
+  contactName?: string;
+  contactPhone?: string;
+  customerAddress?: string;
+}
+
+export interface EditQuotationResult {
+  success: true;
+  quotationId: string;
+  itemCount: number;
+  totalAmount: number;
+}
+
+export const editQuotation = async (params: EditQuotationParams): Promise<EditQuotationResult> => {
+  const callable = httpsCallable<EditQuotationParams, EditQuotationResult>(functions, "editQuotation");
+  const result = await callable(params);
+  return result.data;
+};
+
 // ─── fetchSales ───────────────────────────────────────────────────────────────
 
 export interface FetchSalesParams {

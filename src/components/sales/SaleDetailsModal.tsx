@@ -36,7 +36,7 @@ import { resolveCustomerDoc } from "@/core/sales/salesDisplayLogic";
 import { useConfirm } from "@/context/ConfirmContext";
 import { resolveSaleQuotationLink } from "@/core/sales/saleProductionLink";
 import { parseAnnulError } from "@/core/sales/annulment/parseAnnulError";
-import { ProductionBlockedAnnulModal } from "./ProductionBlockedAnnulModal";
+import { ProductionBlockedModal } from "./ProductionBlockedModal";
 import { buildQueueRow, buildQuoteDetailView, formatQuoteDisplayId } from "@/core/production/queueLogic";
 import { getProductionStateLabel } from "@/core/sales/quotationsViewLogic";
 import type { QuotationProductionStatus } from "@/core/sales/quotationsViewLogic";
@@ -504,7 +504,7 @@ export function SaleDetailsModal({
         </div>
       </div>
     </div>
-    <ProductionBlockedAnnulModal
+    <ProductionBlockedModal
       open={blockedModal.open}
       onClose={() => setBlockedModal({ open: false })}
       quotationId={blockedModal.quotationId ?? ""}

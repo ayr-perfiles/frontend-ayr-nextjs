@@ -23,6 +23,7 @@ import {
 } from "@/services/salesService";
 import { useAuth } from "@/context/AuthContext";
 import { parseDuplicateIntent } from "@/core/sales/salesDisplayLogic";
+import { computeCartTotals, addItemToCart } from "@/core/sales/cartLogic";
 import { useForm } from "@/core/hooks/useForm";
 import { saleCustomerSchema, type SaleCustomerForm } from "@/core/schemas/sale";
 import ProductSelector from "@/core/sales/components/ProductSelector";
@@ -281,39 +282,22 @@ export default function NewSalePage() {
     setContacts(updated);
   };
 
+  // Lógica extraída a @/core/sales/cartLogic (compartida con la página de edición de
+  // cotización). `cartLogic.test.ts` guarda una copia de referencia de la versión inline
+  // previa y assertea igualdad contra ella — el comportamiento es el mismo.
   const handleAddItem = (newItem: CartItem) => {
-    setCart((prev) => {
-      const existingIdx = prev.findIndex(
-        (i) =>
-          i.sku === newItem.sku &&
-          (i.businessLine ?? "drywall") === (newItem.businessLine ?? "drywall"),
-      );
-      if (existingIdx >= 0) {
-        const updated = [...prev];
-        updated[existingIdx] = {
-          ...updated[existingIdx],
-          quantity: updated[existingIdx].quantity + newItem.quantity,
-          unitPrice: newItem.unitPrice,
-          unitValue: newItem.unitValue,
-        };
-        return updated;
-      }
-      return [...prev, newItem];
-    });
+    setCart((prev) => addItemToCart(prev, newItem));
   };
 
-  const totalAmount = cart.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-  const totalValue = cart.reduce((s, i) => s + i.quantity * i.unitValue, 0);
-  const totalCost = cart.reduce((s, i) => s + i.quantity * i.baseCost, 0);
-  const totalIGV = totalAmount - totalValue;
-  const totalWeight = cart.reduce(
-    (s, i) => s + i.quantity * (i.unitWeight ?? 0),
-    0,
-  );
-  const projectedProfit = totalValue - totalCost;
-  const marginPercent =
-    totalValue > 0 ? (projectedProfit / totalValue) * 100 : 0;
-  const MIN_MARGIN_ALERT = settings?.minMarginPercent ?? 20;
+  const {
+    totalAmount,
+    totalValue,
+    totalIGV,
+    totalWeight,
+    projectedProfit,
+    marginPercent,
+    minMarginAlert: MIN_MARGIN_ALERT,
+  } = computeCartTotals(cart, settings?.minMarginPercent ?? 20);
 
   const handleAction = async (actionType: "QUOTE" | "SALE") => {
     if (!validateCustomer()) return;
