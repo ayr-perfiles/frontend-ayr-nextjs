@@ -78,4 +78,46 @@ describe("Parity Test: buildAnnulmentCascade (client vs functions)", () => {
     });
     expect(backendResult).toEqual(clientResult);
   });
+
+  // stockEffect (v6.53.1) — aditivo. El default preserva el detalle historico.
+  it.each(["returned", "withdrawn", "none"] as const)("stockEffect %s: paridad", (stockEffect) => {
+    const backendResult = buildBackend({
+      sale: { id: "V-1", documentNumber: "F001-100", relatedQuotationId: "COT-IMP-1" },
+      twinPath: "imported",
+      userEmail: "tester@ayr.com",
+      stockEffect,
+    });
+    const clientResult = buildClient({
+      sale: { ...baseSaleFields, relatedQuotationId: "COT-IMP-1" },
+      twinPath: "imported",
+      userEmail: "tester@ayr.com",
+      stockEffect,
+    });
+    expect(backendResult).toEqual(clientResult);
+  });
+
+  it("omitir stockEffect === pasarlo 'returned' (default retrocompatible, ambas copias)", () => {
+    const sale = { id: "V-1", documentNumber: "F001-100", relatedQuotationId: "COT-IMP-1" };
+    const clientSale = { ...baseSaleFields, relatedQuotationId: "COT-IMP-1" };
+
+    expect(buildBackend({ sale, twinPath: "imported", userEmail: "t@ayr.com" })).toEqual(
+      buildBackend({ sale, twinPath: "imported", userEmail: "t@ayr.com", stockEffect: "returned" }),
+    );
+    expect(buildClient({ sale: clientSale, twinPath: "imported", userEmail: "t@ayr.com" })).toEqual(
+      buildClient({ sale: clientSale, twinPath: "imported", userEmail: "t@ayr.com", stockEffect: "returned" }),
+    );
+  });
+
+  it("el texto del audit refleja el efecto real de stock (backend)", () => {
+    const sale = { id: "V-1", documentNumber: "F001-100" };
+    const base = { sale, twinPath: "orphan" as const, userEmail: "t@ayr.com" };
+
+    expect(buildBackend(base).auditDetails).toContain("Stock devuelto.");
+    expect(buildBackend({ ...base, stockEffect: "withdrawn" }).auditDetails).toContain("Stock retirado.");
+    expect(buildBackend({ ...base, stockEffect: "none" }).auditDetails).toContain("Sin efecto en stock.");
+    // El motivo sigue yendo despues del efecto, con el mismo espaciado de siempre.
+    expect(buildBackend({ ...base, stockEffect: "none", reason: "test" }).auditDetails).toBe(
+      "Se anulo la venta V-1 (path: orphan). Sin efecto en stock. Motivo: test.",
+    );
+  });
 });

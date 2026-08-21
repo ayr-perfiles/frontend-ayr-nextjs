@@ -3,6 +3,7 @@ import { roofingStockStrategy } from "../roofingStockStrategy";
 import { tradingStockStrategy } from "../tradingStockStrategy";
 import { servicesStockStrategy } from "../servicesStockStrategy";
 import { drywallStockStrategy } from "../drywallStockStrategy";
+import { metallicRoofingStockStrategy } from "../metallicRoofingStockStrategy";
 import { getStockStrategy } from "../index";
 
 /** Doble fake mínimo de Firestore Admin: solo lo que writeSaleReversal necesita. */
@@ -129,6 +130,92 @@ describe("drywallStockStrategy.writeSaleReversal (agregado aditivo)", () => {
       expect.objectContaining({ __collection: "kardex_movements" }),
       expect.objectContaining({ type: "IN", quantity: 10, balance: 110 }),
     );
+  });
+});
+
+describe("metallicRoofingStockStrategy.writeAnnulNCDecrement", () => {
+  // Primitiva del replay INVERSO de una NC: al importar, una NC con
+  // ncStockAction 'RETURNS_STOCK' SUMÓ stock (ENTRADA). Anularla lo saca (SALIDA).
+  // El signo lo decide el CALLER via `newBalance`, igual que las otras 2 primitivas.
+
+  it("emite SALIDA con el costo CONGELADO y escribe el balance que le pasa el caller", () => {
+    const { db, tx } = makeFakeDb();
+    const snap = makeSnap({ quantity: 100, avgCost: 9.5, totalValue: 950, productName: "COBERTURA ROJO" });
+
+    metallicRoofingStockStrategy.writeAnnulNCDecrement!(
+      {
+        sku: "COB030ROJO",
+        quantity: 10,
+        newBalance: 90, // el caller ya restó
+        saleId: "FFC1-44",
+        customerName: "LITAN E.I.R.L.",
+        sellerId: "admin@ayr.com",
+        frozenCost: 7.86,
+        ref: "FFA1-780",
+      },
+      snap,
+      tx,
+      db,
+    );
+
+    expect(tx.update).toHaveBeenCalledWith(
+      expect.objectContaining({ __collection: "metallic_roofing_stock" }),
+      expect.objectContaining({ quantity: 90 }),
+    );
+    expect(tx.set).toHaveBeenCalledWith(
+      expect.objectContaining({ __collection: "metallic_roofing_stock_movements" }),
+      expect.objectContaining({
+        sku: "COB030ROJO",
+        type: "SALIDA",
+        quantity: 10,
+        costPerUnit: 7.86,
+        reason: "Anulación NC FFC1-44 — LITAN E.I.R.L.",
+        adjustedDocument: "FFA1-780",
+        businessLine: "metallic-roofing",
+        createdBy: "admin@ayr.com",
+      }),
+    );
+  });
+
+  it("sin frozenCost -> costPerUnit 0; sin ref -> adjustedDocument null", () => {
+    const { db, tx } = makeFakeDb();
+    const snap = makeSnap({ quantity: 5, avgCost: 3, totalValue: 15, productName: "X" });
+
+    metallicRoofingStockStrategy.writeAnnulNCDecrement!(
+      { sku: "SKU-X", quantity: 2, newBalance: 3, saleId: "NC-1", customerName: "C", sellerId: "u" },
+      snap,
+      tx,
+      db,
+    );
+
+    expect(tx.set).toHaveBeenCalledWith(
+      expect.objectContaining({ __collection: "metallic_roofing_stock_movements" }),
+      expect.objectContaining({ type: "SALIDA", costPerUnit: 0, adjustedDocument: null }),
+    );
+  });
+
+  it("snap inexistente -> tx.set del doc de stock (no update), sin romper", () => {
+    const { db, tx } = makeFakeDb();
+
+    metallicRoofingStockStrategy.writeAnnulNCDecrement!(
+      { sku: "SKU-NUEVO", quantity: 1, newBalance: -1, saleId: "NC-2", customerName: "C", sellerId: "u" },
+      makeSnap(null),
+      tx,
+      db,
+    );
+
+    expect(tx.update).not.toHaveBeenCalled();
+    expect(tx.set).toHaveBeenCalledWith(
+      expect.objectContaining({ __collection: "metallic_roofing_stock" }),
+      expect.objectContaining({ sku: "SKU-NUEVO", quantity: -1 }),
+    );
+  });
+
+  it("es ADITIVA: las otras 4 strategies NO la implementan (queda undefined)", () => {
+    expect(roofingStockStrategy.writeAnnulNCDecrement).toBeUndefined();
+    expect(tradingStockStrategy.writeAnnulNCDecrement).toBeUndefined();
+    expect(drywallStockStrategy.writeAnnulNCDecrement).toBeUndefined();
+    expect(servicesStockStrategy.writeAnnulNCDecrement).toBeUndefined();
   });
 });
 

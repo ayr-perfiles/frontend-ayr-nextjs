@@ -17,6 +17,17 @@ export interface SeededFixtures {
   F8_quotation_self_block: { quoteId: string; logId: string };
   /** Cotización NATIVA en QUOTATION (mode `self`) SIN producción — nunca descontó stock. */
   F9_quotation_self_no_prod: { quoteId: string; stockSku: string };
+  /**
+   * NOTA DE CRÉDITO importada con `ncStockAction: 'RETURNS_STOCK'`: al importar REPUSO
+   * stock (+qty, movimiento ENTRADA). Anularla tiene que hacer el replay INVERSO — sacar
+   * esos kilos, no volver a ponerlos.
+   */
+  F10_nc_returns_stock: { saleId: string; perchaId: string; stockSku: string; quantity: number };
+  /**
+   * NOTA DE CRÉDITO importada SIN `ncStockAction` (el campo no se persistía hasta P1 —
+   * las 6 NC de prod están así). Nunca movió stock al importar ⇒ anularla NO debe tocarlo.
+   */
+  F11_nc_sin_action: { saleId: string; perchaId: string; stockSku: string; quantity: number };
   /** SKU + baseline del doc de stock que siembra el seeder (para asserts de stock). */
   stockBaseline: { sku: string; quantity: number; avgCost: number; totalValue: number };
 }
@@ -448,6 +459,102 @@ export async function seedAnnulFixtures(
     metadata: fixtureMeta("F9"),
   });
 
+  // ── F10: NOTA DE CRÉDITO importada CON ncStockAction 'RETURNS_STOCK' ──
+  // Al importar, `import/page.tsx:564-583` la trató como `isNCWithStock` y llamó a
+  // writeSaleReversal: le SUMÓ `quantity` al stock (movimiento ENTRADA). Anularla es el
+  // replay INVERSO — hay que sacar esos mismos `quantity`, no volver a sumarlos.
+  // `documentType` va top-level Y en metadata, como lo escribe buildImportWrites.
+  const f10PerchaId = "ANNUL-FIX-COT-F10-001";
+  const f10SaleId = "ANNUL-FIX-NC-F10-001";
+  const ncMetadata = (fixtureId: string, extra: Record<string, unknown> = {}) => ({
+    ...fixtureMeta(fixtureId),
+    isHistorical: true,
+    documentType: "NOTA CRÉDITO",
+    adjustedDocument: "FIX-FFA1-999",
+    currency: "PEN",
+    exchangeRate: 1,
+    ...extra,
+  });
+
+  batch.set(db.collection("sales").doc(f10PerchaId), {
+    status: "QUOTATION",
+    productionStatus: "CONFIRMED",
+    isFulfilled: false,
+    relatedSaleId: "NC-F10-001",
+    documentType: "NOTA CRÉDITO",
+    ncStockAction: "RETURNS_STOCK",
+    customerName: "FIXTURE F10 CUSTOMER",
+    documentNumber: "NC-F10-001",
+    items: [METALLIC_ITEM],
+    businessLines: ["metallic-roofing"],
+    skus: [STOCK_SKU],
+    totalAmount: -110,
+    totalCost: -78.6,
+    sellerId: "FIXTURE",
+    paymentStatus: "PAID",
+    timestamp: now,
+    metadata: ncMetadata("F10", { isQuotation: true }),
+  });
+  batch.set(db.collection("sales").doc(f10SaleId), {
+    status: "COMPLETED",
+    relatedQuotationId: f10PerchaId,
+    documentType: "NOTA CRÉDITO",
+    ncStockAction: "RETURNS_STOCK",
+    customerName: "FIXTURE F10 CUSTOMER",
+    documentNumber: "NC-F10-001",
+    items: [METALLIC_ITEM],
+    businessLines: ["metallic-roofing"],
+    skus: [STOCK_SKU],
+    totalAmount: -110,
+    totalCost: -78.6,
+    sellerId: "FIXTURE",
+    paymentStatus: "PAID",
+    timestamp: now,
+    metadata: ncMetadata("F10"),
+  });
+
+  // ── F11: NOTA DE CRÉDITO importada SIN ncStockAction ──
+  // Forma EXACTA de las 6 NC de prod (FFC1-44/57/61/64/67/72): el campo no existe.
+  // `shouldMoveStock` fue false al importar ⇒ nunca movió stock ⇒ anularla tampoco debe.
+  const f11PerchaId = "ANNUL-FIX-COT-F11-001";
+  const f11SaleId = "ANNUL-FIX-NC-F11-001";
+  batch.set(db.collection("sales").doc(f11PerchaId), {
+    status: "QUOTATION",
+    productionStatus: "CONFIRMED",
+    isFulfilled: false,
+    relatedSaleId: "NC-F11-001",
+    documentType: "NOTA CRÉDITO",
+    // ncStockAction AUSENTE a propósito — no poner ni null.
+    customerName: "FIXTURE F11 CUSTOMER",
+    documentNumber: "NC-F11-001",
+    items: [METALLIC_ITEM],
+    businessLines: ["metallic-roofing"],
+    skus: [STOCK_SKU],
+    totalAmount: -110,
+    totalCost: -78.6,
+    sellerId: "FIXTURE",
+    paymentStatus: "PAID",
+    timestamp: now,
+    metadata: ncMetadata("F11", { isQuotation: true }),
+  });
+  batch.set(db.collection("sales").doc(f11SaleId), {
+    status: "COMPLETED",
+    relatedQuotationId: f11PerchaId,
+    documentType: "NOTA CRÉDITO",
+    // ncStockAction AUSENTE a propósito.
+    customerName: "FIXTURE F11 CUSTOMER",
+    documentNumber: "NC-F11-001",
+    items: [METALLIC_ITEM],
+    businessLines: ["metallic-roofing"],
+    skus: [STOCK_SKU],
+    totalAmount: -110,
+    totalCost: -78.6,
+    sellerId: "FIXTURE",
+    paymentStatus: "PAID",
+    timestamp: now,
+    metadata: ncMetadata("F11"),
+  });
+
   // ── Stock baseline ──
   // `set` sin merge: pisa el doc entero en cada seed, así cada test arranca del
   // mismo número aunque un test anterior lo haya movido.
@@ -473,6 +580,18 @@ export async function seedAnnulFixtures(
     F7_native_with_synced_cost: { saleId: f7SaleId, quoteId: f7QuoteId },
     F8_quotation_self_block: { quoteId: f8QuoteId, logId: f8LogId },
     F9_quotation_self_no_prod: { quoteId: f9QuoteId, stockSku: STOCK_SKU },
+    F10_nc_returns_stock: {
+      saleId: f10SaleId,
+      perchaId: f10PerchaId,
+      stockSku: STOCK_SKU,
+      quantity: METALLIC_ITEM.quantity,
+    },
+    F11_nc_sin_action: {
+      saleId: f11SaleId,
+      perchaId: f11PerchaId,
+      stockSku: STOCK_SKU,
+      quantity: METALLIC_ITEM.quantity,
+    },
     stockBaseline: {
       sku: STOCK_SKU,
       quantity: STOCK_BASELINE_QTY,

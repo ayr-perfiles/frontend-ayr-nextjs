@@ -28,15 +28,33 @@ export interface AnnulmentSaleInput {
   originQuoteId?: string;
 }
 
+/**
+ * Qué le pasó REALMENTE al stock al anular. Solo afecta el texto del audit.
+ *  - `returned`   venta normal: se devolvió el stock que la venta había descontado.
+ *  - `withdrawn`  NOTA DE CRÉDITO con `ncStockAction: 'RETURNS_STOCK'`: la NC había
+ *                 REPUESTO stock al importarse, así que anularla lo retira.
+ *  - `none`       no se tocó stock (cotización que nunca descontó, NC money-only,
+ *                 venta sin ítems de stock).
+ */
+export type StockEffect = "returned" | "withdrawn" | "none";
+
 export interface BuildCascadeInput {
   sale: AnnulmentSaleInput;
   twinPath: SaleTwinPath;
   userEmail: string;
   reason?: string;
+  /** Default `"returned"`: preserva byte a byte el detalle histórico del audit. */
+  stockEffect?: StockEffect;
 }
 
+const STOCK_EFFECT_LABEL: Record<StockEffect, string> = {
+  returned: "Stock devuelto.",
+  withdrawn: "Stock retirado.",
+  none: "Sin efecto en stock.",
+};
+
 export function buildAnnulmentCascade(input: BuildCascadeInput): AnnulmentCascadePlan {
-  const { sale, twinPath, userEmail, reason } = input;
+  const { sale, twinPath, userEmail, reason, stockEffect = "returned" } = input;
 
   const saleWrite: CascadeWriteOp = {
     target: "sale",
@@ -92,9 +110,9 @@ export function buildAnnulmentCascade(input: BuildCascadeInput): AnnulmentCascad
     });
   }
 
-  const auditDetails = `Se anulo la venta ${sale.id} (path: ${twinPath}). Stock devuelto.${
-    reason ? ` Motivo: ${reason}.` : ""
-  }`;
+  const auditDetails = `Se anulo la venta ${sale.id} (path: ${twinPath}). ${
+    STOCK_EFFECT_LABEL[stockEffect]
+  }${reason ? ` Motivo: ${reason}.` : ""}`;
 
   return {
     writes,

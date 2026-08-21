@@ -225,6 +225,104 @@ describe("annulSale (callable)", () => {
     expect(countAfter).toBe(countBefore + 1);
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // NOTAS DE CRÉDITO — el annul es el REPLAY INVERSO del import, no una copia.
+  //
+  //   import NC + RETURNS_STOCK  ->  writeSaleReversal  ->  +qty, ENTRADA
+  //   annul  NC + RETURNS_STOCK  ->  DEBE ser            ->  -qty, SALIDA
+  //
+  // Una NC sin `ncStockAction` (o con MONEY_ONLY/UNDECIDED) nunca movió stock al
+  // importar (`shouldMoveStock` false, import/page.tsx:565) => anularla no debe
+  // tocarlo tampoco. Es el caso de las 6 NC vivas en prod.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  async function movementsForSku(sku: string) {
+    const snap = await db.collection("metallic_roofing_stock_movements").where("sku", "==", sku).get();
+    return snap.docs.map((d) => d.data());
+  }
+
+  it("T1 NC RETURNS_STOCK: anularla DECREMENTA el stock (replay inverso del import)", async () => {
+    const { saleId, stockSku, quantity } = seeded.F10_nc_returns_stock;
+    const stockRef = db.collection("metallic_roofing_stock").doc(stockSku);
+
+    const before = await stockRef.get();
+    expect(before.data()?.quantity).toBe(seeded.stockBaseline.quantity);
+
+    const res = await invokeAsAdmin(saleId);
+    expect(res).toEqual({ success: true });
+
+    const after = await stockRef.get();
+    // La NC repuso +quantity al importar; anularla tiene que SACAR esos mismos.
+    expect(after.data()?.quantity).toBe(seeded.stockBaseline.quantity - quantity);
+  });
+
+  it("T1b NC RETURNS_STOCK: el movimiento emitido es SALIDA, no ENTRADA", async () => {
+    const { saleId, stockSku } = seeded.F10_nc_returns_stock;
+    const countBefore = (await movementsForSku(stockSku)).length;
+
+    await invokeAsAdmin(saleId);
+
+    const moves = await movementsForSku(stockSku);
+    expect(moves.length).toBe(countBefore + 1);
+
+    const nuevo = moves.find((m) => String(m.reason ?? "").includes(saleId));
+    expect(nuevo).toBeDefined();
+    expect(nuevo!.type).toBe("SALIDA");
+    expect(nuevo!.quantity).toBe(seeded.F10_nc_returns_stock.quantity);
+    expect(nuevo!.reason).toContain("Anulación NC");
+    // Costo CONGELADO del item, no el WAC vivo del stock.
+    expect(nuevo!.costPerUnit).toBe(7.86);
+  });
+
+  it("T2 NC sin ncStockAction: anularla NO toca el stock (nunca lo movió al importar)", async () => {
+    const { saleId, stockSku } = seeded.F11_nc_sin_action;
+    const stockRef = db.collection("metallic_roofing_stock").doc(stockSku);
+
+    const res = await invokeAsAdmin(saleId);
+    expect(res).toEqual({ success: true });
+
+    const after = await stockRef.get();
+    expect(after.data()?.quantity).toBe(seeded.stockBaseline.quantity);
+    expect(after.data()?.avgCost).toBe(seeded.stockBaseline.avgCost);
+    expect(after.data()?.totalValue).toBe(seeded.stockBaseline.totalValue);
+  });
+
+  it("T2b NC sin ncStockAction: tampoco emite ningún movimiento de stock", async () => {
+    const { saleId, stockSku } = seeded.F11_nc_sin_action;
+    const countBefore = (await movementsForSku(stockSku)).length;
+
+    await invokeAsAdmin(saleId);
+
+    expect((await movementsForSku(stockSku)).length).toBe(countBefore);
+  });
+
+  it("T2c NC sin ncStockAction: el doc SÍ pasa a VOIDED (el skip es solo del stock)", async () => {
+    const { saleId } = seeded.F11_nc_sin_action;
+    await invokeAsAdmin(saleId);
+
+    const saleSnap = await db.collection("sales").doc(saleId).get();
+    expect(saleSnap.data()?.status).toBe("VOIDED");
+    expect(saleSnap.data()?.voidedBy).toBe("admin@fixture.com");
+  });
+
+  it("T3 no-NC (regresión): anular una venta normal sigue INCREMENTANDO con ENTRADA", async () => {
+    const { saleId } = seeded.F2_imported_happy;
+    const stockSku = seeded.stockBaseline.sku;
+    const countBefore = (await movementsForSku(stockSku)).length;
+
+    await invokeAsAdmin(saleId);
+
+    const after = await db.collection("metallic_roofing_stock").doc(stockSku).get();
+    expect(after.data()?.quantity).toBe(seeded.stockBaseline.quantity + 10);
+
+    const moves = await movementsForSku(stockSku);
+    expect(moves.length).toBe(countBefore + 1);
+    const nuevo = moves.find((m) => String(m.reason ?? "").includes(saleId));
+    expect(nuevo).toBeDefined();
+    expect(nuevo!.type).toBe("ENTRADA");
+    expect(nuevo!.reason).toContain("Anulación Venta");
+  });
+
   it("Auth: sin auth -> unauthenticated", async () => {
     await expect(
       wrapped({ data: { saleId: seeded.F1_native_happy.saleId } }),

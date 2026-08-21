@@ -30,7 +30,7 @@ describe("seedAnnulFixtures", () => {
     db = getAdminDb();
   });
 
-  it("primer run crea las 9 fixtures con los IDs esperados + counts correctos (15 sales + 4 production_logs)", async () => {
+  it("primer run crea las 11 fixtures con los IDs esperados + counts correctos (19 sales + 4 production_logs)", async () => {
     const seeded = await seedAnnulFixtures(db);
 
     expect(seeded.F1_native_happy).toEqual({ saleId: "ANNUL-FIX-C-001", quoteId: "ANNUL-FIX-Q-001" });
@@ -64,6 +64,18 @@ describe("seedAnnulFixtures", () => {
       quoteId: "ANNUL-FIX-Q-F9-001",
       stockSku: "COB030ROJO",
     });
+    expect(seeded.F10_nc_returns_stock).toEqual({
+      saleId: "ANNUL-FIX-NC-F10-001",
+      perchaId: "ANNUL-FIX-COT-F10-001",
+      stockSku: "COB030ROJO",
+      quantity: 10,
+    });
+    expect(seeded.F11_nc_sin_action).toEqual({
+      saleId: "ANNUL-FIX-NC-F11-001",
+      perchaId: "ANNUL-FIX-COT-F11-001",
+      stockSku: "COB030ROJO",
+      quantity: 10,
+    });
     expect(seeded.stockBaseline).toEqual({
       sku: "COB030ROJO",
       quantity: 100,
@@ -71,24 +83,24 @@ describe("seedAnnulFixtures", () => {
       totalValue: 786,
     });
 
-    // 15 sales: F1=2, F2=2, F3=2, F4=2, F5=2, F6=1, F7=2, F8=1, F9=1.
-    // 4 production_logs: F3, F4, F5, F8.
+    // 19 sales: F1=2, F2=2, F3=2, F4=2, F5=2, F6=1, F7=2, F8=1, F9=1, F10=2, F11=2.
+    // 4 production_logs: F3, F4, F5, F8 (F10/F11 son NC sin produccion).
     // El doc de stock lleva el mismo flag pero vive en metallic_roofing_stock,
     // otra coleccion — no entra en ninguno de estos dos conteos.
-    expect(await countFixtureDocs(db, "sales")).toBe(15);
+    expect(await countFixtureDocs(db, "sales")).toBe(19);
     expect(await countFixtureDocs(db, "production_logs")).toBe(4);
   });
 
-  it("segundo run con clean:true (default) borra los fixtures previos y no acumula (sigue en 15+4)", async () => {
+  it("segundo run con clean:true (default) borra los fixtures previos y no acumula (sigue en 19+4)", async () => {
     await seedAnnulFixtures(db);
     await seedAnnulFixtures(db);
 
-    expect(await countFixtureDocs(db, "sales")).toBe(15);
+    expect(await countFixtureDocs(db, "sales")).toBe(19);
     expect(await countFixtureDocs(db, "production_logs")).toBe(4);
   });
 
   it("clean:false no borra fixtures previos ajenos (IDs propios se sobreescriben por ser deterministicos, no se duplican)", async () => {
-    await seedAnnulFixtures(db); // baseline limpio: 15+4
+    await seedAnnulFixtures(db); // baseline limpio: 19+4
 
     // Doc ajeno con el mismo flag, ID fuera del set de IDs deterministicos del seeder.
     await db.collection("sales").doc("ANNUL-FIX-EXTRA-001").set({
@@ -99,9 +111,9 @@ describe("seedAnnulFixtures", () => {
 
     await seedAnnulFixtures(db, { clean: false });
 
-    // El extra sobrevive (clean:false no borró nada); los 15 de siempre se sobreescriben
-    // por tener el mismo ID, no se duplican -> total 16, no 31.
-    expect(await countFixtureDocs(db, "sales")).toBe(16);
+    // El extra sobrevive (clean:false no borró nada); los 19 de siempre se sobreescriben
+    // por tener el mismo ID, no se duplican -> total 20, no 39.
+    expect(await countFixtureDocs(db, "sales")).toBe(20);
     const extraSnap = await db.collection("sales").doc("ANNUL-FIX-EXTRA-001").get();
     expect(extraSnap.exists).toBe(true);
   });
@@ -171,6 +183,35 @@ describe("seedAnnulFixtures", () => {
       .where("source.id", "==", seeded.F9_quotation_self_no_prod.quoteId)
       .get();
     expect(logs.size).toBe(0);
+  });
+
+  it("F10: NC con ncStockAction RETURNS_STOCK, documentType top-level Y en metadata", async () => {
+    const seeded = await seedAnnulFixtures(db);
+    const saleSnap = await db.collection("sales").doc(seeded.F10_nc_returns_stock.saleId).get();
+    const d = saleSnap.data()!;
+
+    expect(d.status).toBe("COMPLETED");
+    expect(d.documentType).toBe("NOTA CRÉDITO");
+    expect(d.metadata?.documentType).toBe("NOTA CRÉDITO");
+    expect(d.ncStockAction).toBe("RETURNS_STOCK");
+    expect(d.relatedQuotationId).toBe(seeded.F10_nc_returns_stock.perchaId);
+    // El item que se va a revertir: mismo SKU que el stock baseline.
+    expect(d.items?.[0]?.sku).toBe(seeded.stockBaseline.sku);
+    expect(d.items?.[0]?.quantity).toBe(seeded.F10_nc_returns_stock.quantity);
+    expect(d.items?.[0]?.isCoil).toBe(false);
+  });
+
+  it("F11: NC SIN el campo ncStockAction (ausente, no null) — forma exacta de las 6 NC de prod", async () => {
+    const seeded = await seedAnnulFixtures(db);
+    const saleSnap = await db.collection("sales").doc(seeded.F11_nc_sin_action.saleId).get();
+    const d = saleSnap.data()!;
+
+    expect(d.status).toBe("COMPLETED");
+    expect(d.documentType).toBe("NOTA CRÉDITO");
+    // AUSENTE, no null: `"ncStockAction" in d` tiene que ser false.
+    expect("ncStockAction" in d).toBe(false);
+    expect(d.ncStockAction).toBeUndefined();
+    expect(d.items?.[0]?.sku).toBe(seeded.stockBaseline.sku);
   });
 
   it("stock baseline: el seeder deja metallic_roofing_stock en el numero declarado", async () => {

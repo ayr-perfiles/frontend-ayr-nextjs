@@ -4,7 +4,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { resolveSaleQuotationLink } from "../domain/annulment/saleQuotationLink";
 import { canAnnulSale, type AnnulBlockReason } from "../domain/annulment/canAnnulSale";
 import { resolveSaleTwinPath } from "../domain/annulment/resolveSaleTwinPath";
-import { buildAnnulmentCascade } from "../domain/annulment/buildAnnulmentCascade";
+import { buildAnnulmentCascade, type StockEffect } from "../domain/annulment/buildAnnulmentCascade";
 import { translateCascadeFields } from "../utils/translateCascadeFields";
 import { getStockStrategy } from "../domain/strategies";
 import { hasActiveProductionForQuote, type ActiveProductionLog } from "../utils/hasActiveProductionForQuote";
@@ -103,19 +103,7 @@ export const annulSale = onCall<AnnulSaleData>(async (request) => {
     );
   }
 
-  // ── Armar el plan de cascada (dominio puro, sin I/O) ─────────────────────
   const twinPath = resolveSaleTwinPath(saleLinkInput);
-  const cascadePlan = buildAnnulmentCascade({
-    sale: {
-      id: saleId,
-      documentNumber: preData.documentNumber as string | undefined,
-      relatedQuotationId: preData.relatedQuotationId as string | undefined,
-      originQuoteId: preData.originQuoteId as string | undefined,
-    },
-    twinPath,
-    userEmail,
-    reason,
-  });
 
   // ── TXN ───────────────────────────────────────────────────────────────────
   await db.runTransaction(async (tx) => {
@@ -138,6 +126,11 @@ export const annulSale = onCall<AnnulSaleData>(async (request) => {
     // NO toca stock, en vez de tocarlo por omision.
     const movedStock = saleData.status === "COMPLETED";
     const items = movedStock ? ((saleData.items ?? []) as AnnulSaleItem[]) : [];
+
+    // Efecto REAL sobre el stock, resuelto por el loop de abajo. Alimenta el audit para
+    // que el detalle no mienta: hasta v6.53.1 decía "Stock devuelto." SIEMPRE, hardcodeado
+    // — incluso al anular una cotización (que nunca descontó) o una NC.
+    let stockEffect: StockEffect = "none";
 
     // ── LECTURAS (todas antes de cualquier escritura, exigencia de Firestore) ──
     // Port 1:1 de salesService.ts:415-436 (annulSale client-side) a Admin SDK.
@@ -187,13 +180,65 @@ export const annulSale = onCall<AnnulSaleData>(async (request) => {
         const strategy = getStockStrategy(line);
         const snap = stockSnapshots.get(`${line}:${item.sku}`) ?? null;
         const currentQty = snap ? strategy.extractQuantity(snap) : 0;
-        const newBalance = currentQty + item.quantity;
+
+        // ── Guard de 2 NIVELES: (1) ¿es NC?  (2) dentro de NC, ¿qué hizo al importar? ──
+        //
+        // Anular es el replay INVERSO del import, y el import bifurca en
+        // `import/page.tsx:564-583`:
+        //   FACTURA/BOLETA          -> writeSaleDecrement (-qty)  => anular SUMA (+qty)
+        //   NC + RETURNS_STOCK      -> writeSaleReversal  (+qty)  => anular RESTA (-qty)
+        //   NC + MONEY_ONLY/UNDECIDED/ausente -> no movió nada    => anular NO toca nada
+        //
+        // El discriminante de nivel 1 es `documentType`, el MISMO campo que usa el
+        // importador. NO se usa `totalAmount < 0` (una venta legítima podría serlo) ni
+        // el prefijo del id. Nivel 2 es `ncStockAction`, persistido desde P1.
+        //
+        // ⚠️ Los 68 docs de prod SIN `documentType` (ventas POS nativas) caen en `else`
+        // y conservan el comportamiento actual — por eso el chequeo es POSITIVO
+        // (`=== "NOTA CRÉDITO"`) y no negativo (`!== "FACTURA" && !== "BOLETA"`), que
+        // los habría metido en la rama NC.
+        const isNC = saleData.documentType === "NOTA CRÉDITO";
+
+        if (isNC) {
+          // Allowlist POSITIVA (fail-safe, misma lógica que el gate `movedStock`): un
+          // valor nuevo o ausente NO toca stock. Ausente es el caso REAL de las 6 NC
+          // vivas en prod, importadas antes de que P1 persistiera el campo.
+          if (saleData.ncStockAction !== "RETURNS_STOCK") {
+            continue;
+          }
+
+          // Si la línea no implementa la primitiva, NO caer a writeSaleReversal: eso
+          // INFLARÍA el stock, que es exactamente el bug que este frente cierra.
+          // Hoy es inalcanzable (las 12 NC de prod son metallic), pero si una NC de
+          // otra línea llegara acá, el fail-safe es no tocar nada.
+          if (!strategy.writeAnnulNCDecrement) {
+            continue;
+          }
+
+          stockEffect = "withdrawn";
+          strategy.writeAnnulNCDecrement(
+            {
+              sku: item.sku,
+              quantity: item.quantity,
+              newBalance: currentQty - item.quantity,
+              saleId,
+              customerName: saleData.customerName as string,
+              sellerId: userEmail,
+              frozenCost: item.baseCost ?? 0,
+              ref: (saleData.metadata?.adjustedDocument as string) || undefined,
+            },
+            snap,
+            tx,
+            db,
+          );
+          continue;
+        }
 
         strategy.writeSaleReversal(
           {
             sku: item.sku,
             quantity: item.quantity,
-            newBalance,
+            newBalance: currentQty + item.quantity,
             saleId,
             customerName: saleData.customerName as string,
             sellerId: userEmail,
@@ -203,8 +248,26 @@ export const annulSale = onCall<AnnulSaleData>(async (request) => {
           tx,
           db,
         );
+        stockEffect = "returned";
       }
     }
+
+    // El plan se arma ACÁ y no antes de la txn (dominio puro, sin I/O — se puede llamar
+    // en cualquier punto) porque `stockEffect` recién se conoce después del loop, y el
+    // audit tiene que describir lo que REALMENTE pasó. De paso lee de `saleData`, que es
+    // la re-lectura bajo lock, no del `preData` pre-txn.
+    const cascadePlan = buildAnnulmentCascade({
+      sale: {
+        id: saleId,
+        documentNumber: saleData.documentNumber as string | undefined,
+        relatedQuotationId: saleData.relatedQuotationId as string | undefined,
+        originQuoteId: saleData.originQuoteId as string | undefined,
+      },
+      twinPath,
+      userEmail,
+      reason,
+      stockEffect,
+    });
 
     for (const write of cascadePlan.writes) {
       const targetRef = db.doc(write.docPath);
