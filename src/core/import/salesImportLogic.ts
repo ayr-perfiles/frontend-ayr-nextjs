@@ -35,6 +35,18 @@ export function buildImportWrites(sale: any, injectedUploadedAt?: any): ImportWr
       sale.currency === "USD" ? Number((sale.originalCurrencyAmount || 0).toFixed(2)) : null,
   };
 
+  // P1 — `ncStockAction` se PERSISTE, top-level, mismo patrón literal que `documentType`.
+  // Se computa en parseImportRows.ts:229 y decide el signo del movimiento de stock en
+  // import/page.tsx:564 (`isNCWithStock`), pero hasta v6.53.1 moría con la transacción de
+  // import: este objeto enumera sus campos (sin spread de `sale`) y no lo incluía, y el
+  // builder tampoco (retorna un literal de 18 claves). Medido en prod: 0 de 329 docs lo
+  // tenían. Sin él, `annulSale` no puede saber si una NC repuso stock al entrar, que es
+  // justo lo que necesita para hacer el replay inverso.
+  //
+  // Se omite la clave si el ParsedSale no la trae: Firestore rechaza `undefined`.
+  const ncStockActionField =
+    sale.ncStockAction !== undefined ? { ncStockAction: sale.ncStockAction } : {};
+
   const saleDoc = {
     ...baseSaleDoc,
     ...(hasMetallicItem ? { relatedQuotationId: `COT-${sale.documentNumber}` } : {}),
@@ -42,7 +54,8 @@ export function buildImportWrites(sale: any, injectedUploadedAt?: any): ImportWr
     metadata: importMetadata,
     currency: sale.currency,
     exchangeRateApplied: sale.exchangeRateApplied || 1,
-    documentType: sale.documentType
+    documentType: sale.documentType,
+    ...ncStockActionField
   };
 
   let quotationDoc: any | null = null;
@@ -66,6 +79,7 @@ export function buildImportWrites(sale: any, injectedUploadedAt?: any): ImportWr
       currency: sale.currency,
       exchangeRateApplied: sale.exchangeRateApplied || 1,
       documentType: sale.documentType,
+      ...ncStockActionField,
       createdBy: sale.createdBy || "SISTEMA" // Added from legacy
     };
   }

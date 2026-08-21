@@ -100,7 +100,13 @@ describe('Sales Writers Root Fields (RED PHASE)', () => {
       'uploadedAt',         // Timestamp de la importación
       'currency',           // Moneda original del documento importado
       'exchangeRateApplied',// Tipo de cambio aplicado en la importación
-      'documentType'        // Tipo de comprobante importado
+      'documentType',       // Tipo de comprobante importado
+      // Qué hizo la NOTA DE CRÉDITO con el stock al importarse (RETURNS_STOCK repuso
+      // +qty; MONEY_ONLY/UNDECIDED no tocaron nada). Es exclusivo del import porque
+      // solo el importador procesa comprobantes ya emitidos — el POS no emite NC.
+      // `annulSale` lo lee para hacer el replay INVERSO al anular (v6.53.1); sin él,
+      // anular una NC volvía a SUMAR el stock que la NC ya había sumado.
+      'ncStockAction'
     ];
 
     const expectedQuoteKeys = [...new Set([...saleKeys, ...quoteAllowedExtras])].sort();

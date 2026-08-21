@@ -285,4 +285,62 @@ describe("buildImportWrites - Cotización Aluzinc en Importador (RED PHASE)", ()
     const result = buildImportWrites(sampleMetallicSale);
     expect(result.quotationDoc?.isFulfilled).toBe(false);
   });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // P1 — PERSISTENCIA DE ncStockAction
+  //
+  // El campo se computa en parseImportRows.ts:229 y se consume en
+  // import/page.tsx:564 (`isNCWithStock`) para decidir el signo del movimiento de
+  // stock... pero NUNCA se persistía: buildImportWrites enumera los campos sin
+  // spread de `sale`, así que el dato moría con la transacción de import.
+  // Consecuencia medida en prod: 0 de 329 docs lo tienen, y annulSale no tenía cómo
+  // saber si una NC había repuesto stock o no. Se persiste top-level, mismo patrón
+  // literal que `documentType`.
+  // ────────────────────────────────────────────────────────────────────────────
+
+  const sampleNCSale = {
+    ...sampleMetallicSale,
+    documentNumber: "FFC1-44",
+    documentType: "NOTA CRÉDITO",
+    adjustedDocument: "FFA1-780",
+    ncStockAction: "RETURNS_STOCK",
+    totalAmount: -1500,
+  };
+
+  it("P1: saleDoc persiste ncStockAction top-level para una NC", () => {
+    const result = buildImportWrites(sampleNCSale);
+    expect(result.saleDoc.ncStockAction).toBe("RETURNS_STOCK");
+  });
+
+  it("P1: quotationDoc (la percha COT-) también lo persiste", () => {
+    const result = buildImportWrites(sampleNCSale);
+    expect(result.quotationDoc).not.toBeNull();
+    expect(result.quotationDoc?.ncStockAction).toBe("RETURNS_STOCK");
+  });
+
+  it("P1: MONEY_ONLY se persiste tal cual (no se normaliza ni se omite)", () => {
+    const result = buildImportWrites({ ...sampleNCSale, ncStockAction: "MONEY_ONLY" });
+    expect(result.saleDoc.ncStockAction).toBe("MONEY_ONLY");
+    expect(result.quotationDoc?.ncStockAction).toBe("MONEY_ONLY");
+  });
+
+  it("P1: UNDECIDED se persiste tal cual", () => {
+    const result = buildImportWrites({ ...sampleNCSale, ncStockAction: "UNDECIDED" });
+    expect(result.saleDoc.ncStockAction).toBe("UNDECIDED");
+  });
+
+  it("P1: si el ParsedSale no trae el campo, NO se inventa una clave con undefined", () => {
+    const sinCampo = { ...sampleNCSale } as Record<string, unknown>;
+    delete sinCampo.ncStockAction;
+
+    const result = buildImportWrites(sinCampo);
+    // Firestore rechaza `undefined`; la clave no debe existir en absoluto.
+    expect("ncStockAction" in result.saleDoc).toBe(false);
+    expect("ncStockAction" in (result.quotationDoc as Record<string, unknown>)).toBe(false);
+  });
+
+  it("P1: manuallyResolvedNC sigue SIN persistirse (fuera de alcance, deuda nombrada)", () => {
+    const result = buildImportWrites({ ...sampleNCSale, manuallyResolvedNC: true });
+    expect("manuallyResolvedNC" in result.saleDoc).toBe(false);
+  });
 });
