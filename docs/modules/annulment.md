@@ -1,6 +1,27 @@
 # MÓDULO: annulment (anulación de venta, `annulSale`) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-19 (v6.50.0, swap completo a callable, commit `204bbada`, runtime validado en prod `ayr.mareliac.pe`).
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-20 (v6.52.1, fix bloqueo `self` + gate de stock, commit `91fdbb81`, backend desplegado a test Y prod con smoke real 18/18 y 12/12).
 > ⚠️ SE PUDRE. Antes de tocar `annulSale`/rules de `sales.status`: verificá (checklist). No confíes si la fecha está vieja.
+
+## 0. ⚠️ LOS 2 GATES QUE HAY QUE MIRAR SIEMPRE (v6.52.1)
+
+**`resolveSaleQuotationLink` clasifica como `mode: "self"` a TODA cotización — nativa E IMPORTADA.**
+El chequeo `status === "QUOTATION"` está PRIMERO (`saleQuotationLink.ts:26-28`) y corta antes de mirar
+`relatedQuotationId`/`originQuoteId`. "Nativa vs importada" NO decide el modo; lo decide el `status`.
+
+El bloqueo por producción activa vive en DOS sitios y **ambos** deben cubrir `linked || self`:
+
+| # | Dónde | Qué hace |
+|---|---|---|
+| 1 | `functions/src/callables/sales.ts` (`if (link.mode === "linked" || link.mode === "self")`) | dispara la query de logs vía `hasActiveProductionForQuote` |
+| 2 | `canAnnulSale.ts` (mismo condicional, en las **2** copias) | evalúa el bloqueo y arma `context: {quotationId, activeLogIds}` |
+
+Hasta v6.52.0 los dos decían solo `"linked"` → una `QUOTATION` con producción ACTIVE se anulaba sin
+bloqueo (84 perchas reales expuestas en prod). **Arreglar uno solo no alcanza**: sin (1) el bloqueo
+recibe `[]`; sin (2) los logs se ignoran.
+
+**El loop de items solo corre para `COMPLETED`** (`sales.ts`, `const movedStock = saleData.status === "COMPLETED"`).
+Una cotización NUNCA descontó stock, así que anularla no debe devolver nada. Es una **allowlist positiva
+a propósito**: un status nuevo que llegue ahí NO toca stock.
 
 ## 1. Componente principal
 - `functions/src/callables/sales.ts` — callable `annulSale`, `onCall` v2 gen2, ÚNICO escritor legítimo de `sales.status → 'VOIDED'`.
@@ -16,6 +37,17 @@
 - `types.ts` — interfaz `StockStrategy` compartida (antes vivía duplicada inline en cada strategy).
 - `{metallicRoofing,drywall,roofing,trading,services}StockStrategy.ts` — 5 líneas de negocio completas. `drywallStockStrategy.ts` fue extendido ADITIVAMENTE con `writeSaleDecrement`/`writeSaleReversal` (antes solo tenía `writeProductionIncrement`) — sin romper sus consumidores existentes (`drywallProduction.ts`).
 - `index.ts` — registry `getStockStrategy(businessLine)`, espejo del registry cliente (`src/core/sales/strategies/index.ts`).
+
+## 3-bis. Pre-check de producción activa (v6.52.1)
+- `functions/src/utils/hasActiveProductionForQuote.ts` — `(quoteId, db) => {hasActive, activeLogIds, allLogs}`.
+  Query: `production_logs` where `source.id == quoteId`, **sin** filtrar `status` en la query (se clasifica
+  en memoria). Campo simple sin `orderBy` ⇒ índice automático, **ningún índice nuevo**.
+- **Vive en `utils/`, no en `domain/`**, porque hace I/O y `domain/` es puro (la única excepción es
+  `strategies/`, justificada en su propio `types.ts`). Tampoco inline en `sales.ts`: el futuro callable
+  de **Editar** consume este mismo pre-check y no debe importar desde un archivo de callable.
+- Trabaja **directo sobre el `quoteId`**, sin pasar por `resolveSaleQuotationLink` — que es justo la pieza
+  que clasifica el caso `self`. Delega la clasificación ACTIVE a `functions/src/domain/fulfillmentLogic.ts`
+  (`hasActiveProduction`, copia pura del cliente + parity test).
 
 ## 4. Utilidad de traducción
 - `functions/src/utils/translateCascadeFields.ts` — traduce los placeholders serializables que `buildAnnulmentCascade` (100% puro, sin `firebase-admin`) emite (`'SERVER_TIMESTAMP'` / `'DELETE_FIELD'` / `'ARRAY_UNION:{json}'`) a los sentinels reales (`FieldValue.serverTimestamp()`/`.delete()`/`.arrayUnion()`). Recibe `FieldValue` como parámetro (inyección de dependencia) para poder testearse con un mock, sin `firebase-admin` real.
@@ -46,7 +78,17 @@ allow update: if isStaff()
 - **D3 (costos sincronizados):** `costSyncedAt`, `items[].baseCost` post-A1 (write-back de costo real de producción) NUNCA se revierten — son hechos históricos, no se tocan en la cascada de anulación.
 
 ## 8. Fixtures de test (`src/test/integration/fixtures/`)
-- `seedAnnulFixtures.ts` — 7 fixtures (F1-F7, cubren native/imported/happy/block/ex-active/orphan/synced-cost), idempotentes, marcadas `metadata.isAnnulFixture:true`, IDs deterministas con prefijo `ANNUL-FIX-`.
+- `seedAnnulFixtures.ts` — **9 fixtures** (F1-F9) + un doc de stock baseline, idempotentes, marcadas
+  `metadata.isAnnulFixture:true`, IDs deterministas con prefijo `ANNUL-FIX-`.
+  - **F1-F7** cubren native/imported/happy/block/ex-active/orphan/synced-cost. Los 7 invocan `annulSale`
+    sobre una **VENTA**; ninguno sobre un doc `QUOTATION` (por eso el agujero de `self` no tenía cobertura).
+  - **F8** (v6.52.1) — cotización NATIVA en `QUOTATION` con `production_log` **ACTIVE sobre sí misma**
+    (`source.id == su doc.id`): es el fixture del bloqueo `self`.
+  - **F9** (v6.52.1) — cotización NATIVA en `QUOTATION` **sin** logs: ancla el anulado legítimo Y el
+    gate de stock fantasma.
+  - **`stockBaseline`** (v6.52.1) — `metallic_roofing_stock/COB030ROJO` en `{quantity:100, avgCost:7.86,
+    totalValue:786}`, sembrado con `set` **sin merge** para que cada test arranque del mismo número aunque
+    otro lo haya movido. Antes el seeder no sembraba stock y el daño no era observable.
 - `seedAnnulFixtures.cli.ts` — wrapper CLI, `npm run seed:annul-fixtures`, guard duro contra correr fuera de `ayrsteel-test`.
 - ⚠️ `Timestamp.now()` de `firebase-admin/firestore` NO se usa acá — usa `new Date()` nativo, porque este módulo se importa cross-boundary desde tests de `functions/` (que tiene su PROPIA copia de `firebase-admin` en su `node_modules`) y un `Timestamp` creado con una copia del paquete no es `instanceof` el `Timestamp` que la otra copia espera al validar el write ("dual package hazard").
 
