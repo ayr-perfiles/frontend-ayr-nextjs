@@ -34,7 +34,12 @@ export function canAnnulSale(input: CanAnnulSaleInput): CanAnnulResult {
 
   const link = resolveSaleQuotationLink(sale);
 
-  if (link.mode === "linked") {
+  // `self` = el doc ES la cotizacion (status QUOTATION). Hasta v6.52.1 este gate era
+  // solo `linked`, y como resolveSaleQuotationLink corta en `status === "QUOTATION"`
+  // ANTES de mirar relatedQuotationId/originQuoteId, una cotizacion con produccion
+  // ACTIVE se anulaba sin ningun bloqueo. `self` y `linked` comparten el criterio:
+  // si la cotizacion tiene produccion viva, no se anula.
+  if (link.mode === "linked" || link.mode === "self") {
     const activeLogIds = activeProductionLogs
       .filter((log) => log.source?.id === link.quotationId && log.status === "ACTIVE")
       .map((log) => log.id);

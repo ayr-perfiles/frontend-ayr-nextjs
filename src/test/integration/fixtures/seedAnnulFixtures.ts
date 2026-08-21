@@ -13,6 +13,12 @@ export interface SeededFixtures {
   F5_native_ex_active: { saleId: string; quoteId: string; logId: string };
   F6_orphan: { saleId: string };
   F7_native_with_synced_cost: { saleId: string; quoteId: string };
+  /** Cotización NATIVA en QUOTATION (mode `self`) CON producción ACTIVE sobre sí misma. */
+  F8_quotation_self_block: { quoteId: string; logId: string };
+  /** Cotización NATIVA en QUOTATION (mode `self`) SIN producción — nunca descontó stock. */
+  F9_quotation_self_no_prod: { quoteId: string; stockSku: string };
+  /** SKU + baseline del doc de stock que siembra el seeder (para asserts de stock). */
+  stockBaseline: { sku: string; quantity: number; avgCost: number; totalValue: number };
 }
 
 const GENERIC_ITEM = {
@@ -46,6 +52,12 @@ const METALLIC_ITEM = {
   unitOfMeasure: "METRO LINEAL",
   isCoil: false,
 };
+
+/** Baseline del doc de stock que el seeder siembra, para poder assertear deltas exactos. */
+const STOCK_SKU = METALLIC_ITEM.sku;
+const STOCK_BASELINE_QTY = 100;
+const STOCK_BASELINE_AVG_COST = 7.86;
+const STOCK_BASELINE_TOTAL_VALUE = 786;
 
 async function deleteWhereFixtureFlag(db: Firestore, collectionName: string): Promise<void> {
   const snap = await db.collection(collectionName).where("metadata.isAnnulFixture", "==", true).get();
@@ -379,6 +391,76 @@ export async function seedAnnulFixtures(
     metadata: fixtureMeta("F7"),
   });
 
+  // ── F8: cotización NATIVA en QUOTATION (mode `self`) CON producción ACTIVE ──
+  // El log cuelga de la PROPIA cotización (source.id == su doc.id), que es como
+  // `produceFromCoils` graba la producción contra una cotización.
+  const f8QuoteId = "ANNUL-FIX-Q-F8-001";
+  const f8LogId = "ANNUL-FIX-LOG-F8-001";
+  batch.set(db.collection("sales").doc(f8QuoteId), {
+    status: "QUOTATION",
+    productionStatus: "CONFIRMED",
+    isFulfilled: false,
+    // NATIVA: sin relatedSaleId y sin metadata.isQuotation.
+    customerName: "FIXTURE F8 CUSTOMER",
+    documentNumber: "",
+    items: [METALLIC_ITEM],
+    businessLines: ["metallic-roofing"],
+    skus: ["COB030ROJO"],
+    totalAmount: 110,
+    totalCost: 78.6,
+    sellerId: "FIXTURE",
+    paymentStatus: "PAID",
+    timestamp: now,
+    metadata: fixtureMeta("F8"),
+  });
+  batch.set(db.collection("production_logs").doc(f8LogId), {
+    status: "ACTIVE",
+    source: { type: "QUOTE", id: f8QuoteId, label: f8QuoteId },
+    sku: "COB030ROJO",
+    line: "metallic-roofing",
+    mlProduced: 100,
+    piecesProduced: 20,
+    perCoilBreakdown: [],
+    parentCoilIds: [],
+    operatorId: "FIXTURE",
+    timestamp: now,
+    metadata: fixtureMeta("F8"),
+  });
+
+  // ── F9: cotización NATIVA en QUOTATION (mode `self`) SIN producción ──
+  // Una cotización NUNCA descuenta stock al crearse (createQuotation no llama a
+  // ninguna strategy) — así que anularla no debe devolver nada al stock.
+  const f9QuoteId = "ANNUL-FIX-Q-F9-001";
+  batch.set(db.collection("sales").doc(f9QuoteId), {
+    status: "QUOTATION",
+    productionStatus: "PENDING",
+    isFulfilled: false,
+    customerName: "FIXTURE F9 CUSTOMER",
+    documentNumber: "",
+    items: [METALLIC_ITEM],
+    businessLines: ["metallic-roofing"],
+    skus: ["COB030ROJO"],
+    totalAmount: 110,
+    totalCost: 78.6,
+    sellerId: "FIXTURE",
+    paymentStatus: "PAID",
+    timestamp: now,
+    metadata: fixtureMeta("F9"),
+  });
+
+  // ── Stock baseline ──
+  // `set` sin merge: pisa el doc entero en cada seed, así cada test arranca del
+  // mismo número aunque un test anterior lo haya movido.
+  batch.set(db.collection("metallic_roofing_stock").doc(STOCK_SKU), {
+    sku: STOCK_SKU,
+    productName: METALLIC_ITEM.productName,
+    quantity: STOCK_BASELINE_QTY,
+    avgCost: STOCK_BASELINE_AVG_COST,
+    totalValue: STOCK_BASELINE_TOTAL_VALUE,
+    lastUpdate: now,
+    metadata: fixtureMeta("STOCK"),
+  });
+
   await batch.commit();
 
   return {
@@ -389,5 +471,13 @@ export async function seedAnnulFixtures(
     F5_native_ex_active: { saleId: f5SaleId, quoteId: f5QuoteId, logId: f5LogId },
     F6_orphan: { saleId: f6SaleId },
     F7_native_with_synced_cost: { saleId: f7SaleId, quoteId: f7QuoteId },
+    F8_quotation_self_block: { quoteId: f8QuoteId, logId: f8LogId },
+    F9_quotation_self_no_prod: { quoteId: f9QuoteId, stockSku: STOCK_SKU },
+    stockBaseline: {
+      sku: STOCK_SKU,
+      quantity: STOCK_BASELINE_QTY,
+      avgCost: STOCK_BASELINE_AVG_COST,
+      totalValue: STOCK_BASELINE_TOTAL_VALUE,
+    },
   };
 }

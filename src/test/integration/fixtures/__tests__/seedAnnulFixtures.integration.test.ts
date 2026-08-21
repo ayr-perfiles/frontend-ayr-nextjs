@@ -30,7 +30,7 @@ describe("seedAnnulFixtures", () => {
     db = getAdminDb();
   });
 
-  it("primer run crea las 7 fixtures con los IDs esperados + counts correctos (13 sales + 3 production_logs)", async () => {
+  it("primer run crea las 9 fixtures con los IDs esperados + counts correctos (15 sales + 4 production_logs)", async () => {
     const seeded = await seedAnnulFixtures(db);
 
     expect(seeded.F1_native_happy).toEqual({ saleId: "ANNUL-FIX-C-001", quoteId: "ANNUL-FIX-Q-001" });
@@ -56,25 +56,41 @@ describe("seedAnnulFixtures", () => {
       quoteId: "ANNUL-FIX-Q-F7-001",
     });
 
-    // 13 sales: F1=2, F2=2, F3=2, F4=2, F5=2, F6=1, F7=2. 3 production_logs: F3, F4, F5.
-    // (Corrección aritmética señalada en el reporte previo: el desglose original sumaba
-    // 13, no 12 — el conteo real acá lo confirma.)
-    expect(await countFixtureDocs(db, "sales")).toBe(13);
-    expect(await countFixtureDocs(db, "production_logs")).toBe(3);
+    expect(seeded.F8_quotation_self_block).toEqual({
+      quoteId: "ANNUL-FIX-Q-F8-001",
+      logId: "ANNUL-FIX-LOG-F8-001",
+    });
+    expect(seeded.F9_quotation_self_no_prod).toEqual({
+      quoteId: "ANNUL-FIX-Q-F9-001",
+      stockSku: "COB030ROJO",
+    });
+    expect(seeded.stockBaseline).toEqual({
+      sku: "COB030ROJO",
+      quantity: 100,
+      avgCost: 7.86,
+      totalValue: 786,
+    });
+
+    // 15 sales: F1=2, F2=2, F3=2, F4=2, F5=2, F6=1, F7=2, F8=1, F9=1.
+    // 4 production_logs: F3, F4, F5, F8.
+    // El doc de stock lleva el mismo flag pero vive en metallic_roofing_stock,
+    // otra coleccion — no entra en ninguno de estos dos conteos.
+    expect(await countFixtureDocs(db, "sales")).toBe(15);
+    expect(await countFixtureDocs(db, "production_logs")).toBe(4);
   });
 
-  it("segundo run con clean:true (default) borra los fixtures previos y no acumula (sigue en 13+3)", async () => {
+  it("segundo run con clean:true (default) borra los fixtures previos y no acumula (sigue en 15+4)", async () => {
     await seedAnnulFixtures(db);
     await seedAnnulFixtures(db);
 
-    expect(await countFixtureDocs(db, "sales")).toBe(13);
-    expect(await countFixtureDocs(db, "production_logs")).toBe(3);
+    expect(await countFixtureDocs(db, "sales")).toBe(15);
+    expect(await countFixtureDocs(db, "production_logs")).toBe(4);
   });
 
   it("clean:false no borra fixtures previos ajenos (IDs propios se sobreescriben por ser deterministicos, no se duplican)", async () => {
-    await seedAnnulFixtures(db); // baseline limpio: 13+3
+    await seedAnnulFixtures(db); // baseline limpio: 15+4
 
-    // Doc ajeno con el mismo flag, ID fuera del set de 16 IDs deterministicos del seeder.
+    // Doc ajeno con el mismo flag, ID fuera del set de IDs deterministicos del seeder.
     await db.collection("sales").doc("ANNUL-FIX-EXTRA-001").set({
       status: "COMPLETED",
       customerName: "EXTRA AJENO",
@@ -83,9 +99,9 @@ describe("seedAnnulFixtures", () => {
 
     await seedAnnulFixtures(db, { clean: false });
 
-    // El extra sobrevive (clean:false no borró nada); los 13 de siempre se sobreescriben
-    // por tener el mismo ID, no se duplican -> total 14, no 30.
-    expect(await countFixtureDocs(db, "sales")).toBe(14);
+    // El extra sobrevive (clean:false no borró nada); los 15 de siempre se sobreescriben
+    // por tener el mismo ID, no se duplican -> total 16, no 31.
+    expect(await countFixtureDocs(db, "sales")).toBe(16);
     const extraSnap = await db.collection("sales").doc("ANNUL-FIX-EXTRA-001").get();
     expect(extraSnap.exists).toBe(true);
   });
@@ -125,6 +141,57 @@ describe("seedAnnulFixtures", () => {
 
     expect(saleSnap.data()?.originQuoteId).toBeUndefined();
     expect(saleSnap.data()?.relatedQuotationId).toBeUndefined();
+  });
+
+  it("F8: cotizacion NATIVA en QUOTATION (mode self) con log ACTIVE sobre SI MISMA", async () => {
+    const seeded = await seedAnnulFixtures(db);
+    const quoteSnap = await db.collection("sales").doc(seeded.F8_quotation_self_block.quoteId).get();
+    const logSnap = await db.collection("production_logs").doc(seeded.F8_quotation_self_block.logId).get();
+
+    expect(quoteSnap.data()?.status).toBe("QUOTATION");
+    // NATIVA: sin las 2 marcas de importada (isImportedQuotation las mira a ambas).
+    expect(quoteSnap.data()?.relatedSaleId).toBeUndefined();
+    expect(quoteSnap.data()?.metadata?.isQuotation).toBeUndefined();
+
+    expect(logSnap.data()?.status).toBe("ACTIVE");
+    // El log cuelga de la PROPIA cotizacion, no de una venta gemela.
+    expect(logSnap.data()?.source?.id).toBe(seeded.F8_quotation_self_block.quoteId);
+    expect(logSnap.data()?.source?.type).toBe("QUOTE");
+  });
+
+  it("F9: cotizacion NATIVA en QUOTATION sin ningun production_log", async () => {
+    const seeded = await seedAnnulFixtures(db);
+    const quoteSnap = await db.collection("sales").doc(seeded.F9_quotation_self_no_prod.quoteId).get();
+
+    expect(quoteSnap.data()?.status).toBe("QUOTATION");
+    expect(quoteSnap.data()?.relatedSaleId).toBeUndefined();
+
+    const logs = await db
+      .collection("production_logs")
+      .where("source.id", "==", seeded.F9_quotation_self_no_prod.quoteId)
+      .get();
+    expect(logs.size).toBe(0);
+  });
+
+  it("stock baseline: el seeder deja metallic_roofing_stock en el numero declarado", async () => {
+    const seeded = await seedAnnulFixtures(db);
+    const stockSnap = await db.collection("metallic_roofing_stock").doc(seeded.stockBaseline.sku).get();
+
+    expect(stockSnap.exists).toBe(true);
+    expect(stockSnap.data()?.quantity).toBe(seeded.stockBaseline.quantity);
+    expect(stockSnap.data()?.avgCost).toBe(seeded.stockBaseline.avgCost);
+    expect(stockSnap.data()?.totalValue).toBe(seeded.stockBaseline.totalValue);
+  });
+
+  it("stock baseline: un seed posterior PISA el doc aunque un test lo haya movido", async () => {
+    const seeded = await seedAnnulFixtures(db);
+    const ref = db.collection("metallic_roofing_stock").doc(seeded.stockBaseline.sku);
+
+    await ref.update({ quantity: 999 });
+    expect((await ref.get()).data()?.quantity).toBe(999);
+
+    await seedAnnulFixtures(db);
+    expect((await ref.get()).data()?.quantity).toBe(seeded.stockBaseline.quantity);
   });
 
   it("F7: sale.costSyncedAt existe y totalCost difiere del de la quote original (D3, costo sincronizado)", async () => {

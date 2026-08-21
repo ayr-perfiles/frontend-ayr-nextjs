@@ -35,6 +35,40 @@ describe("Parity Test: canAnnulSale (client vs functions)", () => {
         ],
       },
     },
+    // ── Casos `self` (status QUOTATION) — los 7 de arriba son todos COMPLETED/VOIDED/
+    // CANCELLED, asi que el path `self` NUNCA tuvo cobertura de paridad. ──
+    {
+      name: "QUOTATION nativa sin logs (mode self)",
+      input: { sale: { id: "C-NAT-9", status: "QUOTATION" }, activeProductionLogs: [] },
+    },
+    {
+      name: "QUOTATION nativa CON log ACTIVE propio (mode self)",
+      input: {
+        sale: { id: "C-NAT-9", status: "QUOTATION" },
+        activeProductionLogs: [{ id: "LOG-9", status: "ACTIVE", source: { type: "QUOTE", id: "C-NAT-9" } }],
+      },
+    },
+    {
+      name: "QUOTATION nativa con log VOIDED propio (mode self) -> no bloquea",
+      input: {
+        sale: { id: "C-NAT-9", status: "QUOTATION" },
+        activeProductionLogs: [{ id: "LOG-10", status: "VOIDED", source: { type: "QUOTE", id: "C-NAT-9" } }],
+      },
+    },
+    {
+      name: "percha IMPORTADA en QUOTATION con log ACTIVE (tambien es mode self)",
+      input: {
+        sale: { id: "COT-IMP-9", status: "QUOTATION", relatedQuotationId: "COT-IMP-9" },
+        activeProductionLogs: [{ id: "LOG-11", status: "ACTIVE", source: { type: "QUOTE", id: "COT-IMP-9" } }],
+      },
+    },
+    {
+      name: "QUOTATION con log ACTIVE de OTRA cotizacion -> no debe bloquear",
+      input: {
+        sale: { id: "C-NAT-9", status: "QUOTATION" },
+        activeProductionLogs: [{ id: "LOG-12", status: "ACTIVE", source: { type: "QUOTE", id: "C-OTRA" } }],
+      },
+    },
   ];
 
   for (const { name, input } of cases) {

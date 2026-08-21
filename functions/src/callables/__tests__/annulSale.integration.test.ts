@@ -141,6 +141,90 @@ describe("annulSale (callable)", () => {
     });
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // Path `self` — un doc con status QUOTATION. `resolveSaleQuotationLink` lo
+  // clasifica como mode:"self" ANTES de mirar relatedQuotationId/originQuoteId
+  // (saleQuotationLink.ts:26-28), y tanto la query de logs (sales.ts:88) como el
+  // bloqueo (canAnnulSale.ts:39) están gateados a mode==="linked" → no corren.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  it("F8 self block: cotización QUOTATION con producción ACTIVE -> failed-precondition, sin tocar el doc", async () => {
+    await expect(invokeAsAdmin(seeded.F8_quotation_self_block.quoteId)).rejects.toMatchObject({
+      code: "failed-precondition",
+      message: expect.stringContaining("producci"),
+    });
+
+    const quoteSnap = await db.collection("sales").doc(seeded.F8_quotation_self_block.quoteId).get();
+    expect(quoteSnap.data()?.status).toBe("QUOTATION");
+    expect(quoteSnap.data()?.voidedAt).toBeUndefined();
+  });
+
+  it("F8 self block: el error trae details con quotationId y activeLogIds (mismo shape que el bloqueo linked)", async () => {
+    await expect(invokeAsAdmin(seeded.F8_quotation_self_block.quoteId)).rejects.toMatchObject({
+      details: {
+        quotationId: seeded.F8_quotation_self_block.quoteId,
+        activeLogIds: [seeded.F8_quotation_self_block.logId],
+      },
+    });
+  });
+
+  it("F9 self sin producción: sigue anulándose OK (no-regresión — el bloqueo es por producción, no por status)", async () => {
+    const res = await invokeAsAdmin(seeded.F9_quotation_self_no_prod.quoteId);
+    expect(res).toEqual({ success: true });
+
+    const quoteSnap = await db.collection("sales").doc(seeded.F9_quotation_self_no_prod.quoteId).get();
+    expect(quoteSnap.data()?.status).toBe("VOIDED");
+    expect(quoteSnap.data()?.voidedBy).toBe("admin@fixture.com");
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // STOCK FANTASMA — una cotización NUNCA descuenta stock al crearse
+  // (createQuotation no llama a ninguna strategy; el importador atribuye el
+  // descuento a la VENTA, no a la percha). Anularla NO debe devolver nada.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  it("F9 stock fantasma: anular una QUOTATION NO incrementa metallic_roofing_stock", async () => {
+    const stockRef = db.collection("metallic_roofing_stock").doc(seeded.F9_quotation_self_no_prod.stockSku);
+
+    const before = await stockRef.get();
+    expect(before.data()?.quantity).toBe(seeded.stockBaseline.quantity);
+
+    const res = await invokeAsAdmin(seeded.F9_quotation_self_no_prod.quoteId);
+    expect(res).toEqual({ success: true });
+
+    const after = await stockRef.get();
+    // La cotización lleva METALLIC_ITEM con quantity 10 — hoy el loop de items
+    // (sales.ts:154-199, sin gate de status) hace writeSaleReversal y suma esos 10.
+    expect(after.data()?.quantity).toBe(seeded.stockBaseline.quantity);
+    expect(after.data()?.avgCost).toBe(seeded.stockBaseline.avgCost);
+    expect(after.data()?.totalValue).toBe(seeded.stockBaseline.totalValue);
+  });
+
+  it("F9 stock fantasma: tampoco escribe un movimiento de stock", async () => {
+    const movesCol = db.collection("metallic_roofing_stock_movements");
+    const countBefore = (await movesCol.get()).size;
+
+    await invokeAsAdmin(seeded.F9_quotation_self_no_prod.quoteId);
+
+    const countAfter = (await movesCol.get()).size;
+    expect(countAfter).toBe(countBefore);
+  });
+
+  it("F2 no-regresión de stock: anular una VENTA COMPLETED SÍ devuelve el stock, idéntico a antes", async () => {
+    const stockRef = db.collection("metallic_roofing_stock").doc(seeded.stockBaseline.sku);
+    const countBefore = (await db.collection("metallic_roofing_stock_movements").get()).size;
+
+    const res = await invokeAsAdmin(seeded.F2_imported_happy.saleId);
+    expect(res).toEqual({ success: true });
+
+    const after = await stockRef.get();
+    // METALLIC_ITEM.quantity === 10 → la venta devuelve 10 unidades al stock.
+    expect(after.data()?.quantity).toBe(seeded.stockBaseline.quantity + 10);
+
+    const countAfter = (await db.collection("metallic_roofing_stock_movements").get()).size;
+    expect(countAfter).toBe(countBefore + 1);
+  });
+
   it("Auth: sin auth -> unauthenticated", async () => {
     await expect(
       wrapped({ data: { saleId: seeded.F1_native_happy.saleId } }),

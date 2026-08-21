@@ -7,6 +7,7 @@ import { resolveSaleTwinPath } from "../domain/annulment/resolveSaleTwinPath";
 import { buildAnnulmentCascade } from "../domain/annulment/buildAnnulmentCascade";
 import { translateCascadeFields } from "../utils/translateCascadeFields";
 import { getStockStrategy } from "../domain/strategies";
+import { hasActiveProductionForQuote, type ActiveProductionLog } from "../utils/hasActiveProductionForQuote";
 
 export interface AnnulSaleData {
   saleId: string;
@@ -84,14 +85,13 @@ export const annulSale = onCall<AnnulSaleData>(async (request) => {
   };
 
   const link = resolveSaleQuotationLink(saleLinkInput);
-  let activeLogs: Array<{ id: string; status: string; source?: { type: string; id: string } }> = [];
-  if (link.mode === "linked") {
-    const logsSnap = await db.collection("production_logs").where("source.id", "==", link.quotationId).get();
-    activeLogs = logsSnap.docs.map((d) => ({
-      id: d.id,
-      status: d.data().status as string,
-      source: d.data().source as { type: string; id: string } | undefined,
-    }));
+  // `self` (el doc ES la cotizacion, status QUOTATION) tambien se chequea: hasta
+  // v6.52.1 este gate era solo `linked` y dejaba anular una cotizacion con produccion
+  // viva. La query vive en `hasActiveProductionForQuote` (utils/) para que el futuro
+  // callable de edicion consuma el MISMO pre-check sin importar desde un callable.
+  let activeLogs: ActiveProductionLog[] = [];
+  if (link.mode === "linked" || link.mode === "self") {
+    activeLogs = (await hasActiveProductionForQuote(link.quotationId, db)).allLogs;
   }
 
   const canResult = canAnnulSale({ sale: saleLinkInput, activeProductionLogs: activeLogs });
@@ -129,7 +129,15 @@ export const annulSale = onCall<AnnulSaleData>(async (request) => {
       throw new HttpsError("failed-precondition", "Esta venta ya ha sido anulada.");
     }
 
-    const items = (saleData.items ?? []) as AnnulSaleItem[];
+    // Solo un doc COMPLETED descontó stock al crearse: `createQuotation` no llama a
+    // ninguna strategy, y el importador atribuye el descuento a la VENTA, nunca a la
+    // percha (`import/page.tsx`, saleId: sale.documentNumber). Anular un doc que nunca
+    // descontó devolvia stock FANTASMA — verificado en prod: 0 movimientos de stock
+    // referencian una cotizacion, sobre 1.178 movimientos barridos.
+    // Allowlist POSITIVA a proposito (fail-safe): un status nuevo que llegue hasta aca
+    // NO toca stock, en vez de tocarlo por omision.
+    const movedStock = saleData.status === "COMPLETED";
+    const items = movedStock ? ((saleData.items ?? []) as AnnulSaleItem[]) : [];
 
     // ── LECTURAS (todas antes de cualquier escritura, exigencia de Firestore) ──
     // Port 1:1 de salesService.ts:415-436 (annulSale client-side) a Admin SDK.
