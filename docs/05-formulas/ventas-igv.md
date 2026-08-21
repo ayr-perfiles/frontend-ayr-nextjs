@@ -1,7 +1,7 @@
 # Fórmulas — Ventas, IGV y Compras
 
 > Estado: Vigente
-> Última verificación: 2026-07-07 · commit `71250ae6`
+> Última verificación: 2026-08-20 (cierre del frente EDITAR — F-V6 actualizada: `updateQuotation` borrada, `cartLogic.ts` nuevo; el resto de las fichas siguen en su verificación de 2026-07-07 · commit `71250ae6`)
 > Fuente de verdad: el CÓDIGO. Este doc se valida contra él, no al revés.
 > Relacionado: CLAUDE.md v6.21 §11 · ADR-004 (superseded) · ADR-008 (NC/ND) · ADR-009 · `modelo-de-costeo.md`
 
@@ -149,13 +149,24 @@ SALIDA y AJUSTE no tocan `avgCost`. Nota: a diferencia de `registerPurchase`, es
 
 ## F-V6 · Totales de venta / margen
 
-**Acumulación de carrito** (`src/core/sales/services/salesService.ts:83-88`, copiada 3× en processSale/createQuotation/updateQuotation):
+**Acumulación de carrito — capa SERVICIO** (`src/core/sales/services/salesService.ts:89` y `:185`, copiada **2×** en `processSale`/`createQuotation`):
 ```typescript
 totalAmount += item.quantity * item.unitPrice;
 totalCost   += item.quantity * item.baseCost;
 totalWeight += item.quantity * (item.unitWeight ?? 0);
 // totalProfit: totalAmount - totalCost
 ```
+> ⚠️ **Actualizado 2026-08-20 — eran 3 copias, ahora son 2.** La tercera vivía en `updateQuotation`, **borrada** en v6.53.0 (D6): estaba fuera del builder canónico v6.28 y su `totalProfit` restaba sobre el monto **CON** IGV, o sea una fórmula distinta de la del builder. Su reemplazo, el callable `editQuotation`, delega los totales a `buildQuotationDoc` — no acumula nada por su cuenta. Ver [`docs/modules/ventas.md`](../modules/ventas.md) §16.
+
+**Acumulación de carrito — capa UI (POS), fórmula DISTINTA** (`src/core/sales/cartLogic.ts:32` `computeCartTotals`):
+```typescript
+totalValue     = Σ quantity × unitValue;   // SIN IGV
+totalAmount    = Σ quantity × unitPrice;   // CON IGV
+totalIGV       = totalAmount − totalValue;
+projectedProfit = totalValue − totalCost;                       // margen SIN IGV
+marginPercent   = totalValue > 0 ? projectedProfit/totalValue*100 : 0;
+```
+No es una 3ª copia de la fórmula de arriba: el margen del POS se calcula **sobre `totalValue` (sin IGV)**, no sobre `totalAmount`. Extraída en v6.53.0 del inline de `sales/new/page.tsx` para que la página de edición de cotización la reuse; `cartLogic.test.ts` guarda una copia **textual** de las 2 fórmulas viejas y assertea igualdad contra ellas (el inline se borró recién con esa parity en verde). El guard `totalValue > 0` evita `NaN`/`Infinity` con carrito vacío.
 
 **Totales agregados server-side** (`salesService.ts:542-547`): `getAggregateFromServer` con `count() + sum(totalAmount/totalProfit/totalWeight)` sobre el set filtrado completo (cacheado al paginar, flag `skipAggregates`). También en `reportsService.ts:61` y `kardexService.ts:62`.
 

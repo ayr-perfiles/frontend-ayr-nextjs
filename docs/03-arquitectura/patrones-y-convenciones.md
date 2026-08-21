@@ -1,7 +1,7 @@
 # Patrones y Convenciones — Estado Real (no aspiracional)
 
 > Estado: Vigente
-> Última verificación: 2026-07-07 · commit `71250ae6`
+> Última verificación: 2026-08-20 (§3 re-verificada al cierre del frente EDITAR — los 13 pares de paridad chequeados uno por uno contra los `import` de sus tests; el resto del doc sigue en su verificación de 2026-07-07 · commit `71250ae6`)
 > Fuente de verdad: el CÓDIGO. Este doc se valida contra él, no al revés.
 > Relacionado: CLAUDE.md v6.21 §8, §10, §11 · ADR-003/004/009/010/011 · docs/05-formulas/
 
@@ -54,16 +54,33 @@ Este doc lista cada patrón núcleo con su regla, dónde se cumple y — honesta
 
 **Regla:** la lógica de cálculo vive en funciones puras (`functions/src/domain/` como canónico); si el cliente necesita la misma fórmula (preview), se mantiene copia con `// SYNC-MARKER` + test de paridad que importa ambas.
 
-**✅ Pares con SYNC-MARKER + test de paridad:**
-| Backend | Cliente | Test |
-|---|---|---|
-| `coilPricing.ts` | `src/core/coils/domain/coilPricing.ts` | `coilPricing.test.ts` |
-| `coilProduction.ts` | `src/modules/metallic-roofing/domain/coilProduction.ts` | `coilProduction.parity.test.ts` |
-| `drywallProduction.ts` | `src/modules/drywall/domain/drywallProduction.ts` | `drywallProduction.parity.test.ts` |
-| `scrap.ts` | `src/core/coils/domain/scrap.ts` | `scrap.test.ts` (paridad solo `validateScrapRequest`) |
-| `finishCompat.ts` | `src/core/coils/domain/finishCompat.ts` | tests propios |
+**✅ Pares con SYNC-MARKER + test de paridad** *(tabla completada 2026-08-20 — le faltaban los 4 dominios agregados entre v6.50.0 y v6.53.0)*:
+
+| Backend (`functions/src/domain/`) | Cliente | Test | Desde |
+|---|---|---|---|
+| `coilPricing.ts` | `src/core/coils/domain/coilPricing.ts` | `coilPricing.test.ts` | — |
+| `coilProduction.ts` | `src/modules/metallic-roofing/domain/coilProduction.ts` | `coilProduction.parity.test.ts` | — |
+| `drywallProduction.ts` | `src/modules/drywall/domain/drywallProduction.ts` | `drywallProduction.parity.test.ts` | — |
+| `scrap.ts` | `src/core/coils/domain/scrap.ts` | `scrap.test.ts` (paridad solo `validateScrapRequest`) | — |
+| `finishCompat.ts` | `src/core/coils/domain/finishCompat.ts` | tests propios | — |
+| `annulment/saleQuotationLink.ts` | `src/core/sales/saleProductionLink.ts` | `annulment/__tests__/saleQuotationLink.parity.test.ts` | v6.50.0 |
+| `annulment/canAnnulSale.ts` | `src/core/sales/annulment/canAnnulSale.ts` | `annulment/__tests__/canAnnulSale.parity.test.ts` | v6.50.0 |
+| `annulment/resolveSaleTwinPath.ts` | `src/core/sales/annulment/resolveSaleTwinPath.ts` | `annulment/__tests__/resolveSaleTwinPath.parity.test.ts` | v6.50.0 |
+| `annulment/buildAnnulmentCascade.ts` | `src/core/sales/annulment/buildAnnulmentCascade.ts` | `annulment/__tests__/buildAnnulmentCascade.parity.test.ts` | v6.50.0 |
+| `fulfillmentLogic.ts` (`hasActiveProduction`) | `src/core/production/fulfillmentLogic.ts` | `__tests__/fulfillmentLogic.parity.test.ts` | v6.52.1 |
+| `quotation/buildQuotationDoc.ts` (`buildSaleDoc` + `buildQuotationDoc`) | `src/core/sales/domain/saleDocBuilder.ts` | `quotation/__tests__/buildQuotationDoc.parity.test.ts` | **v6.53.0** |
+| `quotation/isImportedQuotation.ts` | `src/core/import/salesImportLogic.ts:9` | `quotation/__tests__/isImportedQuotation.parity.test.ts` | **v6.53.0** |
+| `catalog/classifyLine.ts` | `src/core/import/catalogImport.ts:83` | `catalog/__tests__/classifyLine.parity.test.ts` | **v6.53.0** |
+
+**Los 4 bloqueos al import cross-boundary** (por qué se duplica en vez de importar de `src/`): `rootDir`/`TS6059` · `firebase.json source:"functions"` acota el deploy · el alias `@/` (functions no declara `paths`) · y —descubierto en v6.53.0— **un import de módulo pesado en el archivo origen**: `catalogImport.ts:1` importa `xlsx` a nivel de módulo, así que traer `classifyLine` de ahí arrastraría el paquete entero al bundle del callable. Por eso se porta la **función**, nunca el archivo.
+
+**⚠️ Excepciones deliberadas (NO son gaps):**
+- `parseAnnulError.ts` / `parseEditError.ts` son **solo cliente** — clasifican el `FunctionsError` que lanza el SDK del browser, no tienen sentido server-side.
+- `hasActiveProductionForQuote` vive en `functions/src/utils/`, **no** en `domain/`: hace I/O (query a `production_logs`), y `domain/` es puro. Precedente: `translateCascadeFields.ts`.
+- `calcCoverageWeightKg` **no** se copió con el builder y no falta: el builder nunca calcula peso, solo lee `calculatedWeight` y hace passthrough de `weightSnapshot`.
 
 **⚠️ GAPS:**
+- **`canAnnulSale` cliente tiene 0 consumidores** — existe únicamente como fuente de paridad de la copia server. Se mantiene en sync a mano en cada cambio. Candidata a borrado si nunca se cablea (ver deudas de v6.52.1).
 - `calculateWeightedAverageCost` tiene una **tercera copia** en `src/modules/drywall/domain/costing.ts:54` sin SYNC-MARKER ni test cruzado.
 - El WAC de `produceFromCoils` está inline en el callable (`production.ts:152-157`), no extraído a domain ni testeado como dominio.
 - `computePricePerKg` (domain) no es llamada por los callables — estos llevan copias inline (F-C1).

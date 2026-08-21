@@ -1,7 +1,7 @@
 # Índice de Fórmulas — AYR Steel ERP
 
 > Estado: Vigente
-> Última verificación: 2026-07-07 · commit `71250ae6`
+> Última verificación: 2026-08-20 (cierre del frente EDITAR — F-V6 y `classifyLine` actualizados; el resto del índice sigue en su verificación de 2026-07-07 · commit `71250ae6`)
 > Fuente de verdad: el CÓDIGO. Este doc se valida contra él, no al revés.
 > Relacionado: CLAUDE.md v6.21 §15 · `modelo-de-costeo.md` (principios) · `_TEMPLATE.md` (ficha estándar)
 
@@ -69,7 +69,7 @@
 | F-V3 | `writeSaleReversal` | Devolución NC/anulación al `frozenCost` + re-blend | `src/core/sales/strategies/index.ts:207` |
 | F-V4 | WAC `registerPurchase` / `voidPurchase` | Re-blend en compra; reversa aproximada — solo roofing/trading | `src/core/purchases/service.ts:81,194` |
 | F-V5 | CPP ajuste manual ×3 | Ver costeo-pvc | `stockAdjustmentService.ts` ×3 |
-| F-V6 | Totales/margen/aggregates | Carrito, `getAggregateFromServer`, margen ×5 en reportes | `salesService.ts:83,542` · `reportFunctions.ts` |
+| F-V6 | Totales/margen/aggregates | Carrito (servicio ×2 + `cartLogic.ts` de UI), `getAggregateFromServer`, margen ×5 en reportes | `salesService.ts:89,185` · `src/core/sales/cartLogic.ts:32` · `reportFunctions.ts` |
 | F-V7 | `calcPesoKg` | Unidad→kg del importador SUNAT (con fallback flageado) | `src/utils/importHelpers.ts:9` |
 
 ### Otras (sin ficha dedicada aún — código como referencia)
@@ -81,5 +81,5 @@
 | `calcCoverageWeightKg` | Peso de cobertura/plancha al vender (snapshot en carrito) | `src/modules/metallic-roofing/domain/coverageWeightCalc.ts:45` |
 | `buildAluzincSalesReport` / `buildAluzincCostReport` / `buildAluzincProfitSummary` | Reportes P-M3/P-M7: S/·kg⁻¹, margen %, ganancia operativa − merma | `src/modules/metallic-roofing/domain/aluzinc*.ts` |
 | `calculateTotalMermaSoles` | Suma de merma excluyendo VOIDED (in-memory, retrocompat) | `src/core/reports/services/reportFunctions.ts:867` |
-| `classifyLine` | Clasificador SKU→línea del importador (única definición) | `src/core/import/catalogImport.ts:83` |
+| `classifyLine` | Clasificador SKU→línea del importador. ⚠️ **YA NO es definición única** (2026-08-20): tiene copia server-side con parity test | `src/core/import/catalogImport.ts:83` **+** `functions/src/domain/catalog/classifyLine.ts:38` |
 | Correlativos SUNAT | Contador atómico `padStart(6,'0')` | `functions/src/services/correlative.ts:8` |

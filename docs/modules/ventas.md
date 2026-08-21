@@ -1,16 +1,27 @@
 # MÓDULO: ventas (sales) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-19 (annulSale bloquea con producción viva, §15).
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-20 (frente EDITAR cerrado — callable `editQuotation`, §16).
 > ⚠️ SE PUDRE. Antes de tocar lógica/costeo/writes de ventas: verificá (checklist §11). No confíes si la fecha está vieja.
 > ⚠️ **§4 de este doc describe el modelo PRE-2026-08-18, hoy OBSOLETO en la parte de agregados de `/admin/sales`. Ver §14 antes de confiar en §4.**
+> ⚠️ **§15 describe `annulSale` como client-side. Eso quedó OBSOLETO en v6.50.0 (swap a callable) y v6.52.1 (bloqueo `self` + gate de stock). La verdad viva de anulación es [`docs/modules/annulment.md`](annulment.md), no §15 — que se conserva por el contexto de #9-B.2b.**
 
 ## 1. Escritores vivos de `sales` (5)
 1. `src/app/admin/sales/import/page.tsx` — importador masivo. **Client-side directo** (`runTransaction`/`writeBatch`), NO pasa por callable. WRITE 9 pendiente (§9 roadmap CLAUDE.md) migrará esto.
-2. `src/core/sales/services/salesService.ts:40` `processSale` — venta normal (POS).
-3. `src/core/sales/services/salesService.ts:161` `createQuotation` — cotización comercial.
+2. `src/core/sales/services/salesService.ts:43` `processSale` — venta normal (POS).
+3. `src/core/sales/services/salesService.ts:159` `createQuotation` — cotización comercial.
 4. `src/app/admin/patch-sales/page.tsx` — parche manual admin.
 5. `functions-sunat/src/sunat/callables.ts` — SOLO metadata fiscal (no toca montos/items).
 
-`salesService.ts` también tiene `approveQuotation` (:219), `annulSale` (:344), `updateQuotation` (:629), `cancelQuotation` (:683) — mutan `sales` existentes, no son altas nuevas.
+**Mutadores de `sales` ya existentes** (no son altas nuevas). ⚠️ Los offsets se corren con cada edición del archivo — `grep -n "export const"` antes de confiar:
+
+| Mutador | Dónde | Naturaleza |
+|---|---|---|
+| `confirmQuotationForProduction` | `salesService.ts:221` | client-side |
+| `approveQuotation` | `salesService.ts:249` | client-side |
+| `annulSale` | `salesService.ts:379` | **wrapper thin** de callable (v6.50.0) — ver [`annulment.md`](annulment.md) |
+| `editQuotation` | `salesService.ts:433` | **wrapper thin** de callable (v6.53.0) — ver §16 |
+| `cancelQuotation` | `salesService.ts:697` | client-side |
+
+⚠️ **`updateQuotation` YA NO EXISTE.** Borrada en v6.53.0 (D6): 0 consumidores, 0 tests, fuera del builder canónico v6.28 (no escribía `customerDocument`, no calculaba `profit` por ítem, no armaba `allFlags`), su único guard (`status !== 'QUOTATION'`) no distinguía origen, y su `totalProfit` usaba el monto **CON** IGV — fórmula distinta a la del builder. Si un doc viejo la menciona, ese doc está podrido. El reemplazo es el callable `editQuotation` (§16).
 
 ## 2. Cotización vive en la MISMA colección `sales`
 - `status: 'QUOTATION'` es el discriminante de cotización, no una colección aparte.
@@ -75,6 +86,8 @@ importar factura → nace venta COMPLETED + cotización COT-{documentNumber}
 3. Guard de array vacío en cualquier `where(...,'in', arr)` nuevo sobre `status`.
 4. Cotización importada (`relatedSaleId` presente) → nunca debe ofrecer aprobar/editar como si fuera pendiente real (§5).
 5. Mapeo de doc Firestore → objeto JS: `id` SIEMPRE al final del spread (§8).
+6. ¿Tu cambio escribe sobre un doc de `sales` ya existente? Entonces revisá los invariantes T1/T2 de §16.3 — **nunca** `set()` del output del builder sobre un doc vivo, **nunca** totales que vengan del cliente.
+7. ¿Distinguís nativa de importada? Usá `isImportedQuotation`, **NO** `resolveSaleQuotationLink` (clasifica toda cotización como `self`, §16.1).
 
 ## 12. Refactor v6.28 y Backfills (2026-07-23)
 - **BUILDER CANÓNICO de sales** (`src/core/sales/domain/saleDocBuilder.ts`): `buildSaleDoc`/`buildQuotationDoc` consumidos por los 3 escritores. El builder normaliza la FORMA, no los VALORES (respeta totales del input cuando vienen, PROHIBIDO el spread dentro del builder).
@@ -135,3 +148,88 @@ Antes de este guard, se podía cancelar una percha ya con producción real (`isF
 **Tests:** 10+ nuevos RED→GREEN — unit de `hasActiveProduction` (`fulfillmentLogic.test.ts`) + 5 escenarios de integración contra emulador real (`annulSaleCascade.integration.test.ts`, `src/test/integration/`). Runtime end-to-end validado por el dueño: bloqueo en vivo (intentar anular con producción activa → rechazado) y release (anular producción primero vía void → luego SÍ se puede anular la venta).
 
 **Relación con el fix void 500 (§ ver `docs/modules/metallic.md` §4):** el smoke de cierre de #9-B.2b en prod quedó parcialmente tapado por un bug AJENO — el guard `laterSales` de `voidProductionFromCoils` crasheaba con 500 crudo ante un `timestamp` corrupto en una venta de TEST, lo que bloqueaba poder re-anular producción para probar el release. Ambos frentes se cerraron en la misma sesión; el bug del void NO es de `annulSale` ni de este §15.
+
+## 16. EDITAR una cotización nativa — callable `editQuotation` (2026-08-20, v6.53.0, commits `f80b423d`+`2ccb5643`+`46cb5ba8`)
+
+Editar el carrito de una cotización deja de ser imposible desde la UI y pasa a ser una operación real, **server-side**. Reemplaza a la huérfana `updateQuotation`, que fue borrada (§1).
+
+**Por qué tenía que ser callable y no un `updateDoc` del cliente:** `firestore.rules:78` ya protege `['totalAmount','subtotal','igv','exchangeRate','currency','items','paymentType']` contra update client-side. Cualquier edición del carrito desde el browser da `permission-denied`. No es una preferencia de arquitectura, es la única vía que existe.
+
+### 16.1 Qué se puede editar (allowlist, D1)
+
+**Solo una cotización NATIVA en estado `QUOTATION`.** Nada más.
+
+- Una percha IMPORTADA (`COT-*`, con `relatedSaleId` / `metadata.isQuotation`) **NO se edita**: es el espejo de una factura ya emitida (§5-6), editarla desincronizaría la venta gemela sin propagar nada — venta y percha son copias independientes unidas por 2 strings.
+- Una venta `COMPLETED`/`VOIDED` tampoco: para eso está anular ([`annulment.md`](annulment.md)).
+- Una `CANCELLED`/`CONVERTED` tampoco.
+
+⚠️ **Para distinguir nativa de importada NO sirve `resolveSaleQuotationLink`.** Ese helper clasifica como `mode: "self"` a TODA cotización — nativa E importada — porque el chequeo `status === "QUOTATION"` va PRIMERO (`saleProductionLink.ts:26-28`) y corta antes de mirar `relatedQuotationId`/`originQuoteId`. La señal correcta es `isImportedQuotation` (las 2 marcas que `buildImportWrites` escribe siempre juntas, 130/130 en prod). Este error ya se pagó caro en v6.52.1; ver [`annulment.md`](annulment.md) §0.
+
+### 16.2 Guards del callable, en orden barato→caro
+
+`functions/src/callables/editQuotation.ts` (exportado en `functions/src/index.ts:5`):
+
+| # | Guard | Error |
+|---|---|---|
+| 1 | auth presente + email en el token | `unauthenticated` |
+| 2 | **rol ADMIN-only** (`:112`) | `permission-denied` |
+| 3 | `quotationId` no vacío · al menos 1 ítem | `invalid-argument` |
+| 4 | la cotización existe | `not-found` |
+| 5 | `status === 'QUOTATION'` (`:140`) | `failed-precondition` |
+| 6 | **origen NATIVO** — `isImportedQuotation(preData)` (`:148`) | `failed-precondition` (emite `quotationId`) |
+| 7 | **sin producción ACTIVE** — `hasActiveProductionForQuote(quotationId, db)` (`:158`) | `failed-precondition` (emite `quotationId` + `activeLogIds`) |
+
+⚠️ **D-Q6 — el rol NO es el mismo que el de `annulSale`.** `annulSale` acepta ADMIN **y** SUPERVISOR; `editQuotation` es **ADMIN-only**. Hay un test que ancla la diferencia a propósito — no "unificarlos" sin decisión de negocio.
+
+El guard 7 reusa `hasActiveProductionForQuote` (`functions/src/utils/`, de v6.52.1) — trabaja **directo sobre el `quoteId`**, sin pasar por `resolveSaleQuotationLink`. Bloqueo **total** (D4/D10): editar el carrito de algo que ya se está produciendo corrompería el fulfillment. No hay edición parcial ni cascada.
+
+### 16.3 LOS 2 INVARIANTES — no los rompas
+
+**T1 — el callable NUNCA reenvía totales del cliente al builder.**
+No es solo que `EditQuotationData` no declare `totalAmount`/`totalCost`/`totalProfit`/`totalWeight`: el input del builder se **enumera campo por campo** (`:233-245`), y lo mismo dentro de cada ítem (`:211-229`). **Nunca un spread de `request.data`.** Aceptar totales del cliente reintroduciría exactamente el vector que `firestore.rules` cierra al proteger `totalAmount`. Anclado por test (se manda `totalAmount: 999999` y el doc queda con el del builder) y por el smoke real.
+
+**T2 — NUNCA `set()` del output del builder sobre el doc existente.**
+`buildQuotationDoc` emite un doc de **CREACIÓN** (19 claves). Un `set()` pisaría `productionStatus` (`CONFIRMED` → `PENDING`, o sea: **la cotización saldría de la cola de producción**), más `timestamp`, `isFulfilled`, `confirmedBy`, `confirmedForProductionAt`, `convertedToId`, `costSyncedAt` y `annulledSaleRef`.
+
+En su lugar: **`tx.update()` con un mapa EXPLÍCITO de 14 campos** (`:250-273`) + `updatedAt`/`updatedBy`. Los otros 5 del builder (`status`, `productionStatus`, `paymentStatus`, `sellerId`, `timestamp`) y los 16 de ciclo de vida se preservan **por no estar en el mapa** — esa omisión ES la propiedad que hace segura la operación. Si agregás un campo al mapa, estás decidiendo pisarlo.
+
+### 16.4 Q2(b) — recompute de `baseCost`, con 3 guards
+
+Al editar, el `baseCost` de cada ítem se recomputa contra el WAC vivo — pero solo si `isRecomputable(item)` (`:95-99`). Los 3 casos que **preservan** el costo del input, cada uno por una razón concreta:
+
+- **`isCoil` ⇒ nunca.** Una bobina no tiene WAC: su `baseCost` es `pricePerKg` (**S/ por KG**) y su `quantity` son kilos. El selector de bobina emite `businessLine: "drywall"` + `isCoil`, así que sin el guard el callable leería `inventory_stock/{coilId}` — la colección equivocada, mezclando unidades.
+- **Línea desconocida/vacía ⇒ preserva.** `getStockStrategy('')` **lanza un `Error` genérico**, no un `HttpsError`. El builder en cambio tolera esos ítems (`bl:''` + flag 'linea no resuelta'), así que acá también: preservar es fail-safe.
+- **`WAC <= 0` ⇒ preserva** (`:207`). 7 de 18 SKUs de metallic en prod están en 0 y 8 tienen cantidad negativa. Sin el guard, editar metería basura en el costo.
+
+Solo un `WAC > 0` pisa el `baseCost`.
+
+⚠️ **UNA SOLA pasada del builder, con el `baseCost` resuelto ANTES.** El builder canónico **no es idempotente en las flags**: `const itemFlags = rawItem.flags ? [...rawItem.flags] : []` arranca de las flags del input. El patrón build → recomputar → build dejaría pegada una flag `'sin costo'` de la 1ª pasada aunque el costo ya sea > 0.
+
+### 16.5 Efectos — y los que NO hay
+
+- **Queda `QUOTATION` in-place** (D13). No cambia de estado, no crea un doc nuevo, no consume correlativo.
+- **CERO efectos de stock.** El callable solo LEE docs de stock (para el WAC de Q2(b)); las únicas escrituras son el `tx.update(quoteRef)` y un `audit_logs` con `action: 'EDIT_QUOTATION'` (`:275`). Anclado por test.
+- **Totales por la fórmula del builder** (Q5): profit **por ítem sobre `unitValue`** (sin IGV) — NO `totalAmount − totalCost`, que es lo que hacía la borrada `updateQuotation` con el monto CON IGV.
+- Los maestros `customers`/`contacts` **no** son asunto de la edición (Q7): editar una cotización no muta el CRM.
+
+### 16.6 UI (E3)
+
+- **Ruta `/admin/quotations/[id]/edit`** (D7) — `src/app/admin/quotations/[id]/edit/page.tsx`. **NO se declara en `ROUTE_PERMISSIONS`**: el `.find()` matchea `/admin/quotations` por prefijo y ya la cubre como ADMIN; declararla sería **declaración muerta** (misma trampa del bug de sombra, ver CLAUDE.md).
+- **Botón** en `/admin/quotations` (`page.tsx:163`) gateado por `canEditQuotation(row)` (`src/core/sales/quotationsViewLogic.ts:108`) — allowlist estricta `origin === "NATIVA" && quotationStatus === "QUOTATION"`, espeja el backend para no ofrecer lo que el callable va a rechazar. **No** cubre el bloqueo por producción (eso no se sabe desde la fila): lo aplica el callable y la UI lo muestra con el modal.
+- El form **reusa** `ProductSelector` y `CustomerSection` tal cual; `CartSummary` se extendió con `actions?` (opcional — el modo default con COTIZAR/VENDER queda intacto).
+- **`parseEditError`** (`src/core/sales/parseEditError.ts:51`) — ⚠️ **NO se reusó `parseAnnulError`.** Aquel discrimina el bloqueo de producción **solo por la presencia de `details.quotationId`**, lo cual es correcto para `annulSale` (su único `failed-precondition` con ese campo es el de producción) pero **`editQuotation` tiene DOS guards que emiten `quotationId`** (origen y producción) — reusarlo habría abierto el modal de "producción activa" al intentar editar una IMPORTADA. `parseEditError` discrimina por **`activeLogIds` no vacío**. Regla general: el discriminante tiene que ser el campo que **solo** el caso objetivo produce.
+- **`ProductionBlockedAnnulModal` fue RENOMBRADO a `ProductionBlockedModal`** (`src/components/sales/ProductionBlockedModal.tsx`) — el nombre viejo mentiría al usarlo desde editar. Copy opcional cuyo **default son los strings de anular**, así que `SaleDetailsModal` no cambió de comportamiento.
+
+### 16.7 Dominio duplicado server-side (E1)
+
+`buildQuotationDoc` y `classifyLine` tienen copia server-side con parity tests (48 casos): `functions/src/domain/quotation/buildQuotationDoc.ts`, `functions/src/domain/quotation/isImportedQuotation.ts`, `functions/src/domain/catalog/classifyLine.ts`. Ver [`docs/03-arquitectura/patrones-y-convenciones.md`](../03-arquitectura/patrones-y-convenciones.md) §3.
+
+**Son 4 los bloqueos al import cross-boundary, no 3:** `rootDir`/`TS6059` · `firebase.json source:"functions"` · el alias `@/` (functions no declara `paths`) · y el 4º: `catalogImport.ts:1` importa `xlsx` **a nivel de módulo**, así que traer `classifyLine` de ahí arrastraría el paquete entero al bundle del callable. Por eso se porta **solo** esa función.
+
+⚠️ **`calcCoverageWeightKg` NO se copió, y no falta:** el builder nunca calcula peso — solo lee `calculatedWeight` y hace passthrough de `weightSnapshot`.
+
+### 16.8 Estado en PROD (2026-08-20)
+
+⚠️ **El universo editable está VACÍO: 0 cotizaciones nativas en `QUOTATION`.** La única nativa (`C-000020`) está `CANCELLED`; las 130 en `QUOTATION` son perchas importadas. **El botón no aparece en ninguna fila hasta que se cree una cotización nativa. Es correcto y esperado, no un bug.**
+
+**Refactor del POS asociado:** `computeCartTotals`/`addItemToCart` se extrajeron del inline de `sales/new/page.tsx` a `src/core/sales/cartLogic.ts` para que la página de edición los reuse. `cartLogic.test.ts` guarda una copia **textual** de las 2 fórmulas viejas y assertea igualdad contra ellas — el inline se borró recién con esa parity en verde. Diff del POS `−33/+12`, sin ningún cambio de fórmula. Ver [`docs/05-formulas/ventas-igv.md`](../05-formulas/ventas-igv.md) F-V6.

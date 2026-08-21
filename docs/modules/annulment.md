@@ -1,5 +1,5 @@
 # MÓDULO: annulment (anulación de venta, `annulSale`) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-20 (v6.52.1, fix bloqueo `self` + gate de stock, commit `91fdbb81`, backend desplegado a test Y prod con smoke real 18/18 y 12/12).
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-20 (v6.52.1, fix bloqueo `self` + gate de stock, commit `91fdbb81`, backend desplegado a test Y prod con smoke real 18/18 y 12/12; re-verificado al cierre de v6.53.0 — el frente EDITAR no cambió lógica de anulación, solo renombró el modal de bloqueo, §5).
 > ⚠️ SE PUDRE. Antes de tocar `annulSale`/rules de `sales.status`: verificá (checklist). No confíes si la fecha está vieja.
 
 ## 0. ⚠️ LOS 2 GATES QUE HAY QUE MIRAR SIEMPRE (v6.52.1)
@@ -55,7 +55,8 @@ a propósito**: un status nuevo que llegue ahí NO toca stock.
 
 ## 5. UI
 - `src/components/sales/SaleDetailsModal.tsx` — `handleAnnul`: llama `annulSale({saleId})` (sin `userEmail`, viene de `request.auth.token.email` server-side), en el `catch` usa `parseAnnulError(error)` para decidir modal vs toast.
-- `src/components/sales/ProductionBlockedAnnulModal.tsx` — se dispara si `parsed.type==='production-block' && parsed.quotationId`. CTA "Ir a anular producción" navega a `/admin/lines/metallic-roofing/production/queue` (sin filtro por quote — scope futuro).
+- `src/components/sales/ProductionBlockedModal.tsx` — se dispara si `parsed.type==='production-block' && parsed.quotationId`. CTA "Ir a anular producción" navega a `/admin/lines/metallic-roofing/production/queue` (sin filtro por quote — scope futuro).
+  - ⚠️ **RENOMBRADO en v6.53.0** (era `ProductionBlockedAnnulModal.tsx`): el frente EDITAR lo reusa desde la edición de cotización, y el nombre viejo mentiría. Los strings de copy pasaron a ser props opcionales cuyo **default son los textos de anular**, así que el comportamiento de `SaleDetailsModal` no cambió. `parseAnnulError` sigue siendo exclusivo de anulación — editar usa `parseEditError`, que discrimina por `activeLogIds` en vez de por `quotationId` (ver `docs/modules/ventas.md` §16.6).
 - ⚠️ **DEUDA:** en un smoke real de browser (prod) el modal no disparó, cayó a toast plano — investigado a fondo (body HTTP crudo del callable + código fuente de ambos SDKs, todo correcto), sin repro, hipótesis timing de cache Vercel edge post-deploy. Ver CLAUDE.md deudas v6.50.0.
 
 ## 6. Firestore rules (`firestore.rules:64-80`, colección `sales`)
