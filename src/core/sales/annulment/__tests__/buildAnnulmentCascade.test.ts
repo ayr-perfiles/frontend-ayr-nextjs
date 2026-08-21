@@ -68,7 +68,7 @@ describe("buildAnnulmentCascade", () => {
     });
   });
 
-  it("twinPath imported -> writes.length === 2, quote SOLO con annulledSaleRefs ARRAY_UNION (sin status/productionStatus/isFulfilled)", () => {
+  it("twinPath imported (INVERTIDO) -> writes.length === 2, quote recibe status:'CANCELLED' + annulledSaleRefs ARRAY_UNION (la percha sale de la cola de producción)", () => {
     const plan = buildAnnulmentCascade({
       sale: { ...baseSale, relatedQuotationId: "COT-IMP-1" },
       twinPath: "imported",
@@ -79,8 +79,8 @@ describe("buildAnnulmentCascade", () => {
     const quoteWrite = plan.writes[1];
     expect(quoteWrite.target).toBe("quote");
     expect(quoteWrite.docPath).toBe("sales/COT-IMP-1");
-    expect(Object.keys(quoteWrite.fields)).toEqual(["annulledSaleRefs"]);
-    expect(quoteWrite.fields.status).toBeUndefined();
+    expect(Object.keys(quoteWrite.fields)).toEqual(["status", "annulledSaleRefs"]);
+    expect(quoteWrite.fields.status).toBe("CANCELLED");
     expect(quoteWrite.fields.productionStatus).toBeUndefined();
     expect(quoteWrite.fields.isFulfilled).toBeUndefined();
 
@@ -155,5 +155,63 @@ describe("buildAnnulmentCascade", () => {
     expect(plan.auditAction).toBe("VOID_SALE");
     expect(plan.auditDetails).toContain("imported");
     expect(plan.auditDetails).toContain("V-1");
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // FIX: la percha de una venta anulada sale de la cola de producción.
+  //
+  // `cancelQuotation` (salesService.ts) bloquea cancelar una percha importada y le
+  // dice al usuario "para revertir, anule la venta" — promesa que la cascada de
+  // anulación no cumplía (solo escribía `annulledSaleRefs`, nunca `status`). Reusa
+  // el mismo `status:'CANCELLED'` que `cancelQuotation` ya usa para nativas: deja
+  // de matchear `PRODUCTION_QUEUE_FILTER` (que exige `status==='QUOTATION'`), sin
+  // inventar un estado nuevo.
+  // ────────────────────────────────────────────────────────────────────────────
+
+  describe("Fix: percha sale de la cola al anular la venta importada", () => {
+    it("imported -> quote.fields.status es 'CANCELLED'", () => {
+      const plan = buildAnnulmentCascade({
+        sale: { ...baseSale, relatedQuotationId: "COT-IMP-CANCEL" },
+        twinPath: "imported",
+        userEmail: "tester@ayr.com",
+      });
+
+      const quoteWrite = plan.writes[1];
+      expect(quoteWrite.fields.status).toBe("CANCELLED");
+    });
+
+    it("imported -> annulledSaleRefs SIGUE presente (el breadcrumb existente no se pierde con el fix)", () => {
+      const plan = buildAnnulmentCascade({
+        sale: { ...baseSale, relatedQuotationId: "COT-IMP-CANCEL" },
+        twinPath: "imported",
+        userEmail: "tester@ayr.com",
+      });
+
+      const quoteWrite = plan.writes[1];
+      expect(quoteWrite.fields.annulledSaleRefs).toBeDefined();
+      expect(String(quoteWrite.fields.annulledSaleRefs)).toContain("ARRAY_UNION:");
+    });
+
+    it("native -> NO recibe status:'CANCELLED' (sigue revirtiendo a 'QUOTATION', comportamiento sin cambios)", () => {
+      const plan = buildAnnulmentCascade({
+        sale: { ...baseSale, originQuoteId: "C-NAT-CANCEL" },
+        twinPath: "native",
+        userEmail: "tester@ayr.com",
+      });
+
+      const quoteWrite = plan.writes[1];
+      expect(quoteWrite.fields.status).toBe("QUOTATION");
+    });
+
+    it("orphan -> sin cambios: writes.length === 1, ningún write de quote", () => {
+      const plan = buildAnnulmentCascade({
+        sale: baseSale,
+        twinPath: "orphan",
+        userEmail: "tester@ayr.com",
+      });
+
+      expect(plan.writes).toHaveLength(1);
+      expect(plan.writes[0].target).toBe("sale");
+    });
   });
 });

@@ -102,6 +102,10 @@ export function buildAnnulmentCascade(input: BuildCascadeInput): AnnulmentCascad
       docPath: `sales/${sale.relatedQuotationId}`,
       op: "update",
       fields: {
+        // Cumple lo que `cancelQuotation` ya le promete al usuario ("para revertir,
+        // anule la venta"): la percha de una venta anulada deja de matchear
+        // PRODUCTION_QUEUE_FILTER (exige status==='QUOTATION') y sale de la cola.
+        status: "CANCELLED",
         annulledSaleRefs: `ARRAY_UNION:${JSON.stringify(ref)}`,
       },
     });
