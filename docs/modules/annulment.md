@@ -1,5 +1,5 @@
 # MÓDULO: annulment (anulación de venta, `annulSale`) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-20 (v6.52.1, fix bloqueo `self` + gate de stock, commit `91fdbb81`, backend desplegado a test Y prod con smoke real 18/18 y 12/12; re-verificado al cierre de v6.53.0 — el frente EDITAR no cambió lógica de anulación, solo renombró el modal de bloqueo, §5).
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-21 (v6.54.0, annul NC inverso, commit `cedbb118`, backend desplegado a test Y prod, runtime real validado contra 2 NC de prod — FFC1-44/FFC1-72 — con before/after crudos; ver §0-bis).
 > ⚠️ SE PUDRE. Antes de tocar `annulSale`/rules de `sales.status`: verificá (checklist). No confíes si la fecha está vieja.
 
 ## 0. ⚠️ LOS 2 GATES QUE HAY QUE MIRAR SIEMPRE (v6.52.1)
@@ -23,6 +23,35 @@ recibe `[]`; sin (2) los logs se ignoran.
 Una cotización NUNCA descontó stock, así que anularla no debe devolver nada. Es una **allowlist positiva
 a propósito**: un status nuevo que llegue ahí NO toca stock.
 
+## 0-bis. ⚠️ DENTRO de `COMPLETED` hay un gate de NIVEL 2 (v6.54.0) — anular NC es el INVERSO del import
+
+Que `movedStock` sea `true` no significa "sumar stock". El loop de items (`sales.ts:203-251`) bifurca por
+**`documentType`**, el MISMO campo que ya usa el importador para decidir el signo al crear el doc:
+
+| `documentType` | `ncStockAction` | Signo en annul | Primitiva |
+|---|---|---|---|
+| `FACTURA` / `BOLETA` / ausente | — | `+qty` (devuelve lo que la venta descontó) | `writeSaleReversal` — SIN CAMBIO |
+| `NOTA CRÉDITO` | `RETURNS_STOCK` | `−qty` (retira lo que la NC repuso al importar) | `writeAnnulNCDecrement` — NUEVO |
+| `NOTA CRÉDITO` | `MONEY_ONLY` / `UNDECIDED` / **ausente** | ninguno — `continue` | — |
+
+**La regla es el REPLAY INVERSO del import**, no un caso especial inventado para anular: una NC con
+`RETURNS_STOCK` **SUMÓ** stock al importarse (`import/page.tsx:564-583`, `writeSaleReversal` cliente,
+`+qty`, movimiento `ENTRADA`) — anularla tiene que **restar** esos mismos kilos, no volver a sumarlos.
+Antes de v6.54.0 el loop no distinguía NC de venta normal: **anular cualquier NC volvía a sumar**, doble
+contando lo que la NC ya había repuesto. Medido en prod: 6 NC reales (`FFC1-44/57/61/64/67/72`) expuestas
+— 2 ya cerradas con este fix (`FFC1-44`, `FFC1-72`), 4 pendientes de un frente aparte por un duplicado de
+movimiento del re-import (`FFC1-57/61/64/67`, ver deuda en HANDOFF/CLAUDE.md).
+
+**El discriminante de nivel 1 es POSITIVO** (`documentType === "NOTA CRÉDITO"`), no negativo
+(`!== "FACTURA" && !== "BOLETA"`): **68 docs de prod tienen `documentType` ausente** (ventas POS nativas,
+nunca pasaron por el importador) y la versión negativa los habría metido por error en la rama NC.
+
+**El nivel 2 (`ncStockAction`) también es una allowlist positiva**, fail-safe: solo `=== "RETURNS_STOCK"`
+decrementa; cualquier otro valor —incluido **ausente**, que es el caso REAL de las 6 NC vivas en prod,
+importadas antes de que `ncStockAction` se empezara a persistir— hace `continue` sin tocar stock ni emitir
+movimiento. El campo se persiste desde v6.54.0 en `salesImportLogic.ts` (`saleDoc` Y `quotationDoc`, mismo
+patrón literal que `documentType`); antes moría con la transacción de import (0/329 docs en prod lo tenían).
+
 ## 1. Componente principal
 - `functions/src/callables/sales.ts` — callable `annulSale`, `onCall` v2 gen2, ÚNICO escritor legítimo de `sales.status → 'VOIDED'`.
 - Cliente: `src/core/sales/services/salesService.ts` (export `annulSale`) — wrapper thin de `httpsCallable`, ~15 líneas, **NO hace catch/rewrap del error** (necesario para que `parseAnnulError` lea `error.details` estructurado).
@@ -36,6 +65,7 @@ a propósito**: un status nuevo que llegue ahí NO toca stock.
 ## 3. Stock strategies (server-side, `functions/src/domain/strategies/`)
 - `types.ts` — interfaz `StockStrategy` compartida (antes vivía duplicada inline en cada strategy).
 - `{metallicRoofing,drywall,roofing,trading,services}StockStrategy.ts` — 5 líneas de negocio completas. `drywallStockStrategy.ts` fue extendido ADITIVAMENTE con `writeSaleDecrement`/`writeSaleReversal` (antes solo tenía `writeProductionIncrement`) — sin romper sus consumidores existentes (`drywallProduction.ts`).
+- **`writeAnnulNCDecrement`** (v6.54.0, `metallicRoofingStockStrategy.ts:101-134`) — 3ª primitiva, **OPCIONAL** en `StockStrategy` (`types.ts`) y **solo implementada en metallic** (las 12 NC de prod son 100% `metallic-roofing`, verificado). Emite `SALIDA` con el **costo CONGELADO** del ítem (`frozenCost`, no el WAC vivo — mismo principio que `writeSaleReversal`, ADR-009), y a diferencia de esa NO re-mezcla `avgCost`: lo preserva tal cual y solo recalcula `totalValue = newBalance × avgCost`. El signo lo decide el **caller** (recibe `newBalance` ya resuelto), igual que sus 2 hermanas. **Fail-safe de línea**: si una strategy no la implementa, el callable hace `continue` — nunca cae a `writeSaleReversal`, que INFLARÍA el stock (el bug exacto que este frente cierra). Hoy inalcanzable (0b del recon: las 12 NC de prod son metallic), pero blindado para cuando aparezca una de otra línea.
 - `index.ts` — registry `getStockStrategy(businessLine)`, espejo del registry cliente (`src/core/sales/strategies/index.ts`).
 
 ## 3-bis. Pre-check de producción activa (v6.52.1)
@@ -76,10 +106,11 @@ allow update: if isStaff()
 - **`annulledSaleRef` (nativa, twin path `native`):** OBJETO `{saleId, saleNumber, annulledAt, annulledBy, reason?}` — **cambio de contrato vs la versión client-side vieja**, que escribía el `saleId` como STRING plano. El test viejo que asumía el string (`annulSaleCascade.integration.test.ts`) fue borrado por obsoleto en el mismo frente.
 - **`annulledSaleRefs` (importada, twin path `imported`):** ARRAY de refs (mismo shape de objeto), vía `arrayUnion` — antes el client-side no escribía NADA acá (gap real cerrado).
 - **`twinPath` orphan:** solo se escribe la venta misma (`status:VOIDED`), sin twin.
+- **`stockEffect`** (v6.54.0, `buildAnnulmentCascade`, ambas copias) — `'returned' | 'withdrawn' | 'none'`, **opcional, default `'returned'`** (preserva byte a byte el detalle histórico de todo lo existente). Alimenta el texto del audit: `'Stock devuelto.'` (no-NC) / `'Stock retirado.'` (NC decremento) / `'Sin efecto en stock.'` (NC money-only o cotización que nunca descontó). Antes de v6.54.0 el audit decía **siempre** `"Stock devuelto."`, hardcodeado — incluso al anular una cotización que jamás había tocado stock. La llamada a `buildAnnulmentCascade` se movió **adentro de la txn** (antes del loop de escrituras se llamaba afuera): `stockEffect` recién se conoce después de recorrer los ítems, y de paso la llamada ahora lee `saleData` (re-lectura bajo lock), no `preData` (snapshot pre-txn).
 - **D3 (costos sincronizados):** `costSyncedAt`, `items[].baseCost` post-A1 (write-back de costo real de producción) NUNCA se revierten — son hechos históricos, no se tocan en la cascada de anulación.
 
 ## 8. Fixtures de test (`src/test/integration/fixtures/`)
-- `seedAnnulFixtures.ts` — **9 fixtures** (F1-F9) + un doc de stock baseline, idempotentes, marcadas
+- `seedAnnulFixtures.ts` — **11 fixtures** (F1-F11) + un doc de stock baseline, idempotentes, marcadas
   `metadata.isAnnulFixture:true`, IDs deterministas con prefijo `ANNUL-FIX-`.
   - **F1-F7** cubren native/imported/happy/block/ex-active/orphan/synced-cost. Los 7 invocan `annulSale`
     sobre una **VENTA**; ninguno sobre un doc `QUOTATION` (por eso el agujero de `self` no tenía cobertura).
@@ -87,6 +118,11 @@ allow update: if isStaff()
     (`source.id == su doc.id`): es el fixture del bloqueo `self`.
   - **F9** (v6.52.1) — cotización NATIVA en `QUOTATION` **sin** logs: ancla el anulado legítimo Y el
     gate de stock fantasma.
+  - **F10** (v6.54.0) — NC importada `COMPLETED` (twin `imported`, con percha propia) con
+    `ncStockAction: 'RETURNS_STOCK'`: ancla el path DECREMENTO (§0-bis). Los 9 fixtures previos anulaban
+    VENTAS o cotizaciones; ninguno era una NC.
+  - **F11** (v6.54.0) — NC importada `COMPLETED` (twin `imported`) **sin** el campo `ncStockAction`
+    (forma EXACTA de las 6 NC reales de prod): ancla el path SKIP.
   - **`stockBaseline`** (v6.52.1) — `metallic_roofing_stock/COB030ROJO` en `{quantity:100, avgCost:7.86,
     totalValue:786}`, sembrado con `set` **sin merge** para que cada test arranque del mismo número aunque
     otro lo haya movido. Antes el seeder no sembraba stock y el daño no era observable.

@@ -38,13 +38,13 @@ Este doc lista cada patrón núcleo con su regla, dónde se cumple y — honesta
 **✅ Migrado y validado en prod:** `registerCoil(sBulk)`, `registerCoilSplit`, `reverseCoilSplit`, `voidCoil`, `updateCoil`, `cancelCoilPlan`, `produceFromCoils`, `produceFromStrip`, `registerCoilScrap`, `voidCoilScrap`, `deleteCoilDraft`, `voidProductionFromCoils` (metallic, v6.21).
 
 **⚠️ EXCEPCIONES (writes de negocio aún client-side):**
-- **Ventas completas** (`processSale`/`approveQuotation`/`annulSale`, `src/core/sales/services/salesService.ts`) + NC del importador — WRITE 9 pendiente. Corolario: las rules FASE 2 de `sales`/`*_stock` no se pueden candar.
+- **Ventas completas** (`processSale`/`approveQuotation`, `src/core/sales/services/salesService.ts`) + NC del importador — WRITE 9 pendiente. Corolario: las rules FASE 2 de `sales`/`*_stock` no se pueden candar. ⚠️ **DEUDA-DOC-STRATEGY-VIVA (2026-08-21):** esta línea incluía `annulSale` hasta ahora — es FALSO desde v6.50.0 (`annulSale` es callable server-side). No se corrige de fondo en este bump; ver deuda en HANDOFF.md.
 - **`revertProductionLog` drywall** (`src/modules/drywall/services/productionService.ts`) — WRITE 7 drywall pendiente; además usa WAC-lookback, no costo congelado (ver `costeo-drywall.md` F-D6).
 - **`saveCuttingPlan` / cut orders** (`cuttingPlanService`, `cutOrderService`) — WRITE 8 pendiente.
 - **`registerPurchase`/`voidPurchase`** (`src/core/purchases/service.ts`) — client-side runTransaction.
 - **Ajustes manuales de stock ×3** (`stockAdjustmentService.ts` de roofing/metallic/trading) — client-side.
 - **`processSingleStrip`** (`productionService.ts:99`, marcado `@deprecated`) — write path paralelo a `produceFromStrip`, todavía presente en el bundle.
-- **Código muerto backend:** `functions/src/domain/strategies/metallicRoofingStockStrategy.ts` tiene `writeSaleDecrement`/`writeSaleReversal` que NINGÚN callable consume (preparación de WRITE 9). Numéricamente iguales a la copia cliente hoy, pero sin SYNC-MARKER ni test de paridad → riesgo de drift silencioso.
+- **Código muerto backend:** `functions/src/domain/strategies/metallicRoofingStockStrategy.ts` tiene `writeSaleDecrement`/`writeSaleReversal` que NINGÚN callable consume (preparación de WRITE 9). Numéricamente iguales a la copia cliente hoy, pero sin SYNC-MARKER ni test de paridad → riesgo de drift silencioso. ⚠️ **DEUDA-DOC-STRATEGY-VIVA (2026-08-21):** esto es FALSO desde v6.50.0 (`sales.ts` SÍ consume `writeSaleReversal` en la rama no-NC), y en v6.54.0 este mismo archivo ganó una 3ª primitiva (`writeAnnulNCDecrement`, sí consumida, ver `docs/modules/annulment.md` §3) que agrava la desactualización de este párrafo. No se reescribe acá — frente de higiene aparte.
 
 **Nota (no violación):** los previews de UI (`SplitCoilModal`, `RegisterScrapModal`, `production/new`) recomputan la fórmula de dominio client-side ANTES de invocar el callable. Es ejecución duplicada legítima (UX), no un write path — pero exige mantener la paridad de las copias.
 
@@ -141,6 +141,8 @@ Este doc lista cada patrón núcleo con su regla, dónde se cumple y — honesta
 
 1. Strategy: 5 leaks (arriba §1).
 2. Thin-client: WRITEs 7 (drywall), 8 (cutOrder), 9 (sales) pendientes + `processSingleStrip` deprecated vivo + strategy backend muerta sin paridad.
+   ⚠️ **DEUDA-DOC-STRATEGY-VIVA (2026-08-21):** "strategy backend muerta sin paridad" es la misma
+   afirmación falsa de §1 — ver banner ahí. No duplicar el fix, solo la referencia.
 3. Paridad: 3ª copia de WAC drywall; WAC metallic inline sin test; `computePricePerKg` no consumida.
 4. Fallbacks: `calcPesoKg`, `writeSaleReversal` totalValue/frozenCost, `voidPurchase`.
 5. Constantes muertas: `IGV_RATE_PERU`, `SCRAP_WEIGHT_FACTOR_KG_MM`, `MIN_MARGIN_PERCENT`, `LOW_STOCK_THRESHOLD_*`, `MIN/MAX_STRIP_WIDTH_MM` (`src/domain/steel/constants.ts`, cero consumidores).

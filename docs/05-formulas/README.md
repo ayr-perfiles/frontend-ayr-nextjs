@@ -1,7 +1,7 @@
 # Índice de Fórmulas — AYR Steel ERP
 
 > Estado: Vigente
-> Última verificación: 2026-08-20 (cierre del frente EDITAR — F-V6 y `classifyLine` actualizados; el resto del índice sigue en su verificación de 2026-07-07 · commit `71250ae6`)
+> Última verificación: 2026-08-21 (cierre del frente annul NC inverso — fila F-V3b agregada; F-V6/`classifyLine` siguen en su verificación de 2026-08-20; el resto del índice sigue en 2026-07-07 · commit `71250ae6`)
 > Fuente de verdad: el CÓDIGO. Este doc se valida contra él, no al revés.
 > Relacionado: CLAUDE.md v6.21 §15 · `modelo-de-costeo.md` (principios) · `_TEMPLATE.md` (ficha estándar)
 
@@ -67,6 +67,7 @@
 | F-V1 | `suggestedPrice` | Precio sugerido: `cost/(1−margin%)×(1+IGV)` — margen dinámico | `src/core/sales/components/ProductSelector.tsx:42` |
 | F-V2 | IGV_RATE (deuda ×6+) | Tasa 0.18 redeclarada por archivo, sin fuente única | ver ficha |
 | F-V3 | `writeSaleReversal` | Devolución NC/anulación al `frozenCost` + re-blend | `src/core/sales/strategies/index.ts:207` |
+| F-V3b | `writeAnnulNCDecrement` | Retiro de stock al anular NC `RETURNS_STOCK` (replay inverso, sin re-blend, server-only) | `functions/src/domain/strategies/metallicRoofingStockStrategy.ts:101` |
 | F-V4 | WAC `registerPurchase` / `voidPurchase` | Re-blend en compra; reversa aproximada — solo roofing/trading | `src/core/purchases/service.ts:81,194` |
 | F-V5 | CPP ajuste manual ×3 | Ver costeo-pvc | `stockAdjustmentService.ts` ×3 |
 | F-V6 | Totales/margen/aggregates | Carrito (servicio ×2 + `cartLogic.ts` de UI), `getAggregateFromServer`, margen ×5 en reportes | `salesService.ts:89,185` · `src/core/sales/cartLogic.ts:32` · `reportFunctions.ts` |

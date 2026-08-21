@@ -1,7 +1,7 @@
 # Modelo de Costeo — Principios Transversales
 
 > Estado: Vigente
-> Última verificación: 2026-07-07 · commit `71250ae6`
+> Última verificación: 2026-07-07 · commit `71250ae6` (⚠️ alcance: 2 filas de `writeAnnulNCDecrement` agregadas 2026-08-21, cierre del frente annul NC inverso — mismo principio 1, costo congelado; el resto del doc sigue en la verificación de 2026-07-07)
 > Fuente de verdad: el CÓDIGO. Este doc se valida contra él, no al revés.
 > Relacionado: CLAUDE.md v6.21 §3, §10, §11 (Convenciones) · ADR-009 (costo congelado) · ADR-004 (Strategy, superseded en detalle)
 
@@ -23,6 +23,7 @@ Este documento ata conceptualmente todas las fichas de `docs/05-formulas/`. Son 
 | `voidCoilScrap` | `scrap_logs.scrapCostPEN / scrapWeightKg` (se deriva; el scrap_log no guarda pricePerKg) | `functions/src/callables/scrap.ts:210` |
 | `reverseCoilSplit` | `child.pricePerKg` (invariante: nunca muta post-creación) | `functions/src/callables/split.ts:273` |
 | `writeSaleReversal` (NC/anulación de venta, cliente) | `frozenCost` del item de venta | `src/core/sales/strategies/index.ts:214` |
+| `writeAnnulNCDecrement` (NC decremento en annul, server) | `frozenCost` del item de la NC | `functions/src/domain/strategies/metallicRoofingStockStrategy.ts:132` |
 
 **Excepción conocida (deuda):** `voidPurchase` (`src/core/purchases/service.ts:194-199`) hace un WAC inverso **aproximado** — el propio código lo admite en comentario ("mantenemos el costo actual para no complicar el promedio histórico") y tiene fallback a costo actual si el resultado da negativo. No es costo congelado limpio. Ver `ventas-igv.md`.
 
@@ -106,4 +107,5 @@ Implementaciones: `calcProductionFromCoils` (`functions/src/domain/coilProductio
 | `registerPurchase` WAC | ventas-igv | 2 |
 | `voidPurchase` | ventas-igv | ⚠️ aproximación de 1 |
 | `writeSaleReversal` | ventas-igv | 1 |
+| `writeAnnulNCDecrement` | ventas-igv (F-V3b) | 1 |
 | `suggestedPrice` / IGV | ventas-igv | N/A (pricing comercial) |

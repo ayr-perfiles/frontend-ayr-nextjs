@@ -1,7 +1,7 @@
 # Fórmulas — Ventas, IGV y Compras
 
 > Estado: Vigente
-> Última verificación: 2026-08-20 (cierre del frente EDITAR — F-V6 actualizada: `updateQuotation` borrada, `cartLogic.ts` nuevo; el resto de las fichas siguen en su verificación de 2026-07-07 · commit `71250ae6`)
+> Última verificación: 2026-08-21 (cierre del frente annul NC inverso — F-V3b agregada + banner de deuda en F-V3 "Paridad"; F-V6 sigue en su verificación de 2026-08-20; el resto de las fichas siguen en 2026-07-07 · commit `71250ae6`)
 > Fuente de verdad: el CÓDIGO. Este doc se valida contra él, no al revés.
 > Relacionado: CLAUDE.md v6.21 §11 · ADR-004 (superseded) · ADR-008 (NC/ND) · ADR-009 · `modelo-de-costeo.md`
 
@@ -69,6 +69,12 @@ const igv = totalPEN * IGV_RATE;                        // purchases/new/page.ts
 
 ## F-V3 · `writeSaleReversal` — devolución de stock por NC / anulación (costo congelado + re-blend)
 
+> ⚠️ **DEUDA-DOC-STRATEGY-VIVA (2026-08-21):** la línea "Paridad" de esta ficha dice que la copia backend
+> es "CÓDIGO MUERTO... ningún callable la consume" — **falso desde v6.50.0**, cuando `annulSale` pasó a
+> callable server-side y empezó a consumir `metallicRoofingStockStrategy.writeSaleReversal` (rama no-NC,
+> `sales.ts:235-251`). No se reescribe acá para no lavar la deuda con este bump — frente de higiene aparte,
+> registrado en HANDOFF.md. Ver también F-V3b para el consumidor NUEVO de la misma strategy.
+
 **Propósito:** al anular una venta o procesar una NC `RETURNS_STOCK`, devolver la cantidad al stock re-blendando el valor al **costo congelado de la venta** (`frozenCost`), no al WAC actual.
 
 **Notación:**
@@ -91,6 +97,26 @@ const newAvgCost = newBalance > 0 ? newTotalValue / newBalance : 0;
 **⚠️ Fallback silencioso conocido (línea 211):** si el doc de stock no tiene campo `totalValue`, cae a `currentQty × currentAvgCost` sin advertir. Si `totalValue` hubiera divergido de `quantity × avgCost` por un bug previo, esta fórmula propaga el valor divergente en silencio. Además `frozenCost ?? 0`: un item histórico sin frozenCost devuelve stock a costo 0 sin ruido.
 **Consumidores:** `salesService.ts` (processSale/approveQuotation/annulSale: líneas 66,120,244,288,361,400) · `sales/import/page.tsx:673,739` (NC del importador).
 **Paridad:** existe copia backend en `functions/src/domain/strategies/metallicRoofingStockStrategy.ts:91-131` que es **CÓDIGO MUERTO** (ningún callable la consume — WRITE 9 pendiente); numéricamente igual hoy, sin SYNC-MARKER ni test de paridad. Riesgo de drift silencioso.
+
+---
+
+## F-V3b · `writeAnnulNCDecrement` — decremento de stock al anular una NC que repuso stock (2026-08-21)
+
+**Propósito:** al anular (server-side, `annulSale`) una NOTA DE CRÉDITO cuyo `ncStockAction` era
+`RETURNS_STOCK`, retirar del stock la cantidad que esa NC había REPUESTO al importarse. Es el
+**replay inverso** de F-V3 aplicado en el sentido contrario, NO la misma fórmula: no re-blendea.
+
+**Notación:**
+```
+newBalance  = currentQty − quantity          // resuelto por el CALLER, no por la primitiva
+totalValue  = newBalance × avgCost           // avgCost se PRESERVA, no se recalcula
+costPerUnit = frozenCost ?? 0                // congelado del ítem, NO el avgCost vivo
+```
+
+**Implementación:** `functions/src/domain/strategies/metallicRoofingStockStrategy.ts:101-134`.
+**Diferencias con F-V3:** (1) no re-mezcla `avgCost` — F-V3 sí, con `newAvgCost = newBalance>0 ? newTotalValue/newBalance : 0`; (2) emite `type:'SALIDA'` (F-V3 emite `'ENTRADA'`); (3) **server-only**, sin copia cliente — la contraparte cliente de la anulación de NC no existe porque `annulSale` es exclusivamente server-side desde v6.50.0.
+**Consumidor:** `functions/src/callables/sales.ts:203-231` (guard de 2 niveles: `documentType==='NOTA CRÉDITO'` → `ncStockAction==='RETURNS_STOCK'`).
+**Aditiva y opcional:** declarada `?` en `StockStrategy` (`types.ts`); solo `metallicRoofingStockStrategy` la implementa (las 12 NC de prod son 100% metallic). Fail-safe si otra línea la necesitara sin tenerla: el callable hace `continue`, nunca cae a F-V3 (eso inflaría el stock).
 
 ---
 
