@@ -1,5 +1,5 @@
 # MÓDULO: annulment (anulación de venta, `annulSale`) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-21 (v6.54.0, annul NC inverso, commit `cedbb118`, backend desplegado a test Y prod, runtime real validado contra 2 NC de prod — FFC1-44/FFC1-72 — con before/after crudos; ver §0-bis).
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-22 (v6.55.0, cascada percha CANCELLED, commit `488455d1`, backend desplegado a test Y prod, runtime real validado en test con seed/teardown efímero; ver §0-ter). Sección §0-bis (2026-08-21, v6.54.0) sigue vigente sin cambios.
 > ⚠️ SE PUDRE. Antes de tocar `annulSale`/rules de `sales.status`: verificá (checklist). No confíes si la fecha está vieja.
 
 ## 0. ⚠️ LOS 2 GATES QUE HAY QUE MIRAR SIEMPRE (v6.52.1)
@@ -51,6 +51,28 @@ decrementa; cualquier otro valor —incluido **ausente**, que es el caso REAL de
 importadas antes de que `ncStockAction` se empezara a persistir— hace `continue` sin tocar stock ni emitir
 movimiento. El campo se persiste desde v6.54.0 en `salesImportLogic.ts` (`saleDoc` Y `quotationDoc`, mismo
 patrón literal que `documentType`); antes moría con la transacción de import (0/329 docs en prod lo tenían).
+
+## 0-ter. ⚠️ La rama `imported` de la cascada CANCELA la percha, no solo la marca (v6.55.0)
+
+Hasta `488455d1`, anular una venta con twin `imported` (`buildAnnulmentCascade.ts`, rama `imported`) escribía
+**solo** `annulledSaleRefs` en la percha — nunca `status`/`productionStatus`. La percha `COT-*` quedaba
+`status:'QUOTATION'` para siempre, así que seguía calificando para `PRODUCTION_QUEUE_FILTER`
+(`status:'QUOTATION', productionStatus:'CONFIRMED', businessLine:'metallic-roofing'`) y **seguía visible en la
+cola de producción** pese a que su venta ya no existía — rompiendo la promesa que `cancelQuotation` ya le hace
+al usuario ("para revertir, anule la venta").
+
+**Fix:** el mismo write ahora agrega `status: 'CANCELLED'` (junto a `annulledSaleRefs`, no en su lugar).
+`CANCELLED` ya está fuera de `PRODUCTION_QUEUE_FILTER` — reusa el mecanismo que `cancelQuotation` ya usa para
+cancelar cotizaciones nativas, no inventa uno nuevo. Solo la rama `imported`; `native` (que ya escribía
+`annulledSaleRef` + revertía a `status:'QUOTATION'` a propósito, para que la cotización vuelva a la cola) y
+`orphan` (sin twin) quedan sin cambios — anclados por test anti-regresión.
+
+**⚠️ DEUDA RETRO, confirmada en prod (read-only) al cerrar este frente:** el fix es **forward-only**. Las 6
+perchas `COT-FFC1-*` que ya existían de ANTES (creadas por NC, ver §0-bis) siguen calificando **6/6** para
+`PRODUCTION_QUEUE_FILTER` — siguen en la cola ahora mismo. `COT-FFC1-44` y `COT-FFC1-72` en particular tienen
+su venta gemela (`FFC1-44`/`FFC1-72`) ya `VOIDED` desde ANTES de que este fix existiera/se desplegara, así que
+la cascada nueva **nunca corrió sobre ellas** — siguen `status:'QUOTATION'`. Limpieza retro pendiente, ver
+CLAUDE.md v6.55.0 y HANDOFF.md.
 
 ## 1. Componente principal
 - `functions/src/callables/sales.ts` — callable `annulSale`, `onCall` v2 gen2, ÚNICO escritor legítimo de `sales.status → 'VOIDED'`.
@@ -104,7 +126,8 @@ allow update: if isStaff()
 ## 7. Contratos clave (shape de escritura)
 - **Error del callable:** `HttpsError(code, message, details?)`. Códigos: `unauthenticated`, `permission-denied`, `invalid-argument`, `not-found`, `failed-precondition`. Solo `ACTIVE_PRODUCTION` (bloqueo por producción) trae `details:{quotationId, activeLogIds}` estructurado — el resto no trae `details`.
 - **`annulledSaleRef` (nativa, twin path `native`):** OBJETO `{saleId, saleNumber, annulledAt, annulledBy, reason?}` — **cambio de contrato vs la versión client-side vieja**, que escribía el `saleId` como STRING plano. El test viejo que asumía el string (`annulSaleCascade.integration.test.ts`) fue borrado por obsoleto en el mismo frente.
-- **`annulledSaleRefs` (importada, twin path `imported`):** ARRAY de refs (mismo shape de objeto), vía `arrayUnion` — antes el client-side no escribía NADA acá (gap real cerrado).
+- **`annulledSaleRefs` (importada, twin path `imported`):** ARRAY de refs (mismo shape de objeto), vía `arrayUnion` — antes el client-side no escribía NADA acá (gap real cerrado). Desde `488455d1` (v6.55.0) el MISMO write agrega `status:'CANCELLED'` a la percha (ver §0-ter) — `annulledSaleRefs` no cambió de forma, solo dejó de ser el único campo que se toca.
+  - ⚠️ **BUG CONFIRMADO (preexistente desde v6.50.0, no introducido por `488455d1`):** `annulledSaleRefs[].annulledAt` queda como el STRING literal `"SERVER_TIMESTAMP"`, nunca un Timestamp real. `translateCascadeFields.ts` traduce placeholders dentro de objetos anidados pero **no recorre arrays** (lo dice su propio docstring); el campo `annulledSaleRefs` llega como el STRING `` `ARRAY_UNION:${JSON.stringify(ref)}` ``, con `ref.annulledAt` ya serializado adentro — la rama `ARRAY_UNION` hace `JSON.parse` + `FieldValue.arrayUnion(parsed)` sin recursar sobre `parsed`. Confirmado en prod: `COT-FFC1-44`/`COT-FFC1-72`, `annulledSaleRefs[0].annulledAt === "SERVER_TIMESTAMP"` (string). El path `native` (`annulledSaleRef`, objeto plano sin `ARRAY_UNION`) NO tiene el bug. Ver deuda en CLAUDE.md v6.55.0.
 - **`twinPath` orphan:** solo se escribe la venta misma (`status:VOIDED`), sin twin.
 - **`stockEffect`** (v6.54.0, `buildAnnulmentCascade`, ambas copias) — `'returned' | 'withdrawn' | 'none'`, **opcional, default `'returned'`** (preserva byte a byte el detalle histórico de todo lo existente). Alimenta el texto del audit: `'Stock devuelto.'` (no-NC) / `'Stock retirado.'` (NC decremento) / `'Sin efecto en stock.'` (NC money-only o cotización que nunca descontó). Antes de v6.54.0 el audit decía **siempre** `"Stock devuelto."`, hardcodeado — incluso al anular una cotización que jamás había tocado stock. La llamada a `buildAnnulmentCascade` se movió **adentro de la txn** (antes del loop de escrituras se llamaba afuera): `stockEffect` recién se conoce después de recorrer los ítems, y de paso la llamada ahora lee `saleData` (re-lectura bajo lock), no `preData` (snapshot pre-txn).
 - **D3 (costos sincronizados):** `costSyncedAt`, `items[].baseCost` post-A1 (write-back de costo real de producción) NUNCA se revierten — son hechos históricos, no se tocan en la cascada de anulación.

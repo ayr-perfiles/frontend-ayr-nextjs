@@ -1,5 +1,5 @@
 # MÓDULO: ventas (sales) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-20 (frente EDITAR cerrado — callable `editQuotation`, §16).
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-22 (§6 actualizada — gate `createsProductionPercha`, v6.55.0/`608e8d08`). El resto del doc sigue a la fecha del frente EDITAR (2026-08-20, §16) sin cambios.
 > ⚠️ SE PUDRE. Antes de tocar lógica/costeo/writes de ventas: verificá (checklist §11). No confíes si la fecha está vieja.
 > ⚠️ **§4 de este doc describe el modelo PRE-2026-08-18, hoy OBSOLETO en la parte de agregados de `/admin/sales`. Ver §14 antes de confiar en §4.**
 > ⚠️ **§15 describe `annulSale` como client-side. Eso quedó OBSOLETO en v6.50.0 (swap a callable) y v6.52.1 (bloqueo `self` + gate de stock). La verdad viva de anulación es [`docs/modules/annulment.md`](annulment.md), no §15 — que se conserva por el contexto de #9-B.2b.**
@@ -60,6 +60,28 @@ importar factura → nace venta COMPLETED + cotización COT-{documentNumber}
 ```
 - El importador saca el `weight` de cada ítem desde el catálogo. `metallic_roofing_catalog` (`src/modules/metallic-roofing/services/catalogService.ts`) **no tiene** `standardWeight`/`weight` propio — es un campo derivado en otros contextos, no un dato sembrado en el catálogo. Resultado: ítems metallic importados con `weight: 0` + flag `"sin peso"`. **No es un bug del importador**, es un hueco de datos del catálogo aluzinc.
 - Profit por ítem calculado con `baseCost` real (no placeholder).
+
+### 6.1 ⚠️ La percha `COT-*` NO nace de cualquier comprobante con ítem metallic (v6.55.0)
+
+El diagrama de arriba dice "factura" a propósito — la percha de producción está **gateada por `documentType`**,
+no por tener o no un ítem `metallic-roofing`. `buildImportWrites` (`salesImportLogic.ts:16-26`) computa:
+
+```ts
+const PRODUCTION_DOC_TYPES = ["FACTURA", "BOLETA"] as const;
+const createsProductionPercha = hasMetallicItem && PRODUCTION_DOC_TYPES.includes(sale.documentType);
+```
+
+Antes de `608e8d08` (2026-08-21) el gate era solo `hasMetallicItem` — **cualquier** comprobante con un ítem
+metallic creaba percha, incluida una `NOTA CRÉDITO` (que ya movió stock vía `writeSaleReversal`/
+`writeAnnulNCDecrement` al importarse — es un ajuste contable, no una orden de producción) o un POS de
+mostrador sin `documentType`. El allowlist es la única señal correcta: excluye NC y POS, y protege **ambas**
+gates que compartían `hasMetallicItem` (el `relatedQuotationId` que se escribe en el `saleDoc` **y** el `if`
+que decide crear `quotationDoc`) — gatear solo una habría dejado `relatedQuotationId` colgado, apuntando a una
+percha que nunca se crea.
+
+**FORWARD only.** Las 6 perchas `COT-FFC1-*` que ya existían de una NC (importadas antes del fix) no se
+tocaron — siguen calificando para la cola de producción hoy. Ver deuda retro en
+[`annulment.md`](annulment.md) §0-ter y CLAUDE.md v6.55.0.
 
 ## 7. Correlativos y dedup del importador
 - El importador usa `documentNumber` (número de la factura real) como **doc ID** de la venta → dedup natural: re-importar la misma factura PISA el doc existente, no duplica.
