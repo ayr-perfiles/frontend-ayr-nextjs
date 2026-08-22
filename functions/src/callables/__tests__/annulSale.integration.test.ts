@@ -56,7 +56,7 @@ describe("annulSale (callable)", () => {
     });
   });
 
-  it("F2 imported happy: anula la venta, percha NO cambia status/productionStatus/isFulfilled, recibe annulledSaleRefs", async () => {
+  it("F2 imported happy: anula la venta, percha pasa a CANCELLED (productionStatus/isFulfilled sin cambio), recibe annulledSaleRefs con Timestamp real", async () => {
     const res = await invokeAsAdmin(seeded.F2_imported_happy.saleId);
     expect(res).toEqual({ success: true });
 
@@ -65,12 +65,25 @@ describe("annulSale (callable)", () => {
 
     const perchaSnap = await db.collection("sales").doc(seeded.F2_imported_happy.perchaId).get();
     const perchaData = perchaSnap.data()!;
-    expect(perchaData.status).toBe("QUOTATION"); // sin cambio, ya era QUOTATION
+    expect(perchaData.status).toBe("CANCELLED"); // 488455d1: la percha sale de PRODUCTION_QUEUE_FILTER
     expect(perchaData.productionStatus).toBe("CONFIRMED"); // sin cambio
     expect(perchaData.isFulfilled).toBe(true); // sin cambio
     expect(Array.isArray(perchaData.annulledSaleRefs)).toBe(true);
     expect(perchaData.annulledSaleRefs).toHaveLength(1);
     expect(perchaData.annulledSaleRefs[0]).toMatchObject({ saleId: seeded.F2_imported_happy.saleId });
+
+    // Deuda #3: annulledAt anidado dentro de arrayUnion tiene que ser un Timestamp REAL,
+    // nunca el string placeholder "SERVER_TIMESTAMP" -- este es el UNICO lugar del repo
+    // que ejercita translateCascadeFields contra un tx.update() REAL de Firestore (los
+    // demas tests de translateCascadeFields usan un FieldValue/Timestamp mockeados).
+    const ref = perchaData.annulledSaleRefs[0];
+    expect(ref.annulledAt.constructor.name).toBe("Timestamp");
+    expect(typeof ref.annulledAt).not.toBe("string");
+    expect(ref.annulledAt).not.toBe("SERVER_TIMESTAMP");
+    const annulledAtDate = ref.annulledAt.toDate();
+    expect(Number.isNaN(annulledAtDate.getTime())).toBe(false);
+    expect(annulledAtDate.getTime()).not.toBe(0);
+    expect(annulledAtDate.getTime()).toBeGreaterThan(Date.now() - 60000);
   });
 
   it("F3 native block: throw failed-precondition con 'produccion activa', venta y quote sin tocar", async () => {
