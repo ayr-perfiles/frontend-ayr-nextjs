@@ -1,6 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { resolveSaleQuotationLink } from "../domain/annulment/saleQuotationLink";
 import { canAnnulSale, type AnnulBlockReason } from "../domain/annulment/canAnnulSale";
 import { resolveSaleTwinPath } from "../domain/annulment/resolveSaleTwinPath";
@@ -271,7 +271,7 @@ export const annulSale = onCall<AnnulSaleData>(async (request) => {
 
     for (const write of cascadePlan.writes) {
       const targetRef = db.doc(write.docPath);
-      const translated = translateCascadeFields(write.fields, FieldValue);
+      const translated = translateCascadeFields(write.fields, FieldValue, Timestamp);
       tx.update(targetRef, translated);
     }
 
