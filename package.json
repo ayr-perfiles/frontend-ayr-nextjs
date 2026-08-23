@@ -15,9 +15,10 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "test:integration": "vitest src/test/integration",
-    "test:emu": "firebase emulators:exec --project ayrsteel-test \"vitest run src/test/integration --no-file-parallelism --maxWorkers 1\" --only auth,firestore,storage,functions",
-    "test:emu:functions": "firebase emulators:exec --project ayrsteel-test \"vitest run functions/src/callables --no-file-parallelism --maxWorkers 1\" --only auth,firestore,storage,functions",
+    "test:integration": "firebase emulators:exec --project ayrsteel-test \"vitest --config vitest.emu.config.ts src/test/integration\" --only auth,firestore,storage,functions",
+    "test:emu": "firebase emulators:exec --project ayrsteel-test \"vitest run --config vitest.emu.config.ts src/test/integration --no-file-parallelism --maxWorkers 1\" --only auth,firestore,storage,functions",
+    "test:emu:functions": "firebase emulators:exec --project ayrsteel-test \"vitest run --config vitest.emu.config.ts functions/src/callables --no-file-parallelism --maxWorkers 1\" --only auth,firestore,storage,functions",
+    "test:emu:rules": "firebase emulators:exec --project ayrsteel-test \"npx vitest run --config vitest.emu.config.ts src/test/rules\" --only firestore",
     "emulators": "firebase emulators:start --import=./firebase-data --export-on-exit",
     "emulate": "concurrently \"npm run emulators\" \"npm run dev\"",
     "seed:annul-fixtures": "tsx src/test/integration/fixtures/seedAnnulFixtures.cli.ts"

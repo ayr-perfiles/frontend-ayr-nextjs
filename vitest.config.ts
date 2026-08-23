@@ -18,6 +18,28 @@ export default defineConfig({
       '**/.{idea,git,cache,output,temp}/**',
       '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build}.config.*',
       'functions/lib/**',
+      // Dependen de un emulador (@firebase/rules-unit-testing / cliente conectado a
+      // 127.0.0.1:8080) que "npm run test" bare no levanta.
+      //
+      // Este exclude es el que hace HONESTO a `npm run test`: sin él, un emulador
+      // huérfano vivo por accidente pinta de VERDE tests que sin emulador debían
+      // fallar (medido en v6.57.0: 118 archivos con huérfano vivo vs 117 sin él,
+      // mismo commit, mismo comando — cobertura no determinista, ver CLAUDE.md).
+      //
+      // Las 3 entradas de abajo NO se corren en este config. Sus custodios son
+      // test:emu:rules / test:emu / test:emu:functions, que usan vitest.emu.config.ts
+      // (config hijo que hereda todo de acá y solo levanta este exclude para esas 3).
+      //
+      // TRAMPA: un filtro posicional de CLI (ej. `vitest run src/test/rules`) NO
+      // rescata lo que este exclude ya descartó — el exclude gana sobre el filtro de
+      // ruta. Por eso existe vitest.emu.config.ts en vez de pasar el filtro a mano.
+      //
+      // Agregar una entrada acá SIN darle custodio en vitest.emu.config.ts = borrar
+      // esa cobertura del repo en silencio (el síntoma es "No test files found",
+      // que se lee como un cero inofensivo y no como un directorio huérfano).
+      '**/src/test/rules/**',
+      '**/src/test/integration/**',
+      '**/functions/src/callables/**',
     ],
     coverage: {
       provider: 'v8',
