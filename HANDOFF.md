@@ -160,10 +160,23 @@
 - **Combo UI #7+#8 CERRADO EN PROD** (develop 5fca6ed6 / master 2995e0b3). Spinner+wheel muerto y paste numérico sanitizado en Peso/Ancho/Espesor/Valor de los 3 forms LIVE de bobina (`AddCoilForm.tsx`, `PurchaseCoilFromXml.tsx`, `EditCoilModal.tsx`). Helper puro `src/core/coils/utils/numericInput.ts` con 8 tests Vitest (RED→GREEN documentado). Frontend-puro, sin backend/índice tocado.
 - **Frente #1 (editar bobina USD→SOLES) CERRADO EN PROD** (master `d086344d`; callable `updateCoil` ya deployado a prod+test con paridad y smoke OK antes del merge). `updatePayload` ahora persiste `metadata.currency`/`exchangeRate`/`originalCurrencyValue` (antes los ignoraba en silencio pese a que el cliente ya los mandaba). Autofill de TC por fecha de factura en el modal de edición, disparado solo por acción de usuario (nunca en mount). `pricePerKg` recomputado con el helper canónico `coilPricing.ts` en los 3 puntos que lo tocan (Valor Total, toggle moneda, autofill). Detalle completo en CLAUDE.md v6.42.
 
+## PRÓXIMO FRENTE
+> Cola priorizada (v6.57.0): fusiona la "Cola sugerida" vieja de `FIXEAR PENDIENTES` (abajo, ⚠️ SUPERSEDED por esta sección, no borrada) con las 3 deudas nuevas de este frente. **1-2 y 8-9 vienen de decisiones previas del dueño** (preservadas en su posición, no relegadas); **3-6 es reco de Claude**, reordenable sin pedir permiso. `## HORIZONTE` (Slice 3, VENDEDOR, Reporte RAL, WRITE 8/9, etc., más abajo) **NO** se fusiona acá — son candidatos de otra naturaleza (sin recon, sin urgencia operativa).
+
+1. **DUPLICADOS `FFC1-57/61/64/67`** (RECO) — único bloqueante de otro trabajo: destraba 4 NC + 4 perchas en cola. Σ movimientos de import = 2× la `quantity` del doc por un re-import sin limpiar el movimiento previo. NO anular estas 4 hasta resolver el movimiento fantasma. Ver deuda v6.54.0.
+2. **#10 — separar bobinas drywall/aluzinc.** DECISIÓN DE PRIORIDAD DEL DUEÑO — criterio de separación a definir al iniciar el frente. No se relega sin decisión explícita suya.
+3. **34/35 bloques `match` de `firestore.rules` sin cobertura** (nuevo v6.57.0). Frente grande, priorizable por criticidad de colección (`coils`/`*_stock`/`users`/`audit_logs` en cero; solo `sales` tiene algo, y parcial — solo su transición a `VOIDED`).
+4. **Huérfano sistemático de `emulators:exec`, 6/6 independiente del exit code** (nuevo v6.57.0). Frente chico: pre-check/post-check automático en los scripts `test:emu*`.
+5. **`test:emu` == `test:integration`, mismo comando por dos nombres** (nuevo v6.57.0). Trivial, va de arrastre con cualquier otro frente que toque `package.json`.
+6. **Borrar copia cliente de `buildAnnulmentCascade` + `canAnnulSale`.** Mata una CLASE de bugs (drift entre copia cliente/server), no un bug puntual — consecuencia de la migración de `annulSale` a callable server-side (v6.50.0+); la copia cliente quedó sin consumidores reales.
+7. **8 `audit_logs` huérfanos `SMOKE`** — requiere decisión de negocio explícita (colección append-only por regla, `update/delete: if false`).
+8. **`git add --renormalize` CRLF** — higiene, tanda propia. Ha abortado merges `ff-only` 3 veces (v6.52.0 ×2, v6.52.1). Aviso al equipo antes de correrlo (cambia muchos blobs de golpe).
+9. **#3 — negativos / línea de corte.** CONGELADO hasta conteo físico (no hay saldo inicial cargado). NO re-proponer sin ese conteo.
+
 ## FIXEAR PENDIENTES (próximos frentes, sin recon hecho aún)
 > **Estado FIXEAR:** cerrados #5, #6, #7, #8, #1, #2, #4, #9-A, #9-B.1 (incl. #9-B.1-E), #9-B.1b, #9-B.2a, #9-B.2a-2, #9-B.2b, #9-B.2c, el **batch de limpieza** (v6.52.0), **fix-annul-self-block** (v6.52.1), **EDITAR completo** (v6.53.0, E1+E2+E3) y **annul NC inverso** (v6.54.0, salvo el residuo abajo). Quedan **#10 (separar bobinas)** y **#3 (negativos -> "rindió de más", AL FINAL: hay corrupción de datos real detrás)**.
 >
-> **Cola sugerida, en orden:**
+> **Cola sugerida, en orden:** ⚠️ **SUPERSEDED (v6.57.0) por `## PRÓXIMO FRENTE` arriba — no borrada, queda como referencia histórica del orden pre-v6.57.0.**
 > 1. **DUPLICADOS `FFC1-57/61/64/67`** (residuo de "annul NC inverso", v6.54.0) — Σ movimientos de import = 2× la `quantity` del doc por un re-import sin limpiar. NO anular estas 4 hasta resolver el movimiento fantasma. Ver deuda arriba.
 > 2. **#10 — separar bobinas** (criterio de separación a definir al iniciar el frente).
 > 3. **Renormalización CRLF** (`git add --renormalize .` en un commit de higiene dedicado). Hoy varios blobs viejos están commiteados con CRLF contra un `.gitattributes` que declara `eol=lf`, así que `git status` los muestra modificados **siendo byte-idénticos** y eso **aborta merges `ff-only`** (pasó 3 veces: v6.52.0 y v6.52.1). Cambia muchos blobs de golpe -> frente propio y aviso al equipo.
