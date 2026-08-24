@@ -41,3 +41,14 @@ export function assertCoilFinishCompatible(
 
   return { success: true, data: undefined };
 }
+
+/**
+ * Ids de los finishes activos compatibles con una línea de negocio — misma regla
+ * que usa `listAvailableCoils` (coilService.ts) para scopear `coils` por línea,
+ * extraída acá para reusarse sin duplicar el filtro inline.
+ */
+export function getFinishIdsForLine(finishes: CoilFinish[], line: BusinessLine): string[] {
+  return finishes
+    .filter((f) => f.active && f.lines.includes(line))
+    .map((f) => f.id);
+}
