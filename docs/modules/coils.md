@@ -1,5 +1,5 @@
 # MÓDULO: coils (bobinas) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-07-29 (Frente B, runtime prod ayrsteel-2026, finishes).
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: **§6 → 2026-08-24** (recon de #10 contra prod `ayrsteel-2026` + código en `c337fc0e`; alcance acotado a esa sección). **§1-§5 → 2026-07-29** (Frente B, runtime prod, finishes) — NO re-verificadas en 2026-08-24.
 > ⚠️ SE PUDRE. Antes de tocar lógica/writes de bobinas: verificá (checklist). No confíes si la fecha está vieja.
 
 ## 1. Estado isClosed (regla de negocio verificada)
@@ -25,5 +25,12 @@
 checkbox · Serie(id+proveedor truncado) · Acabado(FinishBadge legible) · Material(dims+originalDescription truncado+tooltip) · Valorización(PEN+USD) · Stock/peso(restante/total kg + ML restante/total + barra) · Estado(StatusBadge+CERRADA) · Acciones. Responsable y Fecha Ingreso → modal, no tabla. Server-side (cursores useCoils.ts) — cambiar filtros toca queries+índices.
 
 ## 4. Shape coil (doc real prod): id, initialWeight, currentWeight, masterWidth, thickness, pricePerKg, status, isClosed, isDraft, registeredBy, finish, densityFactor, metadata{provider, invoiceNumber, invoiceDate, originalDescription...}
+
+## 6. Scoping por línea de negocio (drywall vs aluzinc) — verificado 2026-08-24
+- **Discriminante: `coil.finish`.** Presente en **168/168** docs de prod (cero ausentes, cero backfill). Reparto: `GALV` 38 / `ALZ-*` 130. ⚠️ El prefijo real de prod es **`ALZ-`** (test legacy tenía `ALU-`).
+- **El mapeo finish→línea vive en `coil_finishes.lines`** (array de `BusinessLine`), NO en el coil. 9 docs; `GALV.lines = ["drywall"]` exacto, ningún `ALZ-*` incluye `drywall`, cero finishes sin `lines`, cero `coils.finish` huérfano (todo finish de un coil existe en `coil_finishes`).
+- **Patrón de resolución:** `listAvailableCoils(line)` (`coilService.ts:319`) lee `coil_finishes`, filtra `f.lines.includes(line)` y consulta `coils` con `where('finish','in', ids.slice(0,30))`. 9 finishes < 30 → el `slice` no trunca hoy. El helper puro `getFinishIdsForLine(finishes, line)` (`src/core/coils/domain/finishCompat.ts`, `c337fc0e`, 5 tests) encapsula la misma regla (activos + `lines` incluye la línea) — **todavía sin consumidor**: `listAvailableCoils` conserva el filtro inline hasta el frente #10.
+- **Límite de Firestore que condiciona el diseño de #10:** `finish in [8]` × `status in [4]` = 32 disyunciones > 30 → `INVALID_ARGUMENT`. El único índice con `finish` es `{status, finish, createdAt}` (status líder). Decisión tomada: para vista por línea, traer el universo completo de la línea (sin `limit`/cursores) y paginar en memoria — payload medido 114.89 KB para 167 docs (techo ~1488 docs/1MB). Detalle en CLAUDE.md v6.60.0.
+- ⚠️ **Bug vivo:** la rama Algolia de `fetchInventory` filtra `finish:<id>` pero `coils_index` NO tiene `finish` → búsqueda de texto + filtro de acabado = 0 resultados siempre. Ver CLAUDE.md v6.60.0.
 
 ## 5. VERIFICAR antes de cambio grande: grep escritor vivo · leer 1 doc real de prod · ¿guard backend o solo client? · densidad de coil_finishes nunca hardcodeada.

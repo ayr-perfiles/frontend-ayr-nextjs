@@ -1,7 +1,7 @@
 # Patrones y Convenciones — Estado Real (no aspiracional)
 
 > Estado: Vigente
-> Última verificación: 2026-08-20 (§3 re-verificada al cierre del frente EDITAR — los 13 pares de paridad chequeados uno por uno contra los `import` de sus tests; el resto del doc sigue en su verificación de 2026-07-07 · commit `71250ae6`)
+> Última verificación: 2026-08-24 SOLO la fila `finishCompat.ts` de §3 (superficie de exports de ambas copias + consumidores server, verificados contra código en `c337fc0e`); el resto de §3 y del doc conserva su verificación del 2026-08-20 (§3 re-verificada al cierre del frente EDITAR — los 13 pares de paridad chequeados uno por uno contra los `import` de sus tests; el resto del doc sigue en su verificación de 2026-07-07 · commit `71250ae6`)
 > Fuente de verdad: el CÓDIGO. Este doc se valida contra él, no al revés.
 > Relacionado: CLAUDE.md v6.21 §8, §10, §11 · ADR-003/004/009/010/011 · docs/05-formulas/
 
@@ -62,7 +62,8 @@ Este doc lista cada patrón núcleo con su regla, dónde se cumple y — honesta
 | `coilProduction.ts` | `src/modules/metallic-roofing/domain/coilProduction.ts` | `coilProduction.parity.test.ts` | — |
 | `drywallProduction.ts` | `src/modules/drywall/domain/drywallProduction.ts` | `drywallProduction.parity.test.ts` | — |
 | `scrap.ts` | `src/core/coils/domain/scrap.ts` | `scrap.test.ts` (paridad solo `validateScrapRequest`) | — |
-| `finishCompat.ts` | `src/core/coils/domain/finishCompat.ts` | tests propios | — |
+| `finishCompat.ts` | `src/core/coils/domain/finishCompat.ts` | tests propios (`finishCompat.test.ts`, importa SOLO la copia cliente — **sin parity test**, paridad de `assertCoilFinishCompatible` visual, no anclada) | — |
+| ↳ *(nota 2026-08-24, `c337fc0e`)* | la copia cliente es **superset**: exporta además `getFinishIdsForLine` (scoping de listado por línea, **client-only por diseño** — ningún callable resuelve finishes por línea, los 4 sitios server leen `coil_finishes` por id). No es drift. | | |
 | `annulment/saleQuotationLink.ts` | `src/core/sales/saleProductionLink.ts` | `annulment/__tests__/saleQuotationLink.parity.test.ts` | v6.50.0 |
 | `annulment/canAnnulSale.ts` | `src/core/sales/annulment/canAnnulSale.ts` | `annulment/__tests__/canAnnulSale.parity.test.ts` | v6.50.0 |
 | `annulment/resolveSaleTwinPath.ts` | `src/core/sales/annulment/resolveSaleTwinPath.ts` | `annulment/__tests__/resolveSaleTwinPath.parity.test.ts` | v6.50.0 |
