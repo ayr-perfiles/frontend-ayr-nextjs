@@ -1,5 +1,5 @@
 # MÓDULO: ventas (sales) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-22 (§6 actualizada — gate `createsProductionPercha`, v6.55.0/`608e8d08`). El resto del doc sigue a la fecha del frente EDITAR (2026-08-20, §16) sin cambios.
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-22 (§6 actualizada — gate `createsProductionPercha`, v6.55.0/`608e8d08`). El resto del doc sigue a la fecha del frente EDITAR (2026-08-20, §16) sin cambios, **salvo §7 (dedup del importador), con nota agregada 2026-08-24 (v6.58.0) — solo esa línea verificada en esa fecha, resto de §7 sin re-chequear.**
 > ⚠️ SE PUDRE. Antes de tocar lógica/costeo/writes de ventas: verificá (checklist §11). No confíes si la fecha está vieja.
 > ⚠️ **§4 de este doc describe el modelo PRE-2026-08-18, hoy OBSOLETO en la parte de agregados de `/admin/sales`. Ver §14 antes de confiar en §4.**
 > ⚠️ **§15 describe `annulSale` como client-side. Eso quedó OBSOLETO en v6.50.0 (swap a callable) y v6.52.1 (bloqueo `self` + gate de stock). La verdad viva de anulación es [`docs/modules/annulment.md`](annulment.md), no §15 — que se conserva por el contexto de #9-B.2b.**
@@ -84,7 +84,7 @@ tocaron — siguen calificando para la cola de producción hoy. Ver deuda retro 
 [`annulment.md`](annulment.md) §0-ter y CLAUDE.md v6.55.0.
 
 ## 7. Correlativos y dedup del importador
-- El importador usa `documentNumber` (número de la factura real) como **doc ID** de la venta → dedup natural: re-importar la misma factura PISA el doc existente, no duplica.
+- El importador usa `documentNumber` (número de la factura real) como **doc ID** de la venta → dedup natural: re-importar la misma factura PISA el doc existente, no duplica. ⚠️ Cierto para el DOC de `sales`, FALSO para el MOVIMIENTO de stock: el re-import genera un 2º juego de movimientos con auto-id nuevo en `metallic_roofing_stock_movements` y el 1º nunca se borra ni compensa. Ver `docs/modules/metallic.md` §5/§6 y CLAUDE.md/HANDOFF.md v6.58.0.
 - No toca `nextSaleNumber` ni `nextQuotationNumber` (por eso `COT-{documentNumber}` no consume el correlativo comercial `C-xxxxxx`).
 
 ## 8. Trampa `{id: doc.id, ...doc.data()}` (id parásito)

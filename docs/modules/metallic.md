@@ -1,7 +1,7 @@
 # Módulo Metallic (Aluzinc)
 
 Esta ficha contiene la verdad operativa del módulo de Conformado Aluzinc (Metallic Roofing).
-Fecha de última verificación: **2026-08-19** (guards `laterSales` endurecidos con `toMillisSafe`, §4)
+Fecha de última verificación: **2026-08-19** (guards `laterSales` endurecidos con `toMillisSafe`, §4) — **§5 agregada 2026-08-24 (v6.58.0), resto del doc sin re-verificar en esa fecha.**
 
 ## 1. Catálogo Multi-acabado (RAL)
 - **`finishes` (array opcional):** El catálogo soporta múltiples acabados por SKU. Se agregó soporte retrocompatible vía `getFinishArray()` (que lee de `finishes` o hace fallback al viejo escalar `finish`). NO hubo migración masiva, conviven ambos modelos.
@@ -32,3 +32,20 @@ Fecha de última verificación: **2026-08-19** (guards `laterSales` endurecidos 
 - **Alcance real en prod (2026-08-19):** 0/328 docs de `sales` con `timestamp`/`approvedAt` corrupto — el fix es preventivo en prod, no repara ningún dato existente. La corrupción confirmada era específica de `ayrsteel-test` (al menos `sales/FFA1-1289` y `sales/FFA1-1290`, mismo epoch que sus contrapartes sanas en prod — la causa exacta, qué script de seed/restore de TEST serializó el timestamp como JSON crudo, no se investigó).
 - **No tocado a propósito:** `functions/src/callables/scrap.ts:150/164` tiene el mismo patrón `.toMillis()` sin guardia (sobre `createdAt`, no `sales.timestamp`) — no se extendió `toMillisSafe` ahí, ni se investigó si hay corrupción (fuera del alcance del sizing de esta sesión). Ver deuda en CLAUDE.md/HANDOFF.md v6.48.6.
 - **Recon/sizing/deploy crudos:** `scripts/local/recon-void500.md` (diagnóstico del 500), `scripts/local/recon-void-sizing.md` (conteo en prod + alcance del daño), `scripts/local/impl-void.md` (RED→GREEN del fix), `scripts/local/deploy-void.md` (deploy test→prod, incluye el hallazgo de que `firebase-functions-hash` no es comparable cross-project).
+
+## 5. `metallic_roofing_stock_movements` — writers, campos e idempotencia (2026-08-24, v6.58.0)
+
+4 writers escriben esta colección, todos con `tx.set(doc(collection(...)))` — **auto-id, NO determinístico. No hay guard de idempotencia a nivel de movimiento** (el único dedup del sistema está a nivel del DOC de `sales`, ver §6 abajo).
+
+| Writer | Archivo | `type` | Campos propios |
+|---|---|---|---|
+| `writeSaleDecrement` | `src/core/sales/strategies/index.ts` (cliente) / `functions/src/domain/strategies/metallicRoofingStockStrategy.ts` (server) | `SALIDA` | `reason: Venta ${saleId} — ${customerName}` (lleva el id de venta) |
+| `writeSaleReversal` | ídem | `ENTRADA` | `reason: motivo ?? Anulación Venta ${saleId} — ...`, `adjustedDocument: ref \|\| null` |
+| `writeProductionIncrement` | ídem | `ENTRADA` | `reason: description ?? 'Ingreso por Producción'` (SIN `adjustedDocument`) |
+| `writeAnnulNCDecrement` | solo server, `metallicRoofingStockStrategy.ts` | `SALIDA` | `reason: motivo ?? Anulación NC ${saleId} — ...`, `adjustedDocument: ref \|\| null` |
+
+Campos comunes a los 4: `sku`, `type`, `quantity`, `costPerUnit`, `businessLine: 'metallic-roofing'`, `createdBy`, `createdAt`.
+
+- **`adjustedDocument` NO es el id del movimiento actual ni de la venta que lo generó** — solo lo pueblan `writeSaleReversal`/`writeAnnulNCDecrement` (los 2 writers de NC), y vale el **comprobante ORIGINAL que la NC ajusta** (`sale.adjustedDocument`, columna Excel "DOCUMENTO AJUSTADO", ej. `FFA1-1107`), NUNCA el id de la propia NC. Consecuencia medida: una query `where adjustedDocument == '<id de NC>'` devuelve **0 resultados** — hay que buscar por el comprobante ajustado, no por la NC. Para `writeSaleDecrement`/`writeProductionIncrement` el campo directamente no existe en el doc.
+- **La clave que sí identifica el universo completo de una venta es `(sku, type, quantity, reason)`** — `reason` de `writeSaleDecrement`/`writeSaleReversal` lleva el id de venta embebido en el string. Puede dar falsos positivos legítimos (2 líneas del mismo SKU/quantity en una misma venta); verificar contra `items[]` antes de tratar un grupo como duplicado.
+- **§6 — Re-importar una venta (`isReplacement`) NO limpia sus movimientos previos.** El dedup del importador (`sales/import/page.tsx`, `existingSaleSnap.data().status`) opera sobre el DOC de `sales`: si existe y está `VOIDED`, permite `isReplacement:true` y re-ejecuta el loop de items completo, generando un 2º juego de movimientos con auto-id nuevo — el 1º nunca se borra ni compensa. Si el doc de `sales` fue borrado **sin pasar por una anulación real** (sin quedar `VOIDED`, sin revertir stock), el guard ni siquiera entra en la rama `isReplacement`: `isReplacement` queda `false` y el re-import escribe igual un 2º juego de movimientos sobre el terreno vacío. Medido en prod (v6.58.0): esto es lo que generó 89 grupos de movimientos duplicados el 13→17-ago sobre 7 SKUs (`COB030ROJO`, `PL030NT6M`, `COB030AZUL`, `PL030RJ6MT`, `PL030AZ6MT`, `PL030NT515`, `PL030NT366M`) — causa real: un borrado masivo de 114 docs de `sales` sin auditoría entre el 13 y el 17-ago (ver CLAUDE.md/HANDOFF.md v6.58.0).

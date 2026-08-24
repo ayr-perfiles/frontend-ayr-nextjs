@@ -1,5 +1,5 @@
 # MÓDULO: annulment (anulación de venta, `annulSale`) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-22 (v6.56.0, `annulledAt` string→Timestamp cerrado, commits `545ee08e`+`62116ea5`, backend desplegado a test Y prod 425.07 KB ACTIVE, 2 docs de prod backfilleados; ver §7). Secciones §0-ter (v6.55.0) y §0-bis (v6.54.0) siguen vigentes sin cambios.
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-22 (v6.56.0, `annulledAt` string→Timestamp cerrado, commits `545ee08e`+`62116ea5`, backend desplegado a test Y prod 425.07 KB ACTIVE, 2 docs de prod backfilleados; ver §7). Secciones §0-ter (v6.55.0) y §0-bis (v6.54.0) siguen vigentes sin cambios, **salvo la última frase de §0-bis (estado de `FFC1-57/61/64/67`), actualizada 2026-08-24 (v6.58.0) — resto de §0-bis sin re-verificar en esta fecha.**
 > ⚠️ SE PUDRE. Antes de tocar `annulSale`/rules de `sales.status`: verificá (checklist). No confíes si la fecha está vieja.
 
 ## 0. ⚠️ LOS 2 GATES QUE HAY QUE MIRAR SIEMPRE (v6.52.1)
@@ -39,8 +39,12 @@ Que `movedStock` sea `true` no significa "sumar stock". El loop de items (`sales
 `+qty`, movimiento `ENTRADA`) — anularla tiene que **restar** esos mismos kilos, no volver a sumarlos.
 Antes de v6.54.0 el loop no distinguía NC de venta normal: **anular cualquier NC volvía a sumar**, doble
 contando lo que la NC ya había repuesto. Medido en prod: 6 NC reales (`FFC1-44/57/61/64/67/72`) expuestas
-— 2 ya cerradas con este fix (`FFC1-44`, `FFC1-72`), 4 pendientes de un frente aparte por un duplicado de
-movimiento del re-import (`FFC1-57/61/64/67`, ver deuda en HANDOFF/CLAUDE.md).
+— 2 ya cerradas con este fix (`FFC1-44`, `FFC1-72`). Las otras 4 (`FFC1-57/61/64/67`) quedaron
+backfilleadas pero sin anular por un duplicado en `metallic_roofing_stock_movements` — **resuelto en
+v6.58.0**: la causa real NO era "re-import sin limpiar", fue un borrado masivo de 114 docs de `sales`
+entre el 13 y el 17-ago SIN auditoría y SIN reversión de stock (los 4 movimientos fantasma del 13-ago
+quedaron huérfanos y se borraron en prod). Ya son anulables sobre stock sano; la anulación de las 4
+sigue sin ejecutarse a propósito. Ver deuda completa en HANDOFF/CLAUDE.md v6.58.0.
 
 **El discriminante de nivel 1 es POSITIVO** (`documentType === "NOTA CRÉDITO"`), no negativo
 (`!== "FACTURA" && !== "BOLETA"`): **68 docs de prod tienen `documentType` ausente** (ventas POS nativas,
