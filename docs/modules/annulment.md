@@ -1,5 +1,5 @@
 # MÓDULO: annulment (anulación de venta, `annulSale`) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-22 (v6.56.0, `annulledAt` string→Timestamp cerrado, commits `545ee08e`+`62116ea5`, backend desplegado a test Y prod 425.07 KB ACTIVE, 2 docs de prod backfilleados; ver §7). Secciones §0-ter (v6.55.0) y §0-bis (v6.54.0) siguen vigentes sin cambios, **salvo la última frase de §0-bis (estado de `FFC1-57/61/64/67`), actualizada 2026-08-24 (v6.58.0) — resto de §0-bis sin re-verificar en esta fecha.**
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-22 (v6.56.0, `annulledAt` string→Timestamp cerrado, commits `545ee08e`+`62116ea5`, backend desplegado a test Y prod 425.07 KB ACTIVE, 2 docs de prod backfilleados; ver §7). **Actualizado 2026-08-24 (v6.59.0), alcance acotado: §0-bis completo (las 4 NC restantes fueron anuladas + nota NC-sin-costo), §0-ter completo (retro de cola CERRADO 0/6 + corrección de `PRODUCTION_QUEUE_FILTER`), y el párrafo de refuerzo empírico de `annulledAt` en §7. Resto del doc sin re-verificar en esta fecha.**
 > ⚠️ SE PUDRE. Antes de tocar `annulSale`/rules de `sales.status`: verificá (checklist). No confíes si la fecha está vieja.
 
 ## 0. ⚠️ LOS 2 GATES QUE HAY QUE MIRAR SIEMPRE (v6.52.1)
@@ -39,12 +39,20 @@ Que `movedStock` sea `true` no significa "sumar stock". El loop de items (`sales
 `+qty`, movimiento `ENTRADA`) — anularla tiene que **restar** esos mismos kilos, no volver a sumarlos.
 Antes de v6.54.0 el loop no distinguía NC de venta normal: **anular cualquier NC volvía a sumar**, doble
 contando lo que la NC ya había repuesto. Medido en prod: 6 NC reales (`FFC1-44/57/61/64/67/72`) expuestas
-— 2 ya cerradas con este fix (`FFC1-44`, `FFC1-72`). Las otras 4 (`FFC1-57/61/64/67`) quedaron
+— 2 cerradas con este fix en su momento (`FFC1-44`, `FFC1-72`). Las otras 4 (`FFC1-57/61/64/67`) quedaron
 backfilleadas pero sin anular por un duplicado en `metallic_roofing_stock_movements` — **resuelto en
 v6.58.0**: la causa real NO era "re-import sin limpiar", fue un borrado masivo de 114 docs de `sales`
 entre el 13 y el 17-ago SIN auditoría y SIN reversión de stock (los 4 movimientos fantasma del 13-ago
-quedaron huérfanos y se borraron en prod). Ya son anulables sobre stock sano; la anulación de las 4
-sigue sin ejecutarse a propósito. Ver deuda completa en HANDOFF/CLAUDE.md v6.58.0.
+quedaron huérfanos y se borraron en prod). **Anuladas en v6.59.0** vía invocación real del callable
+desplegado (no script): las 6 NC de prod están hoy `VOIDED`, sus 6 perchas `CANCELLED`. Ver detalle
+completo en CLAUDE.md/HANDOFF.md v6.58.0 y v6.59.0.
+
+**NOTA (v6.59.0) — las 4 NC tenían `item.baseCost: 0` (flag `"sin costo"`), así que `frozenCost = 0` y
+los 4 movimientos `SALIDA` de la anulación entraron con `costPerUnit: 0`.** `writeAnnulNCDecrement`
+preserva `avgCost` y recalcula `totalValue = newBalance × avgCost` — con `avgCost` ≠ 0 en ambos SKUs, el
+valor del inventario se movió igual (`-77.57` en `PL030AZ6MT`, `-99.59` en `PL030RJ6MT`) aunque el
+movimiento entrara "gratis". Es una asimetría con el import (que sumó 0 de valor) conocida y aceptada —
+ver deuda nueva en CLAUDE.md v6.59.0 antes de anular una NC sin costo sobre un SKU con `avgCost` confiable.
 
 **El discriminante de nivel 1 es POSITIVO** (`documentType === "NOTA CRÉDITO"`), no negativo
 (`!== "FACTURA" && !== "BOLETA"`): **68 docs de prod tienen `documentType` ausente** (ventas POS nativas,
@@ -61,9 +69,14 @@ patrón literal que `documentType`); antes moría con la transacción de import 
 Hasta `488455d1`, anular una venta con twin `imported` (`buildAnnulmentCascade.ts`, rama `imported`) escribía
 **solo** `annulledSaleRefs` en la percha — nunca `status`/`productionStatus`. La percha `COT-*` quedaba
 `status:'QUOTATION'` para siempre, así que seguía calificando para `PRODUCTION_QUEUE_FILTER`
-(`status:'QUOTATION', productionStatus:'CONFIRMED', businessLine:'metallic-roofing'`) y **seguía visible en la
-cola de producción** pese a que su venta ya no existía — rompiendo la promesa que `cancelQuotation` ya le hace
-al usuario ("para revertir, anule la venta").
+(`status:'QUOTATION', productionStatus:'CONFIRMED', businessLines array-contains 'metallic-roofing',
+isFulfilled:false` — 4 predicados; el 4º, `isFulfilled`, es parte de la query real de
+`getProductionQueueCount` (`salesService.ts:659`) pero no de la constante `PRODUCTION_QUEUE_FILTER` en sí,
+verificado 2026-08-24) y **seguía visible en la cola de producción** pese a que su venta ya no existía —
+rompiendo la promesa que `cancelQuotation` ya le hace al usuario ("para revertir, anule la venta").
+⚠️ **Trampa de nombre:** la constante declara el campo `businessLine` (singular, escalar), pero la query
+consume `businessLines` (plural, array) con `array-contains` — grepear solo el nombre de la constante
+induce a creer que el campo del doc es escalar.
 
 **Fix:** el mismo write ahora agrega `status: 'CANCELLED'` (junto a `annulledSaleRefs`, no en su lugar).
 `CANCELLED` ya está fuera de `PRODUCTION_QUEUE_FILTER` — reusa el mecanismo que `cancelQuotation` ya usa para
@@ -71,12 +84,18 @@ cancelar cotizaciones nativas, no inventa uno nuevo. Solo la rama `imported`; `n
 `annulledSaleRef` + revertía a `status:'QUOTATION'` a propósito, para que la cotización vuelva a la cola) y
 `orphan` (sin twin) quedan sin cambios — anclados por test anti-regresión.
 
-**⚠️ DEUDA RETRO, confirmada en prod (read-only) al cerrar este frente:** el fix es **forward-only**. Las 6
-perchas `COT-FFC1-*` que ya existían de ANTES (creadas por NC, ver §0-bis) siguen calificando **6/6** para
-`PRODUCTION_QUEUE_FILTER` — siguen en la cola ahora mismo. `COT-FFC1-44` y `COT-FFC1-72` en particular tienen
-su venta gemela (`FFC1-44`/`FFC1-72`) ya `VOIDED` desde ANTES de que este fix existiera/se desplegara, así que
-la cascada nueva **nunca corrió sobre ellas** — siguen `status:'QUOTATION'`. Limpieza retro pendiente, ver
-CLAUDE.md v6.55.0 y HANDOFF.md.
+**DEUDA RETRO, confirmada en prod (read-only) al cerrar este frente:** el fix es **forward-only**. Las 6
+perchas `COT-FFC1-*` que ya existían de ANTES (creadas por NC, ver §0-bis) seguían calificando **6/6** para
+`PRODUCTION_QUEUE_FILTER` — visibles en la cola en ese momento. `COT-FFC1-44` y `COT-FFC1-72` en particular
+tenían su venta gemela (`FFC1-44`/`FFC1-72`) ya `VOIDED` desde ANTES de que este fix existiera/se desplegara,
+así que la cascada nueva **nunca corrió sobre ellas**.
+
+✅ **RETRO CERRADO (v6.56.0 + v6.59.0), hoy 0/6.** `COT-FFC1-44`/`COT-FFC1-72` se corrigieron por backfill
+manual en v6.56.0 (`status→'CANCELLED'`, fuente del timestamp = `voidedAt` de la venta gemela). Las 4
+restantes (`COT-FFC1-57/61/64/67`) se cancelaron en v6.59.0 al anular sus 4 NC gemelas vía el callable
+real desplegado, una vez levantado en v6.58.0 el bloqueo de duplicado de movimientos que las frenaba.
+Barrido re-corrido sobre la query exacta de `PRODUCTION_QUEUE_FILTER` (v6.59.0): **50 docs en cola, cero
+`COT-FFC1-*`.** Ver CLAUDE.md v6.55.0/v6.56.0/v6.58.0/v6.59.0 y HANDOFF.md.
 
 ## 1. Componente principal
 - `functions/src/callables/sales.ts` — callable `annulSale`, `onCall` v2 gen2, ÚNICO escritor legítimo de `sales.status → 'VOIDED'`.
@@ -135,6 +154,7 @@ allow update: if isStaff()
     - **Por qué el "fix candidato" original (mandar el objeto real a `arrayUnion` sin serializar) NO era viable:** un sentinel de `FieldValue.serverTimestamp()` es **ILEGAL** anidado dentro de un elemento de `arrayUnion` — el SDK lo rechaza **client-side, antes de tocar la red**. Error verbatim, verificado empíricamente contra el emulador en este frente (3 casos: A anidado en array → falla; B anidado en map → pasa; C valor concreto en array → pasa): `` Error: Element at index 0 is not a valid array element. FieldValue.serverTimestamp() cannot be used inside of an array (found in field "ts"). ``
     - **Fix real:** `translateCascadeFields` resuelve el placeholder, cuando está dentro de un `ARRAY_UNION`, a un **`Timestamp` concreto** (`Timestamp.now()`, inyectado como 3er parámetro, lazy + memoizado — un único `now()` por invocación, solo si hace falta) vía un walk recursivo genérico sobre objetos **y** arrays — no un `if` puntual sobre `annulledAt`. El path `native` (map anidado top-level) sigue usando el sentinel real de `FieldValue`: ahí SÍ es legal, y un test de no-regresión lo ancla.
     - **Backfill de prod:** 2 docs (`COT-FFC1-44`, `COT-FFC1-72`) corregidos con el `voidedAt` de su venta gemela como fuente — el mismo `FieldValue.serverTimestamp()` de la MISMA transacción de `annulSale`, coincidente al milisegundo con `audit_logs.VOID_SALE.timestamp` (restauración exacta, no estimación). Barrido final sobre las 329 ventas de prod: **0 con `annulledAt` tipo string.**
+    - **REFUERZO EMPÍRICO (v6.59.0):** hasta acá la evidencia era test + backfill de 2 docs históricos. Al anular `FFC1-57/61/64/67` vía el callable real (primera corrida del fix sobre datos NUEVOS, no backfill), los 4 `annulledSaleRefs[0].annulledAt` salieron `Timestamp` real 4/4 (`annulledAtRawType:"Timestamp"`, verificado). Nota de mecanismo: `voidedAt` (venta) y `annulledAt` (ref en la percha) difieren ~30-50ms por doc — el primero es `serverTimestamp()` nativo, el segundo el `Timestamp.now()` inyectado por `translateCascadeFields` para poder vivir dentro del `arrayUnion`; es diseño, no defecto.
 - **`twinPath` orphan:** solo se escribe la venta misma (`status:VOIDED`), sin twin.
 - **`stockEffect`** (v6.54.0, `buildAnnulmentCascade`, ambas copias) — `'returned' | 'withdrawn' | 'none'`, **opcional, default `'returned'`** (preserva byte a byte el detalle histórico de todo lo existente). Alimenta el texto del audit: `'Stock devuelto.'` (no-NC) / `'Stock retirado.'` (NC decremento) / `'Sin efecto en stock.'` (NC money-only o cotización que nunca descontó). Antes de v6.54.0 el audit decía **siempre** `"Stock devuelto."`, hardcodeado — incluso al anular una cotización que jamás había tocado stock. La llamada a `buildAnnulmentCascade` se movió **adentro de la txn** (antes del loop de escrituras se llamaba afuera): `stockEffect` recién se conoce después de recorrer los ítems, y de paso la llamada ahora lee `saleData` (re-lectura bajo lock), no `preData` (snapshot pre-txn).
 - **D3 (costos sincronizados):** `costSyncedAt`, `items[].baseCost` post-A1 (write-back de costo real de producción) NUNCA se revierten — son hechos históricos, no se tocan en la cascada de anulación.
