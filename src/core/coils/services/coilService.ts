@@ -18,6 +18,7 @@ import {
 import { httpsCallable } from "firebase/functions";
 import { Coil, BusinessLine } from "@/types";
 import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
+import { buildCoilAlgoliaFilters } from "../coilAlgoliaFilters";
 import { listFinishes } from "./finishService";
 
 export interface CoilUpdates
@@ -65,21 +66,10 @@ export const fetchInventory = async (params: FetchParams) => {
   } = params;
 
   if (searchTerm.trim().length > 0) {
-    let filters = [];
-    if (statusFilter !== "ALL") filters.push(`status:${statusFilter}`);
-    else filters.push(`NOT status:VOIDED`);
-    
-    if (finishFilter && finishFilter !== "ALL") {
-      filters.push(`finish:${finishFilter}`);
-    }
-
-    if (currencyFilter && currencyFilter !== "ALL") {
-      filters.push(`metadata.currency:${currencyFilter}`);
-    }
-
-    if (providerFilter && providerFilter.trim() !== "") {
-      filters.push(`metadata.provider:${providerFilter}`);
-    }
+    const filters = buildCoilAlgoliaFilters(
+      { statusFilter, finishFilter, currencyFilter, providerFilter },
+      "inventory",
+    );
 
     const {
       hits,
@@ -88,7 +78,7 @@ export const fetchInventory = async (params: FetchParams) => {
       nbHits,
     } = await algoliaClient.searchSingleIndex({
       indexName: ALGOLIA_INDICES.COILS,
-      searchParams: { query: searchTerm, filters: filters.join(' AND '), hitsPerPage: pageSize, page },
+      searchParams: { query: searchTerm, filters, hitsPerPage: pageSize, page },
     });
 
     const hitIds = (hits as Array<{ objectID: string }>).map((h) => h.objectID);
@@ -224,11 +214,10 @@ export const fetchCoilsForExport = async (filters: CoilExportFilters): Promise<C
 
   try {
     if (searchTerm.trim().length > 0) {
-      const algoliaFilters: string[] = [];
-      if (statusFilter !== "ALL") algoliaFilters.push(`status:${statusFilter}`);
-      if (finishFilter && finishFilter !== "ALL") algoliaFilters.push(`finish:${finishFilter}`);
-      if (currencyFilter && currencyFilter !== "ALL") algoliaFilters.push(`metadata.currency:${currencyFilter}`);
-      if (providerFilter && providerFilter.trim() !== "") algoliaFilters.push(`metadata.provider:${providerFilter.trim()}`);
+      const algoliaFilters = buildCoilAlgoliaFilters(
+        { statusFilter, finishFilter, currencyFilter, providerFilter },
+        "export",
+      );
 
       const allHitIds: string[] = [];
       const hitsPerPage = 1000;
@@ -237,7 +226,7 @@ export const fetchCoilsForExport = async (filters: CoilExportFilters): Promise<C
       do {
         const { hits, nbPages: totalPages } = await algoliaClient.searchSingleIndex({
           indexName: ALGOLIA_INDICES.COILS,
-          searchParams: { query: searchTerm, filters: algoliaFilters.join(" AND "), hitsPerPage, page },
+          searchParams: { query: searchTerm, filters: algoliaFilters, hitsPerPage, page },
         });
         allHitIds.push(...(hits as Array<{ objectID: string }>).map((h) => h.objectID));
         nbPages = totalPages ?? 0;
