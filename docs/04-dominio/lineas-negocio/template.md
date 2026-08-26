@@ -1,3 +1,12 @@
+> ⚠️ **BANNER v6.67.0 — EL EJEMPLO DE PERMISOS DE ESTA PLANTILLA ESTA DESACTUALIZADO.**
+> El `RolePermissionMap` de ejemplo mas abajo asigna `canCreate:true` (y demas escrituras)
+> al rol `OPERATOR`. Desde `921eeabe` (v6.66.0) eso es **FALSO**: `firestore.rules` gobierna
+> toda escritura con `canWrite()` = `ADMIN` + `SUPERVISOR` unicamente. `isStaff()` (los 3
+> roles) quedo EXCLUSIVAMENTE para `read`. Un modulo nuevo copiado de esta plantilla sin
+> corregir ese mapa nace con un modelo de permisos que las rules van a denegar en runtime.
+> La FORMA de la plantilla (estructura de secciones, patron de ruta) sigue siendo valida —
+> lo que no se copia es el reparto de roles del ejemplo.
+
 # Guía: Agregar una nueva línea de negocio
 
 > Esta guía usa **tubing (tubería)** como ejemplo concreto en cada paso.  
