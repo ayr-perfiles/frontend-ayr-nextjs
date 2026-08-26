@@ -43,8 +43,13 @@ describe("firestore.rules — locks (append-only + write:false + server-only)", 
       "services_stock_movements",
     ];
 
+    // ANCLA VOLTEADA (2026-08-26, decisión del dueño / canWrite()): create era
+    // isStaff() (los 3 roles), ahora es canWrite() (ADMIN+SUPERVISOR) — OPERATOR
+    // deja de crear movimientos append-only. read sigue isStaff() (sin cambio);
+    // update/delete siguen `if false` para TODOS, ADMIN incluido (sin cambio).
+    // Ver TANDA 2, GRUPO 5 de operatorWrites.rules.test.ts.
     it.each(APPEND_ONLY)(
-      "%s: create SUCCEEDS, update/delete FAILS para ADMIN/SUPERVISOR/OPERATOR",
+      "%s: get SUCCEEDS los 3, create SUCCEEDS solo ADMIN/SUPERVISOR, update/delete FAILS para los 3",
       async (col) => {
         for (const role of ROLES) {
           await env.withSecurityRulesDisabled(async (god) => {
@@ -52,7 +57,11 @@ describe("firestore.rules — locks (append-only + write:false + server-only)", 
           });
           const db = role.dbFn(env);
           await assertSucceeds(getDoc(doc(db, col, "seeded")));
-          await assertSucceeds(setDoc(doc(db, col, `nuevo-${role.label}`), { seed: true }));
+          if (role.label === "OPERATOR") {
+            await assertFails(setDoc(doc(db, col, `nuevo-${role.label}`), { seed: true }));
+          } else {
+            await assertSucceeds(setDoc(doc(db, col, `nuevo-${role.label}`), { seed: true }));
+          }
           await assertFails(updateDoc(doc(db, col, "seeded"), { probe: 1 }));
           await assertFails(deleteDoc(doc(db, col, "seeded")));
         }
@@ -76,11 +85,14 @@ describe("firestore.rules — locks (append-only + write:false + server-only)", 
       await assertFails(getDoc(doc(asOperator(env), "audit_logs", "seeded")));
     });
 
-    it("audit_logs: los 3 roles crean", async () => {
-      for (const role of ROLES) {
-        const db = role.dbFn(env);
-        await assertSucceeds(setDoc(doc(db, "audit_logs", `nuevo-${role.label}`), { seed: true }));
-      }
+    // ANCLA VOLTEADA (2026-08-26, decisión del dueño / canWrite()): create pasó de
+    // isStaff() a canWrite() — OPERATOR ya no escribe audit_logs directo desde el
+    // cliente (los triggers/callables del backend siguen vía Admin SDK, que
+    // bypassea rules). Ver TANDA 2, GRUPO 5.
+    it("ADMIN y SUPERVISOR crean audit_logs, OPERATOR no", async () => {
+      await assertSucceeds(setDoc(doc(asAdmin(env), "audit_logs", "nuevo-ADMIN"), { seed: true }));
+      await assertSucceeds(setDoc(doc(asSupervisor(env), "audit_logs", "nuevo-SUPERVISOR"), { seed: true }));
+      await assertFails(setDoc(doc(asOperator(env), "audit_logs", "nuevo-OPERATOR"), { seed: true }));
     });
 
     it("audit_logs: nadie modifica ni borra", async () => {

@@ -83,11 +83,14 @@ describe("firestore.rules — sales (campos financieros + create/read/delete + h
   });
 
   describe("GRUPO L — create / read / delete", () => {
-    it("los 3 roles crean ventas", async () => {
-      for (const role of ROLES) {
-        const db = role.dbFn(env);
-        await assertSucceeds(setDoc(doc(db, "sales", `nuevo-${role.label}`), baseSale()));
-      }
+    // ANCLA VOLTEADA (2026-08-26, decisión del dueño / canWrite()): antes los 3
+    // roles creaban ventas. Con canWrite() (ADMIN+SUPERVISOR), OPERATOR queda
+    // afuera — no tiene ninguna superficie de escritura en la UI y la rule deja
+    // de dársela a nivel Firestore. Ver TANDA 2, GRUPO 2 de operatorWrites.rules.test.ts.
+    it("ADMIN y SUPERVISOR crean ventas, OPERATOR no", async () => {
+      await assertSucceeds(setDoc(doc(asAdmin(env), "sales", "nuevo-ADMIN"), baseSale()));
+      await assertSucceeds(setDoc(doc(asSupervisor(env), "sales", "nuevo-SUPERVISOR"), baseSale()));
+      await assertFails(setDoc(doc(asOperator(env), "sales", "nuevo-OPERATOR"), baseSale()));
     });
 
     it("los 3 roles leen ventas", async () => {
@@ -125,12 +128,16 @@ describe("firestore.rules — sales (campos financieros + create/read/delete + h
       }
     });
 
-    it("los 3 roles crean history", async () => {
+    // ANCLA VOLTEADA (2026-08-26, decisión del dueño / canWrite()): history pasó de
+    // isStaff() a canWrite() en el mismo cambio que el resto de `sales` — OPERATOR
+    // deja de poder crear entradas de history. Ver TANDA 2, GRUPO 2.
+    it("ADMIN y SUPERVISOR crean history, OPERATOR no", async () => {
       await seedSale("V-7");
-      for (const role of ROLES) {
-        const db = role.dbFn(env);
-        await assertSucceeds(setDoc(doc(db, "sales", "V-7", "history", `h-${role.label}`), { seed: true }));
-      }
+      await assertSucceeds(setDoc(doc(asAdmin(env), "sales", "V-7", "history", "h-ADMIN"), { seed: true }));
+      await assertSucceeds(
+        setDoc(doc(asSupervisor(env), "sales", "V-7", "history", "h-SUPERVISOR"), { seed: true }),
+      );
+      await assertFails(setDoc(doc(asOperator(env), "sales", "V-7", "history", "h-OPERATOR"), { seed: true }));
     });
   });
 });

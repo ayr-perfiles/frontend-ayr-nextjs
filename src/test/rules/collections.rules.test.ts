@@ -103,17 +103,21 @@ describe("firestore.rules — collections (catalogos, staff-crud, staff-full, ad
       "trading_stock",
     ];
 
-    it.each(STAFF_CRUD)("%s: ADMIN/SUPERVISOR/OPERATOR get/create/update, ADMIN delete", async (col) => {
+    // ANCLA VOLTEADA (2026-08-26, decisión del dueño / canWrite()): create/update
+    // eran isStaff() (los 3 roles), ahora son canWrite() (ADMIN+SUPERVISOR). El
+    // read sigue siendo isStaff() — OPERATOR sigue leyendo, solo deja de escribir.
+    // Ver TANDA 2, GRUPO 1 de operatorWrites.rules.test.ts.
+    it.each(STAFF_CRUD)("%s: los 3 leen, ADMIN/SUPERVISOR crean y actualizan, OPERATOR no, ADMIN borra", async (col) => {
       await seed(col);
       for (const role of ROLES) {
         await assertSucceeds(getDoc(doc(role.dbFn(env), col, "seeded")));
       }
-      for (const role of ROLES) {
-        await assertSucceeds(setDoc(doc(role.dbFn(env), col, `nuevo-${role.label}`), { seed: true }));
-      }
-      for (const role of ROLES) {
-        await assertSucceeds(updateDoc(doc(role.dbFn(env), col, "seeded"), { probe: 1 }));
-      }
+      await assertSucceeds(setDoc(doc(asAdmin(env), col, "nuevo-ADMIN"), { seed: true }));
+      await assertSucceeds(setDoc(doc(asSupervisor(env), col, "nuevo-SUPERVISOR"), { seed: true }));
+      await assertFails(setDoc(doc(asOperator(env), col, "nuevo-OPERATOR"), { seed: true }));
+      await assertSucceeds(updateDoc(doc(asAdmin(env), col, "seeded"), { probe: 1 }));
+      await assertSucceeds(updateDoc(doc(asSupervisor(env), col, "seeded"), { probe: 2 }));
+      await assertFails(updateDoc(doc(asOperator(env), col, "seeded"), { probe: 3 }));
       await assertSucceeds(deleteDoc(doc(asAdmin(env), col, "seeded")));
     });
 
@@ -124,28 +128,33 @@ describe("firestore.rules — collections (catalogos, staff-crud, staff-full, ad
     });
   });
 
-  describe("GRUPO T — staff full (los 3 roles todo, delete incluido)", () => {
-    // customers/contacts/coil_finishes no tienen delete admin-only, a diferencia de
-    // coils/sales/production_logs. Se ancla el comportamiento MEDIDO (OPERATOR borra
-    // clientes). Si esa asimetria es deseable o no es decision de negocio, otro frente.
-    // MEDIDA: customers. NO MEDIDA — rule declarada: contacts, coil_finishes.
+  describe("GRUPO T — staff full (delete ahora ADMIN-only)", () => {
+    // ANCLA VOLTEADA (2026-08-26, decisión del dueño / canWrite() + delete admin-only):
+    // customers/contacts/coil_finishes SÍ tenían delete abierto a los 3 roles (asimetría
+    // registrada como deuda vs. coils/sales/production_logs) — el dueño decidió cerrarla
+    // por simetría: create/update pasan a canWrite() (ADMIN+SUPERVISOR) y delete pasa a
+    // isAdmin() (antes cualquiera de los 3 borraba). Ver TANDA 2, GRUPO 3/4 de
+    // operatorWrites.rules.test.ts.
     const STAFF_FULL = ["customers", "contacts", "coil_finishes"];
 
-    it.each(STAFF_FULL)("%s: ADMIN/SUPERVISOR/OPERATOR get/create/update/delete", async (col) => {
-      await seed(col);
-      for (const role of ROLES) {
-        await assertSucceeds(getDoc(doc(role.dbFn(env), col, "seeded")));
-      }
-      for (const role of ROLES) {
-        await assertSucceeds(setDoc(doc(role.dbFn(env), col, `nuevo-${role.label}`), { seed: true }));
-      }
-      for (const role of ROLES) {
-        await assertSucceeds(updateDoc(doc(role.dbFn(env), col, "seeded"), { probe: 1 }));
-      }
-      for (const role of ROLES) {
-        await assertSucceeds(deleteDoc(doc(role.dbFn(env), col, "seeded")));
-      }
-    });
+    it.each(STAFF_FULL)(
+      "%s: los 3 leen, ADMIN/SUPERVISOR crean y actualizan, OPERATOR no, solo ADMIN borra",
+      async (col) => {
+        await seed(col);
+        for (const role of ROLES) {
+          await assertSucceeds(getDoc(doc(role.dbFn(env), col, "seeded")));
+        }
+        await assertSucceeds(setDoc(doc(asAdmin(env), col, "nuevo-ADMIN"), { seed: true }));
+        await assertSucceeds(setDoc(doc(asSupervisor(env), col, "nuevo-SUPERVISOR"), { seed: true }));
+        await assertFails(setDoc(doc(asOperator(env), col, "nuevo-OPERATOR"), { seed: true }));
+        await assertSucceeds(updateDoc(doc(asAdmin(env), col, "seeded"), { probe: 1 }));
+        await assertSucceeds(updateDoc(doc(asSupervisor(env), col, "seeded"), { probe: 2 }));
+        await assertFails(updateDoc(doc(asOperator(env), col, "seeded"), { probe: 3 }));
+        await assertFails(deleteDoc(doc(asSupervisor(env), col, "seeded")));
+        await assertFails(deleteDoc(doc(asOperator(env), col, "seeded")));
+        await assertSucceeds(deleteDoc(doc(asAdmin(env), col, "seeded")));
+      },
+    );
   });
 
   describe("GRUPO U — integrations (admin-only, molde de settings)", () => {

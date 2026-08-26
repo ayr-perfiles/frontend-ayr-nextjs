@@ -15,6 +15,15 @@ service cloud.firestore {
     function isStaff() {
       return isSignedIn() && 'role' in request.auth.token && request.auth.token.role in ['ADMIN', 'SUPERVISOR', 'OPERATOR'];
     }
+    // Escritura: ADMIN + SUPERVISOR. OPERATOR queda FUERA a propósito
+    // (decisión del dueño 2026-08-26). isStaff() sigue gobernando READ:
+    // la terminal de drywall (2 OPERATOR reales en prod) lee production_logs
+    // por onSnapshot y users/{uid} por AuthContext — si se les corta el read,
+    // la terminal queda en blanco.
+    function canWrite() {
+      return isSignedIn() && 'role' in request.auth.token
+        && request.auth.token.role in ['ADMIN', 'SUPERVISOR'];
+    }
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
     }
@@ -54,17 +63,19 @@ service cloud.firestore {
     // ──── AUDIT LOGS ────
     match /audit_logs/{logId} {
       allow read: if isAdmin();
-      allow create: if isStaff();
+      allow create: if canWrite();
       allow update, delete: if false; // Append-only
     }
 
     // ──── CORE BUSINESS: Ventas, Bobinas, Inventarios, Producción ────
-    // (FASE 1: Escritura abierta a isStaff() para no romper cliente, pero bloqueando mutación de campos críticos)
+    // (2026-08-26: lectura isStaff() (los 3 roles); escritura canWrite() (ADMIN+SUPERVISOR)
+    // — OPERATOR queda fuera por decisión del dueño, ver canWrite() en HELPERS. Se sigue
+    // bloqueando mutación de campos críticos vía fieldsUnchanged donde aplica.)
     
     match /sales/{saleId} {
       allow read: if isStaff();
       // FASE 2: cerrar a if false cuando exista la Cloud Function createSale
-      allow create: if isStaff();
+      allow create: if canWrite();
       // Protegemos el SNAPSHOT financiero de la venta. 'status' sigue mutable client-side
       // (approveQuotation -> CONVERTED, cancelQuotation -> CANCELLED, ambos vivos y
       // client-side todavía) con 2 excepciones candadas al callable annulSale
@@ -75,56 +86,58 @@ service cloud.firestore {
       // 2) un doc ya VOIDED queda terminal/congelado — ningún campo se toca desde el
       //    cliente una vez anulado (cierra tambien el gap de approveQuotation, cuyo
       //    guard hoy es negativo y no excluye VOIDED explicitamente — ver recon).
-      allow update: if isStaff()
+      allow update: if canWrite()
         && fieldsUnchanged(['totalAmount', 'subtotal', 'igv', 'exchangeRate', 'currency', 'items', 'paymentType'])
         && !(request.resource.data.status == 'VOIDED' && resource.data.status != 'VOIDED')
         && !(resource.data.status == 'VOIDED');
       allow delete: if isAdmin();
-      
+
       match /history/{historyId} {
         allow read: if isStaff();
-        allow write: if isStaff();
+        allow write: if canWrite();
       }
     }
 
     match /customers/{customerId} {
       allow read: if isStaff();
-      allow write: if isStaff();
+      allow create, update: if canWrite();
+      allow delete: if isAdmin();
     }
 
     match /contacts/{contactId} {
       allow read: if isStaff();
-      allow write: if isStaff();
+      allow create, update: if canWrite();
+      allow delete: if isAdmin();
     }
 
     match /coils/{coilId} {
       allow read: if isStaff();
       // FASE 2: cerrar a if false cuando exista la Cloud Function (split/corte)
-      allow create: if isStaff();
-      allow update: if isStaff(); // Relajado para admitir edición de inicial/costo o consumo
+      allow create: if canWrite();
+      allow update: if canWrite(); // Relajado para admitir edición de inicial/costo o consumo
       allow delete: if isAdmin();
     }
 
     match /cut_orders/{orderId} {
       allow read: if isStaff();
       // FASE 2: cerrar a if false
-      allow create: if isStaff();
-      allow update: if isStaff(); // Muta 'status', 'coils', 'sentWeightTotal' en el cliente
+      allow create: if canWrite();
+      allow update: if canWrite(); // Muta 'status', 'coils', 'sentWeightTotal' en el cliente
       allow delete: if isAdmin();
     }
 
     match /strips_stock/{stripId} {
       allow read: if isStaff();
       // FASE 2: cerrar a if false
-      allow create: if isStaff();
-      allow update: if isStaff(); // Muta 'avgCostPerKg', 'totalStrips', 'totalWeight' en el cliente
+      allow create: if canWrite();
+      allow update: if canWrite(); // Muta 'avgCostPerKg', 'totalStrips', 'totalWeight' en el cliente
       allow delete: if isAdmin();
     }
 
     match /strips_movements/{movId} {
       allow read: if isStaff();
       // FASE 2: cerrar a if false
-      allow create: if isStaff();
+      allow create: if canWrite();
       allow update, delete: if false; // Trazabilidad append-only o functions
     }
 
@@ -132,24 +145,24 @@ service cloud.firestore {
     match /production_logs/{logId} {
       allow read: if isStaff();
       // FASE 2: cerrar a if false
-      allow create: if isStaff();
+      allow create: if canWrite();
       // Protegemos el SNAPSHOT de producción. Se permite cambiar 'status' en anulaciones
-      allow update: if isStaff() && fieldsUnchanged(['piecesProduced', 'sku', 'line', 'costPerPiece', 'baseCost', 'weightUsed', 'stripId', 'coilId']);
+      allow update: if canWrite() && fieldsUnchanged(['piecesProduced', 'sku', 'line', 'costPerPiece', 'baseCost', 'weightUsed', 'stripId', 'coilId']);
       allow delete: if isAdmin();
     }
 
     match /inventory_stock/{itemId} {
       allow read: if isStaff();
       // FASE 2: cerrar a if false
-      allow create: if isStaff();
-      allow update: if isStaff(); // Muta 'stock', 'wac' desde el cliente en ventas/producción
+      allow create: if canWrite();
+      allow update: if canWrite(); // Muta 'stock', 'wac' desde el cliente en ventas/producción
       allow delete: if isAdmin();
     }
 
     match /kardex_movements/{movId} {
       allow read: if isStaff();
       // FASE 2: cerrar a if false
-      allow create: if isStaff();
+      allow create: if canWrite();
       allow update, delete: if false;
     }
 
@@ -161,51 +174,52 @@ service cloud.firestore {
 
     match /roofing_stock/{document=**} {
       allow read: if isStaff();
-      allow create: if isStaff();
-      allow update: if isStaff(); // Muta stock/wac en cliente
+      allow create: if canWrite();
+      allow update: if canWrite(); // Muta stock/wac en cliente
       allow delete: if isAdmin();
     }
     match /roofing_stock_movements/{document=**} {
       allow read: if isStaff();
-      allow create: if isStaff();
+      allow create: if canWrite();
       allow update, delete: if false;
     }
     match /metallic_roofing_stock/{document=**} {
       allow read: if isStaff();
-      allow create: if isStaff();
-      allow update: if isStaff(); // Muta stock/wac en cliente
+      allow create: if canWrite();
+      allow update: if canWrite(); // Muta stock/wac en cliente
       allow delete: if isAdmin();
     }
     match /metallic_roofing_stock_movements/{document=**} {
       allow read: if isStaff();
-      allow create: if isStaff();
+      allow create: if canWrite();
       allow update, delete: if false;
     }
     match /trading_stock/{document=**} {
       allow read: if isStaff();
-      allow create: if isStaff();
-      allow update: if isStaff(); // Muta stock/wac en cliente
+      allow create: if canWrite();
+      allow update: if canWrite(); // Muta stock/wac en cliente
       allow delete: if isAdmin();
     }
     match /trading_stock_movements/{document=**} {
       allow read: if isStaff();
-      allow create: if isStaff();
+      allow create: if canWrite();
       allow update, delete: if false;
     }
     match /services_stock_movements/{document=**} {
       allow read: if isStaff();
-      allow create: if isStaff();
+      allow create: if canWrite();
       allow update, delete: if false;
     }
 
     match /coil_finishes/{document=**} {
       allow read: if isStaff();
-      allow write: if isStaff();
+      allow create, update: if canWrite();
+      allow delete: if isAdmin();
     }
 
     match /supplier_sku_map/{document=**} {
       allow read: if isStaff();
-      allow write: if isAdmin() || hasRole('SUPERVISOR');
+      allow write: if canWrite();
     }
 
     match /_noop_stock/{document=**} {
