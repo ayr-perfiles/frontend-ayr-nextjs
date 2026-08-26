@@ -20,7 +20,7 @@
     "test:emu:functions": "node scripts/with-emulator.cjs test:emu:functions:inner",
     "test:emu:functions:inner": "firebase emulators:exec --project ayrsteel-test \"vitest run --config vitest.emu.config.ts functions/src/callables --no-file-parallelism --maxWorkers 1\" --only auth,firestore,storage,functions",
     "test:emu:rules": "node scripts/with-emulator.cjs test:emu:rules:inner",
-    "test:emu:rules:inner": "firebase emulators:exec --project ayrsteel-test \"npx vitest run --config vitest.emu.config.ts src/test/rules\" --only firestore",
+    "test:emu:rules:inner": "firebase emulators:exec --project ayrsteel-test \"npx vitest run --config vitest.emu.config.ts src/test/rules --no-file-parallelism --maxWorkers 1\" --only firestore",
     "emulators": "firebase emulators:start --import=./firebase-data --export-on-exit",
     "emulate": "concurrently \"npm run emulators\" \"npm run dev\"",
     "seed:annul-fixtures": "tsx src/test/integration/fixtures/seedAnnulFixtures.cli.ts"
