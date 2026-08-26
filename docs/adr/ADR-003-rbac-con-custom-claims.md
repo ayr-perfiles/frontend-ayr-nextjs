@@ -1,5 +1,12 @@
 # ADR-003: Implementación de RBAC con Custom Claims
 
+> ⚠️ **ACTUALIZACIÓN (2026-08-26, v6.66.0).** La sección 3 (línea 38) describe a OPERATOR
+> como "centrado en reportar producción (`production_logs`), consumir materiales" — eso
+> implicaba escritura y era cierto en su momento. Desde v6.66.0 (`canWrite()`, commit
+> `921eeabe`) ya NO lo es: OPERATOR no escribe ninguna colección, `canWrite()`
+> (ADMIN+SUPERVISOR) gobierna toda escritura y `isStaff()` (los 3 roles) quedó exclusivo
+> para `read`. El cuerpo se conserva sin editar por la misma razón que el banner de abajo.
+>
 > ⚠️ **ESTADO SUPERADO (2026-08-26, v6.64.0).** La afirmación de más abajo
 > ("`firestore.rules` sigue 100% abierta", Sprint 7) es HISTÓRICA y hoy es FALSA:
 > las rules están cerradas por colección+rol desde v6.10/v6.11, y desde v6.64.0

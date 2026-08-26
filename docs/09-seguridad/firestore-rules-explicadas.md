@@ -1,5 +1,14 @@
 # Reglas de Seguridad de Firestore (Explicadas)
 
+> ⚠️ **ESTE DOCUMENTO NO CORRESPONDE AL `firestore.rules` REAL (verificado 2026-08-26,
+> v6.66.0).** Describe funciones (`isAuthenticated()`/`isSupervisor()`/`isOperator()`) que
+> **nunca existieron** en el archivo real, en ninguna versión — las funciones reales son
+> `isSignedIn()`/`hasRole()`/`isAdmin()`/`isStaff()`/`canWrite()` (desde v6.66.0)/`isOwner()`/
+> `fieldsUnchanged()`. Stale desde su origen (Sprint 1, mayo 2026), preexistente — no
+> introducido por ningún frente reciente. **Fuente de verdad:** el propio `firestore.rules`
+> + CLAUDE.md §8 (y su historial de versiones para el porqué de cada regla). El cuerpo de
+> abajo NO se reescribió — reescribirlo es un frente propio.
+
 > **Actualizado:** Sprint 1 (Mayo 2026)  
 > **Ubicación:** `firestore.rules`
 

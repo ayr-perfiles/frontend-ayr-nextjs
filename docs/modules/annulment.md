@@ -134,9 +134,13 @@ Barrido re-corrido sobre la query exacta de `PRODUCTION_QUEUE_FILTER` (v6.59.0):
   - ⚠️ **RENOMBRADO en v6.53.0** (era `ProductionBlockedAnnulModal.tsx`): el frente EDITAR lo reusa desde la edición de cotización, y el nombre viejo mentiría. Los strings de copy pasaron a ser props opcionales cuyo **default son los textos de anular**, así que el comportamiento de `SaleDetailsModal` no cambió. `parseAnnulError` sigue siendo exclusivo de anulación — editar usa `parseEditError`, que discrimina por `activeLogIds` en vez de por `quotationId` (ver `docs/modules/ventas.md` §16.6).
 - ⚠️ **DEUDA:** en un smoke real de browser (prod) el modal no disparó, cayó a toast plano — investigado a fondo (body HTTP crudo del callable + código fuente de ambos SDKs, todo correcto), sin repro, hipótesis timing de cache Vercel edge post-deploy. Ver CLAUDE.md deudas v6.50.0.
 
-## 6. Firestore rules (`firestore.rules:64-80`, colección `sales`)
+## 6. Firestore rules (`firestore.rules:73-97`, colección `sales`)
+> **Actualizado 2026-08-26 (v6.66.0, commit `921eeabe`):** la condición pasó de `isStaff()`
+> a `canWrite()` (ADMIN+SUPERVISOR) — OPERATOR ya no puede actualizar `sales` desde el
+> cliente. El resto de la condición (guard de `status`/`VOIDED`) no cambió. Ver CLAUDE.md
+> v6.66.0 para el frente completo de permisos.
 ```
-allow update: if isStaff()
+allow update: if canWrite()
   && fieldsUnchanged(['totalAmount','subtotal','igv','exchangeRate','currency','items','paymentType'])
   && !(request.resource.data.status == 'VOIDED' && resource.data.status != 'VOIDED')
   && !(resource.data.status == 'VOIDED');
