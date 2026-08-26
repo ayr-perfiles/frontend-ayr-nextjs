@@ -83,8 +83,9 @@ service cloud.firestore {
         && request.resource.data.status is string
         && request.resource.data.status != '';
       // Protegemos el SNAPSHOT financiero de la venta. 'status' sigue mutable client-side
-      // (approveQuotation -> CONVERTED, cancelQuotation -> CANCELLED, ambos vivos y
-      // client-side todavía) con 2 excepciones candadas al callable annulSale
+      // (approveQuotation -> CONVERTED, cancelQuotation -> CANCELLED: son client-side y
+      // pasan por esta rule, pero su UI es hoy INALCANZABLE para cotizaciones nativas —
+      // ver [QUOTATION-APPROVE-UNREACHABLE] en HANDOFF.md) con 2 excepciones candadas al callable annulSale
       // (functions/src/callables/sales.ts, Admin SDK, bypassea esta regla):
       // 1) nadie transiciona a VOIDED desde el cliente (cierra el bypass documentado de
       //    anular sin pasar por el bloqueo de producción activa ni la cascada — ver
