@@ -228,19 +228,23 @@
 - **Frente #1 (editar bobina USD→SOLES) CERRADO EN PROD** (master `d086344d`; callable `updateCoil` ya deployado a prod+test con paridad y smoke OK antes del merge). `updatePayload` ahora persiste `metadata.currency`/`exchangeRate`/`originalCurrencyValue` (antes los ignoraba en silencio pese a que el cliente ya los mandaba). Autofill de TC por fecha de factura en el modal de edición, disparado solo por acción de usuario (nunca en mount). `pricePerKg` recomputado con el helper canónico `coilPricing.ts` en los 3 puntos que lo tocan (Valor Total, toggle moneda, autofill). Detalle completo en CLAUDE.md v6.42.
 
 ## COLA
-> Reestructurada en v6.66.0: `## PRÓXIMO FRENTE` + `## FIXEAR PENDIENTES` (dos sistemas de
-> numeración sobre los mismos dígitos — posicional vs. nombre histórico `#N` — más una
-> sección `SUPERSEDED` que seguía viva) colapsan en esta única lista plana. Los ítems ya
-> cerrados NO se re-listan acá — su registro completo vive en la entrada de versión donde
-> se cerraron (ver CLAUDE.md). `#N` histórico solo como alias entre paréntesis donde aporta
-> contexto de búsqueda.
+> Reestructurada en v6.66.0 (dos sistemas de numeración colapsados en lista plana).
+> **v6.68.0: cada ítem tiene SLUG estable.** La posición es solo orden de display —
+> un ítem se cierra BORRANDO su fila, y un slug que reaparece se detecta con un grep.
+> Motivo: en v6.66.0 la migración preservó un ítem YA CERRADO en la posición 1 y
+> sobrevivió 2 versiones porque nada lo identificaba salvo estar primero.
+> Los ítems cerrados NO se re-listan — su registro vive en la entrada de versión.
 
-1. **`cutOrderService.ts` doble conversión** (bloquea WRITE 8).
-2. **Borrar copia cliente de `buildAnnulmentCascade` + `canAnnulSale`** (ex-posición 6). Mata una CLASE de bugs (drift entre copia cliente/server) — consecuencia de la migración de `annulSale` a callable server-side (v6.50.0+); la copia cliente quedó sin consumidores reales.
-3. **`sales.update` con accessor inseguro sobre `resource.data.status`** (nuevo v6.66.0). Un doc de `sales` sin campo `status` es inactualizable por TODOS los roles, ADMIN incluido — la evaluación de la rule falla y Firestore lo trata como deny. Ver CLAUDE.md v6.66.0 para el mecanismo completo. Frente propio, con su propio RED.
-4. **11 `audit_logs` con `userEmail == "SMOKE"`** (medido 2026-08-26 vía admin SDK contra prod — no el 8 heredado, que era solo el sub-conteo de `SALE_CREATED`; ex-posición 7) — requiere decisión de negocio explícita, colección append-only por regla (`update/delete: if false`).
-5. **27 bobinas con `currentWeight` negativo** — decisión de negocio. Familia dominante `IMPORT-*ROJO`, ~3,857 kg negativos acumulados (ver v6.46).
-6. **Stock negativo / reconciliación** (`#3` histórico, FUSIONADO con "FRENTE B" — 85 grupos duplicados restantes, v6.58.0) — CONGELADO hasta conteo físico (no hay saldo inicial cargado). Excedente por SKU medido: `COB030ROJO 30,396.99` · `PL030NT6M 4,930` · `COB030AZUL 3,312.6` · `PL030RJ6MT 3,203` · `PL030AZ6MT 3,152` · `PL030NT515 150` · `PL030NT366M 100`. 9 de los 89 grupos no siguen el patrón 13+17-ago y van 1×1 (ver deuda v6.58.0). NO re-proponer sin el conteo físico.
+1. **`[CASCADE-DUP]`** — borrar copia cliente de `buildAnnulmentCascade` + `canAnnulSale`. Duplicación sin consumidores reales desde la migración de `annulSale` a callable server-side (v6.50.0+). Mata una CLASE de bug (drift cliente/server). Chico, sin decisión de negocio.
+2. **`[SALES-STATUS-ACCESSOR]`** — `sales.update` referencia `resource.data.status` SIN accessor seguro (nuevo v6.66.0). Un doc de `sales` sin campo `status` es INACTUALIZABLE por TODOS los roles, ADMIN incluido: la evaluación de la rule falla y Firestore lo trata como deny. Hoy probablemente inerte. Frente propio con su propio RED. Ver CLAUDE.md v6.66.0.
+3. **`[SMOKE-LOGS]`** — 11 `audit_logs` con `userEmail == "SMOKE"` (8 `SALE_CREATED` + 3 `PRODUCTION_LOG_CREATED`, medido 2026-08-26 vs prod) apuntando a docs borrados. DECISIÓN DE NEGOCIO: `audit_logs` es append-only por regla (`update/delete: if false`). **Pariente medido en v6.68.0:** la única `cut_orders` de prod (`sKK7cvOkfJEQ6bLuDm9u`, ANULADA) referencia la bobina `TEST-002-1`, que ya no existe en `coils` — misma familia de referencia colgante, inerte, se decide junto.
+4. **`[COIL-NEG-WEIGHT]`** — 27 bobinas con `currentWeight` NEGATIVO en prod, familia dominante `IMPORT-*ROJO`, ~3,857 kg acumulados (ver v6.46). DECISIÓN DE NEGOCIO.
+5. **`[STOCK-RECON]`** — stock negativo / reconciliación (`#3` histórico, fusionado con "FRENTE B", 85 grupos duplicados restantes, v6.58.0). **CONGELADO hasta conteo físico** — no hay saldo inicial cargado. Excedente por SKU: `COB030ROJO 30,396.99` · `PL030NT6M 4,930` · `COB030AZUL 3,312.6` · `PL030RJ6MT 3,203` · `PL030AZ6MT 3,152` · `PL030NT515 150` · `PL030NT366M 100`. 9 de los 89 grupos no siguen el patrón 13+17-ago y van 1×1. NO re-proponer sin el conteo físico.
+
+> **CERRADO Y BORRADO DE ESTA LISTA — `[CUTORDER-FX]`** (ex-posición 1 hasta v6.67.0):
+> `cutOrderService.ts` doble conversión USD→PEN. Estaba cerrado desde **v6.52.0**
+> y esta lista lo arrastró igual. Re-verificado en v6.68.0 en las 3 capas. NO re-abrir.
+
 ## HORIZONTE (candidatos próximo frente)
 - ~~**NC no es orden de producción — candidato, SIN recon hecho.**~~ ✅ **RESUELTO FORWARD (v6.55.0, commit `608e8d08`) — RETRO PENDIENTE.** El gate nuevo `createsProductionPercha` (allowlist `documentType in [FACTURA,BOLETA]`) hace que ninguna NC (ni POS) vuelva a crear percha desde ahora. En su momento era forward-only: **verificado en prod (read-only, 2026-08-22)** que las 6 perchas `COT-FFC1-*` que ya existían de antes SEGUÍAN calificando 6/6 para `PRODUCTION_QUEUE_FILTER` (`status:QUOTATION`, `productionStatus:CONFIRMED`, `businessLines:[metallic-roofing]`). ✅ **RETRO CERRADO (v6.56.0 + v6.59.0): hoy es 0/6.** `COT-FFC1-44`/`COT-FFC1-72` quedaron `CANCELLED` por backfill manual en v6.56.0 (la cascada `488455d1` no había corrido sobre ellas porque su venta gemela ya estaba `VOIDED` antes de que el fix existiera). `COT-FFC1-57/61/64/67` quedaron `CANCELLED` en v6.59.0, al anular sus 4 NC gemelas vía el callable real (el duplicado que las bloqueaba se había resuelto en v6.58.0). Barrido de cola re-corrido (v6.59.0): 50 docs en `PRODUCTION_QUEUE_FILTER`, ninguno `COT-FFC1-*`. Ver CLAUDE.md v6.55.0/v6.56.0/v6.58.0/v6.59.0 y `docs/modules/annulment.md` §0-ter.
 - **Recon de permisos de import de NC — parkeado, sin investigar.** Quién puede decidir `ncStockAction` en el preview del importador (hoy sin gate de rol visto en este frente) y si eso debería estar restringido dado que ahora ese campo determina un movimiento real de stock en la anulación, no solo en el import. Candidato a recon antes de tocar el importador de nuevo.
@@ -249,7 +253,7 @@
 - **Reporte por RAL** (frente aparte).
 - **PT inflado** por producciones contra cotizaciones importadas (venta histórica no descuenta stock, producción sí suma) → ajuste manual al cerrar el período. Ver `docs/modules/ventas.md` §9.
 - **forward-fix** `coilWeightConsumedKg` en `consumeCoil` (drywall, mata `approximateWeight` de logs nuevos).
-- **WRITE 8 cutOrder** (monstruo prorrateo, modelo flejes real + lote-por-bobina). ✅ **DESTRABADO en v6.52.0:** el bug de doble conversión USD→PEN que había que arreglar **antes** de este frente (para no meterlo a mitad del monstruo) ya está cerrado, con 3 tests de integración que anclan el costo de material y el de servicio por separado.
+- **WRITE 8 cutOrder** (monstruo prorrateo, modelo flejes real + lote-por-bobina). ✅ **DESTRABADO en v6.52.0:** el bug de doble conversión USD→PEN que había que arreglar **antes** de este frente (para no meterlo a mitad del monstruo) ya está cerrado, con 3 tests de integración que anclan el costo de material y el de servicio por separado. ⚠️ **PRECONDICIÓN MEDIDA (v6.68.0):** `strips_stock` en prod tiene **3 docs con `totalStrips=0`/`totalWeight=0` pero `avgCostPerKg` residual** (`2.3576`, `2.5346`, `2.3576`) — residuo de la orden PEN de prueba. Es el estado inicial que va a leer el primer `receiveStrips` real: verificar cómo se comporta el WAC ante cantidad CERO con costo residual ANTES de escribir el prorrateo, no después. `strips_movements` en 0, `cut_orders` en 1 (ANULADA).
 - **WRITE 9 salesService**.
 - **Drawer piezas/bobina en PLANCHA — forward-fix del writer:** `produceFromCoils` hoy graba `piecesCount`/`pieceLengthM` en `perCoilBreakdown` solo para COBERTURA. Plancha muestra '—' en esas 2 columnas. Si se quiere desglose en plancha, es cambio de backend + backfill opcional (frente aparte).
 
