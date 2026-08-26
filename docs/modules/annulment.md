@@ -144,7 +144,7 @@ allow update: if isStaff()
 - `sales.status` sigue mutable client-side para OTRAS transiciones (`approveQuotation`→`CONVERTED`, `cancelQuotation`→`CANCELLED`, ambos siguen 100% client-side, sin migrar).
 - Transición a `VOIDED` **candada exclusivamente al callable** (Admin SDK bypassea rules por diseño).
 - Un doc ya `VOIDED` queda **terminal/congelado** — ningún campo se toca desde el cliente una vez anulado (cierra de rebote un guard débil de `approveQuotation`, que no excluía `VOIDED` explícitamente).
-- Test dedicado: `src/test/rules/salesStatus.rules.test.ts` (primer uso de `@firebase/rules-unit-testing` en el repo, 4 tests).
+- Test dedicado: `src/test/rules/salesStatus.rules.test.ts` (primer uso de `@firebase/rules-unit-testing` en el repo, 4 tests). Desde v6.64.0 tiene 4 archivos hermanos (`foundation`/`locks`/`sales`/`collections`): 84 tests, 35/35 colecciones de `firestore.rules` cubiertas. El blindaje de campos financieros de `sales` (`fieldsUnchanged`) se ancla en `sales.rules.test.ts` GRUPO J.
 
 ## 7. Contratos clave (shape de escritura)
 - **Error del callable:** `HttpsError(code, message, details?)`. Códigos: `unauthenticated`, `permission-denied`, `invalid-argument`, `not-found`, `failed-precondition`. Solo `ACTIVE_PRODUCTION` (bloqueo por producción) trae `details:{quotationId, activeLogIds}` estructurado — el resto no trae `details`.

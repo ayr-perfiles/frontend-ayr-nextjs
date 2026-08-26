@@ -1,5 +1,12 @@
 # ADR-006: Secretos de integración en Secret Manager (nunca en Firestore)
 
+> ⚠️ **ESTADO SUPERADO (2026-08-26, v6.64.0).** La afirmación de más abajo ("hoy
+> `firestore.rules` está 100% abierta", deuda del Sprint 7) es HISTÓRICA y hoy es
+> FALSA: las rules están cerradas por colección+rol desde v6.10/v6.11, y desde
+> v6.64.0 tienen 84 tests que lo prueban (35/35 bloques `match`). El cuerpo se
+> conserva sin editar porque un ADR registra una decisión en su fecha. Estado
+> real: CLAUDE.md.
+
 **Estado:** Aceptada
 **Fecha:** 2026-05-31
 **Decisores:** Equipo AYR Steel

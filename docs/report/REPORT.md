@@ -201,7 +201,7 @@ _Completar con épicas: Inventario, Producción, Configuración, Reportes._
 | 4 | Emisión electrónica SUNAT directa (Factura/Boleta/Baja) | 13 | 8 | 🏗️ |
 | 5 | Validez CPE + consulta RUC/DNI (decolecta) | 8 | 8 | ✅ |
 | 6 | Secretos en Secret Manager + binding mínimo | 5 | 8 | ✅ |
-| 7 | Cierre firestore.rules por rol/colección | 13 | Pendiente | ❌ Deuda crítica |
+| 7 | Cierre firestore.rules por rol/colección | 13 | v6.10/v6.11 (rule) + v6.64.0 (cobertura, 35/35, 84 tests) | ✅ |
 | 8 | Migración writes críticos a Cloud Functions | 13 | Pendiente | ❌ |
 | 9 | Producción Metallic Roofing | 13 | 6B BLOQUEADO | 🛑 |
 
