@@ -70,6 +70,11 @@ sales_quotation_test_backup_*.json
 # Scripts ad-hoc de recon/migracion/purga (no versionar)
 /scripts/*.cjs
 /scripts/*.ts
+# Excepcion: infraestructura permanente referenciada desde package.json,
+# no scripts ad-hoc de un solo uso (esos van a ~/ayr-scratch/ por regla de oro).
+!scripts/emuPortGuard.cjs
+!scripts/emuPortGuard.test.cjs
+!scripts/with-emulator.cjs
 /recon.js
 /test-prod.ts
 /dump_*.cjs

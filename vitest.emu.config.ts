@@ -11,12 +11,12 @@ import rootConfig from './vitest.config'
 // vía el spread de `rootConfig` de abajo. Duplicarlos los hace derivar en
 // silencio la próxima vez que alguien toque solo uno de los dos archivos.
 //
-// Este es el config que usan los scripts test:emu / test:emu:functions /
-// test:emu:rules / test:integration, que SÍ corren dentro de
-// `firebase emulators:exec` — así que acá el exclude tiene que dejar pasar
-// los 3 directorios que el padre bloquea. Se derivan por FILTRO del exclude
-// original (no se reescribe la lista a mano) para no poder divergir del
-// padre en las demás entradas.
+// Este es el config que usan hoy los scripts test:emu, test:emu:functions y
+// test:emu:rules, los 3 vía sus variantes :inner (wrapeadas por
+// with-emulator.cjs), que corren dentro de `firebase emulators:exec` — así
+// que acá el exclude tiene que dejar pasar los 3 directorios que el padre
+// bloquea. Se derivan por FILTRO del exclude original (no se reescribe la
+// lista a mano) para no poder divergir del padre en las demás entradas.
 //
 // OJO: NO usar mergeConfig(rootConfig, {test:{exclude:...}}) para esto —
 // vite/vitest mergeConfig CONCATENA arrays en vez de reemplazarlos, así que
