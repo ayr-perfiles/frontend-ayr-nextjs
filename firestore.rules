@@ -75,7 +75,13 @@ service cloud.firestore {
     match /sales/{saleId} {
       allow read: if isStaff();
       // FASE 2: cerrar a if false cuando exista la Cloud Function createSale
-      allow create: if canWrite();
+      // [SALES-STATUS-ACCESSOR] (v6.69.0): 'status' in ... va PRIMERO y corta en corto —
+      // exige que el campo exista antes de tocarlo, para que ningún doc de sales nazca
+      // sin 'status' y rompa la evaluación de `update` de abajo (ver el accessor seguro).
+      allow create: if canWrite()
+        && 'status' in request.resource.data
+        && request.resource.data.status is string
+        && request.resource.data.status != '';
       // Protegemos el SNAPSHOT financiero de la venta. 'status' sigue mutable client-side
       // (approveQuotation -> CONVERTED, cancelQuotation -> CANCELLED, ambos vivos y
       // client-side todavía) con 2 excepciones candadas al callable annulSale
@@ -86,10 +92,15 @@ service cloud.firestore {
       // 2) un doc ya VOIDED queda terminal/congelado — ningún campo se toca desde el
       //    cliente una vez anulado (cierra tambien el gap de approveQuotation, cuyo
       //    guard hoy es negativo y no excluye VOIDED explicitamente — ver recon).
+      // [SALES-STATUS-ACCESSOR] (v6.69.0): las 3 lecturas de 'status' usan `.get(key, default)`
+      // — accessor seguro, default ''. Decisión: un doc SIN 'status' no se considera VOIDED,
+      // por lo tanto queda ACTUALIZABLE (congelarlo castigaría un dato roto en vez de dejarlo
+      // reparable). `create` de arriba ya impide que nazcan docs nuevos así; esto cubre los
+      // docs preexistentes que pudieran carecer del campo.
       allow update: if canWrite()
         && fieldsUnchanged(['totalAmount', 'subtotal', 'igv', 'exchangeRate', 'currency', 'items', 'paymentType'])
-        && !(request.resource.data.status == 'VOIDED' && resource.data.status != 'VOIDED')
-        && !(resource.data.status == 'VOIDED');
+        && !(request.resource.data.get('status', '') == 'VOIDED' && resource.data.get('status', '') != 'VOIDED')
+        && !(resource.data.get('status', '') == 'VOIDED');
       allow delete: if isAdmin();
 
       match /history/{historyId} {
