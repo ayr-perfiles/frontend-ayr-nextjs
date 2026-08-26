@@ -106,3 +106,61 @@ describe("buildCoilAlgoliaFilters — anclas de no-regresión (comportamiento vi
     );
   });
 });
+
+describe("buildCoilAlgoliaFilters — lineFinishIds (scope por línea, frente #10)", () => {
+  it("lineFinishIds de 1 id → (finish:GALV)", () => {
+    const out = buildCoilAlgoliaFilters(
+      { statusFilter: "ALL", lineFinishIds: ["GALV"] },
+      "inventory",
+    );
+    expect(out).toBe("NOT status:VOIDED AND (finish:GALV)");
+  });
+
+  it("lineFinishIds de varios → (finish:A OR finish:B OR finish:C) en AND con el resto", () => {
+    const out = buildCoilAlgoliaFilters(
+      {
+        statusFilter: "AVAILABLE",
+        currencyFilter: "USD",
+        lineFinishIds: ["ALZ-NATURAL", "ALZ-AZUL-5002", "ALZ-ROJO-3020"],
+      },
+      "export",
+    );
+    expect(out).toBe(
+      "status:AVAILABLE AND (finish:ALZ-NATURAL OR finish:ALZ-AZUL-5002 OR finish:ALZ-ROJO-3020) AND metadata.currency:USD",
+    );
+  });
+
+  it("lineFinishIds Y finishFilter juntos → emite AMBAS cláusulas (redundante a propósito)", () => {
+    const out = buildCoilAlgoliaFilters(
+      { statusFilter: "ALL", finishFilter: "ALZ-NATURAL", lineFinishIds: ["ALZ-NATURAL", "ALZ-BLANCO"] },
+      "inventory",
+    );
+    expect(out).toBe(
+      "NOT status:VOIDED AND finish:ALZ-NATURAL AND (finish:ALZ-NATURAL OR finish:ALZ-BLANCO)",
+    );
+  });
+
+  it("sin lineFinishIds → string IDÉNTICO al de hoy (ancla, inventory y export)", () => {
+    const params = {
+      statusFilter: "IN_PROGRESS",
+      finishFilter: "GALV",
+      currencyFilter: "PEN",
+      providerFilter: "MARELIAC S.R.L.",
+    };
+    const expected =
+      'status:IN_PROGRESS AND finish:GALV AND metadata.currency:PEN AND metadata.provider:"MARELIAC S.R.L."';
+    expect(buildCoilAlgoliaFilters(params, "inventory")).toBe(expected);
+    expect(buildCoilAlgoliaFilters(params, "export")).toBe(expected);
+    expect(buildCoilAlgoliaFilters({ statusFilter: "ALL" }, "inventory")).toBe("NOT status:VOIDED");
+    expect(buildCoilAlgoliaFilters({ statusFilter: "ALL" }, "export")).toBe("");
+  });
+
+  it("lineFinishIds vacío [] → igual que undefined, NO emite cláusula", () => {
+    expect(
+      buildCoilAlgoliaFilters({ statusFilter: "ALL", lineFinishIds: [] }, "inventory"),
+    ).toBe("NOT status:VOIDED");
+    expect(
+      buildCoilAlgoliaFilters({ statusFilter: "AVAILABLE", lineFinishIds: [] }, "export"),
+    ).toBe("status:AVAILABLE");
+  });
+});

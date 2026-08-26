@@ -139,7 +139,8 @@ export const NAV_GROUPS: NavEntry[] = [
     label: "Materia prima",
     icon: "Layers",
     items: [
-      { id: "bobinas", label: "Inventario Bobinas", href: "/admin/coils", icon: "Layers" },
+      { id: "bobinas-aluzinc", label: "Bobinas Aluzinc", href: "/admin/coils/aluzinc", icon: "Layers" },
+      { id: "bobinas-drywall", label: "Bobinas Drywall", href: "/admin/coils/drywall", icon: "Layers" },
       { id: "flejes", label: "Inventario Flejes", href: "/admin/coils/strips", icon: "AlignJustify" },
       { id: "acabados", label: "Acabados", href: "/admin/coils/finishes", icon: "Tag" },
     ],
@@ -670,7 +671,8 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
   const isQueueActive = pathname === "/admin/lines/metallic-roofing/production/queue";
   const isPurchasesActive = pathname.startsWith("/admin/purchases");
   const isCutOrdersActive = pathname === "/admin/coils/cut-orders";
-  const isCoilsActive = pathname === "/admin/coils";
+  const isCoilsAluzincActive = pathname === "/admin/coils/aluzinc";
+  const isCoilsDrywallActive = pathname === "/admin/coils/drywall";
   const isStripsActive = pathname === "/admin/coils/strips";
   const isFinishesActive = pathname === "/admin/coils/finishes";
   const isKardexActive = pathname === "/admin/kardex";
@@ -698,7 +700,8 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
     "cola-produccion": isQueueActive,
     compras: isPurchasesActive,
     "ordenes-corte": isCutOrdersActive,
-    bobinas: isCoilsActive,
+    "bobinas-aluzinc": isCoilsAluzincActive,
+    "bobinas-drywall": isCoilsDrywallActive,
     flejes: isStripsActive,
     acabados: isFinishesActive,
     kardex: isKardexActive,
@@ -714,7 +717,7 @@ export default function Sidebar({ collapsed = false }: { collapsed?: boolean }) 
     },
     { id: "produccion", hasActiveChild: isAnyProductionLineActive || isQueueActive },
     { id: "abastecimiento", hasActiveChild: isPurchasesActive || isCutOrdersActive },
-    { id: "materiaPrima", hasActiveChild: isCoilsActive || isStripsActive || isFinishesActive },
+    { id: "materiaPrima", hasActiveChild: isCoilsAluzincActive || isCoilsDrywallActive || isStripsActive || isFinishesActive },
     { id: "lineasNegocio", hasActiveChild: isAnyLineCatalogOrInventoryActive },
     { id: "administracion", hasActiveChild: isKardexActive || isUsersActive || isAuditActive || isSettingsActive },
   ];

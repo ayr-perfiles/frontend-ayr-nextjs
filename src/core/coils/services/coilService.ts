@@ -20,6 +20,8 @@ import { Coil, BusinessLine } from "@/types";
 import { algoliaClient, ALGOLIA_INDICES } from "@/lib/algoliaClient";
 import { buildCoilAlgoliaFilters } from "../coilAlgoliaFilters";
 import { listFinishes } from "./finishService";
+import { getFinishIdsForLine } from "../domain/finishCompat";
+import { scopeCoilsByFinishIds, sliceCoilsForPage } from "../domain/coilPaging";
 
 export interface CoilUpdates
   extends Pick<NonNullable<Coil["metadata"]>, "currency" | "exchangeRate" | "originalCurrencyValue"> {
@@ -47,7 +49,12 @@ interface FetchParams {
   providerFilter?: string;
   cursorDoc?: QueryDocumentSnapshot<DocumentData> | null;
   direction?: "next" | "prev" | "first";
+  /** 0-indexed, para las dos ramas paginadas por número (Algolia y modo memoria). */
   page?: number;
+  /** Ids de finishes de la línea (frente #10). Con esto presente y no vacío, la
+   * rama Firestore entra en MODO MEMORIA: trae el universo filtrado entero (sin
+   * `limit`/cursores), scopea y pagina el array en memoria. Ver `fetchInventory`. */
+  lineFinishIds?: string[];
 }
 
 export const fetchInventory = async (params: FetchParams) => {
@@ -63,11 +70,12 @@ export const fetchInventory = async (params: FetchParams) => {
     cursorDoc,
     direction = "first",
     page = 0,
+    lineFinishIds,
   } = params;
 
   if (searchTerm.trim().length > 0) {
     const filters = buildCoilAlgoliaFilters(
-      { statusFilter, finishFilter, currencyFilter, providerFilter },
+      { statusFilter, finishFilter, currencyFilter, providerFilter, lineFinishIds },
       "inventory",
     );
 
@@ -148,6 +156,34 @@ export const fetchInventory = async (params: FetchParams) => {
     baseConstraints.push(orderBy("createdAt", "desc"));
   }
 
+  // MODO MEMORIA (frente #10, scope por línea): `finish in [8]` × `status in [4]`
+  // excede el límite de 30 disyunciones de Firestore. Se trae el universo filtrado
+  // ENTERO (sin limit/cursores/count), se scopea y se pagina el array en memoria.
+  if (lineFinishIds && lineFinishIds.length > 0) {
+    const memQuery = query(collRef, ...baseConstraints);
+    const memSnapshot = await getDocs(memQuery);
+    let memCoils = memSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Coil[];
+
+    if (statusFilter === "ALL" && hasDateFilter) {
+      memCoils = memCoils.filter((c) => c.status !== "VOIDED");
+    }
+
+    const scoped = scopeCoilsByFinishIds(memCoils, lineFinishIds);
+    const pageCoils = sliceCoilsForPage(scoped, page + 1, pageSize);
+
+    return {
+      coils: pageCoils,
+      isAlgolia: false,
+      isMemory: true,
+      firstDoc: null,
+      lastDoc: null,
+      totalCount: scoped.length,
+    };
+  }
+
   const baseQuery = query(collRef, ...baseConstraints);
   const countSnapshot = await getCountFromServer(baseQuery);
   const totalCount = countSnapshot.data().count;
@@ -193,6 +229,8 @@ export interface CoilExportFilters {
   providerFilter?: string;
   startDate?: string;
   endDate?: string;
+  /** Ids de finishes de la línea (frente #10, scope por línea). */
+  lineFinishIds?: string[];
 }
 
 /**
@@ -210,12 +248,13 @@ export const fetchCoilsForExport = async (filters: CoilExportFilters): Promise<C
     providerFilter,
     startDate,
     endDate,
+    lineFinishIds,
   } = filters;
 
   try {
     if (searchTerm.trim().length > 0) {
       const algoliaFilters = buildCoilAlgoliaFilters(
-        { statusFilter, finishFilter, currencyFilter, providerFilter },
+        { statusFilter, finishFilter, currencyFilter, providerFilter, lineFinishIds },
         "export",
       );
 
@@ -298,6 +337,10 @@ export const fetchCoilsForExport = async (filters: CoilExportFilters): Promise<C
       }
     }
 
+    if (lineFinishIds && lineFinishIds.length > 0) {
+      coils = scopeCoilsByFinishIds(coils, lineFinishIds);
+    }
+
     return coils;
   } catch (error) {
     console.error("Error obteniendo bobinas para exportar:", error);
@@ -307,9 +350,7 @@ export const fetchCoilsForExport = async (filters: CoilExportFilters): Promise<C
 
 export const listAvailableCoils = async (line: BusinessLine) => {
   const finishes = await listFinishes(true);
-  const compatibleFinishIds = finishes
-    .filter((f) => f.lines.includes(line))
-    .map((f) => f.id);
+  const compatibleFinishIds = getFinishIdsForLine(finishes, line);
 
   if (compatibleFinishIds.length === 0) return [];
 

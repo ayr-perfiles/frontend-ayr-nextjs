@@ -12,6 +12,13 @@
  * espacios es un error de sintaxis para Algolia. Citar incondicionalmente evita
  * la rama "¿necesita comillas?". status/finish/currency se interpolan crudos —
  * sus valores son identificadores sin espacios (anclado por tests).
+ *
+ * `lineFinishIds` (frente #10, scope por línea de negocio): los ids de los
+ * finishes de la línea (`getFinishIdsForLine`). Se emite como UNA cláusula
+ * parentizada `(finish:A OR finish:B ...)` en AND con las demás, DESPUÉS de la
+ * de `finish` singular — si ambas vienen, se emiten las dos (redundante a
+ * propósito, defensivo). `undefined` o `[]` ⇒ no se emite nada, string idéntico
+ * al anterior. Algolia no tiene el límite de 30 disyunciones de Firestore.
  */
 
 /** Cita un valor para el string de `filters` de Algolia: "..." con \ y " escapados. */
@@ -23,6 +30,8 @@ export interface CoilAlgoliaFilterParams {
   finishFilter?: string;
   currencyFilter?: string;
   providerFilter?: string;
+  /** Ids de finishes de la línea de negocio (scope por línea). `[]` = sin cláusula. */
+  lineFinishIds?: string[];
 }
 
 export type CoilAlgoliaFilterMode = "inventory" | "export";
@@ -31,7 +40,7 @@ export function buildCoilAlgoliaFilters(
   params: CoilAlgoliaFilterParams,
   mode: CoilAlgoliaFilterMode,
 ): string {
-  const { statusFilter, finishFilter, currencyFilter, providerFilter } = params;
+  const { statusFilter, finishFilter, currencyFilter, providerFilter, lineFinishIds } = params;
   const filters: string[] = [];
 
   if (statusFilter !== "ALL") filters.push(`status:${statusFilter}`);
@@ -39,6 +48,10 @@ export function buildCoilAlgoliaFilters(
 
   if (finishFilter && finishFilter !== "ALL") {
     filters.push(`finish:${finishFilter}`);
+  }
+
+  if (lineFinishIds && lineFinishIds.length > 0) {
+    filters.push(`(${lineFinishIds.map((id) => `finish:${id}`).join(" OR ")})`);
   }
 
   if (currencyFilter && currencyFilter !== "ALL") {

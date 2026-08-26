@@ -2,7 +2,7 @@
 
 import React from "react";
 import { TableFilters, FilterGroup } from "@/components/ui/TableFilters";
-import { useFinishes } from "@/core/coils/hooks/useFinishes";
+import { CoilFinish } from "@/core/coils/services/finishService";
 
 interface InventoryFiltersProps {
   searchTerm: string;
@@ -12,6 +12,8 @@ interface InventoryFiltersProps {
   setStatusFilter: (val: string) => void;
   finishFilter: string;
   setFinishFilter: (val: string) => void;
+  /** Acabados YA scopeados por línea de negocio (frente #10) — el dropdown no filtra por su cuenta. */
+  finishOptions: CoilFinish[];
   currencyFilter: string;
   setCurrencyFilter: (val: string) => void;
   providerFilter: string;
@@ -31,6 +33,7 @@ export function InventoryFilters({
   setStatusFilter,
   finishFilter,
   setFinishFilter,
+  finishOptions,
   currencyFilter,
   setCurrencyFilter,
   providerFilter,
@@ -41,8 +44,6 @@ export function InventoryFilters({
   setEndDate,
   onClear,
 }: InventoryFiltersProps) {
-  const { finishes } = useFinishes(true);
-
   const filterGroups: FilterGroup[] = [
     {
       id: "status",
@@ -67,7 +68,7 @@ export function InventoryFilters({
       onChange: (v) => setFinishFilter(v as string),
       options: [
         { value: "ALL", label: "Todos" },
-        ...finishes.map(f => ({ value: f.id, label: f.label })),
+        ...finishOptions.map(f => ({ value: f.id, label: f.label })),
       ],
     },
     {
