@@ -3,6 +3,8 @@
 Esta ficha contiene la verdad operativa del módulo de Conformado Aluzinc (Metallic Roofing).
 Fecha de última verificación: **2026-08-19** (guards `laterSales` endurecidos con `toMillisSafe`, §4) — **§5 agregada 2026-08-24 (v6.58.0), resto del doc sin re-verificar en esa fecha.**
 
+> ⚠️ **BANNER DE ESTADO (2026-08-27, alcance: solo este banner) — EL MÓDULO ESTÁ VACÍO.** Frente `[ALUZINC-RESET]` (v6.71.0 en CLAUDE.md) borró físicamente, autorizado por el dueño: 0 bobinas aluzinc, 0 `metallic_roofing_stock`, 0 `metallic_roofing_stock_movements`, 0 `production_logs`/`sales`/`scrap_logs` de la línea. El CÓDIGO descrito abajo (catálogo multi-acabado, freeze-WAC, cotizaciones importadas) no cambió — pero no hay ni un solo doc vivo hoy sobre el que se ejecute. `coil_finishes` (§1) sobrevive intacto.
+
 ## 1. Catálogo Multi-acabado (RAL)
 - **`finishes` (array opcional):** El catálogo soporta múltiples acabados por SKU. Se agregó soporte retrocompatible vía `getFinishArray()` (que lee de `finishes` o hace fallback al viejo escalar `finish`). NO hubo migración masiva, conviven ambos modelos.
 - **`coil_finishes` como fuente única:** La colección `coil_finishes` cuenta con campos `tipo` (Natural|Prepintado|Galvanizado) y `color` (Rojo|Azul|Blanco|Gris|Verde|'-'). La función `getFinishMeta` lee estos campos y `formatFinishChip` da estilos. Backfill ejecutado con 9 finishes.

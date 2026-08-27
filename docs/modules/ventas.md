@@ -223,7 +223,7 @@ Al editar, el `baseCost` de cada ítem se recomputa contra el WAC vivo — pero 
 
 - **`isCoil` ⇒ nunca.** Una bobina no tiene WAC: su `baseCost` es `pricePerKg` (**S/ por KG**) y su `quantity` son kilos. El selector de bobina emite `businessLine: "drywall"` + `isCoil`, así que sin el guard el callable leería `inventory_stock/{coilId}` — la colección equivocada, mezclando unidades.
 - **Línea desconocida/vacía ⇒ preserva.** `getStockStrategy('')` **lanza un `Error` genérico**, no un `HttpsError`. El builder en cambio tolera esos ítems (`bl:''` + flag 'linea no resuelta'), así que acá también: preservar es fail-safe.
-- **`WAC <= 0` ⇒ preserva** (`:207`). 7 de 18 SKUs de metallic en prod están en 0 y 8 tienen cantidad negativa. Sin el guard, editar metería basura en el costo.
+- **`WAC <= 0` ⇒ preserva** (`:207`). 7 de 18 SKUs de metallic en prod estaban en 0 y 8 tenían cantidad negativa (medido v6.53.0). Sin el guard, editar metería basura en el costo. ⚠️ **Estado 2026-08-27:** `metallic_roofing_stock` está en 0 docs (`[ALUZINC-RESET]`, CLAUDE.md v6.71.0) — el guard sigue siendo correcto (nada que editar hoy), la cifra de arriba es histórica.
 
 Solo un `WAC > 0` pisa el `baseCost`.
 

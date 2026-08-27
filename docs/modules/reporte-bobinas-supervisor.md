@@ -3,6 +3,8 @@
 **Fecha de verificación:** 2026-07-31  
 *(⚠️ Este documento expira. Si se lee en el futuro, re-verificar contra el código y prod.)*
 
+> ⚠️ **BANNER DE ESTADO (2026-08-27) — LA MITAD ALUZINC DE ESTE REPORTE ESTÁ VACÍA.** `[ALUZINC-RESET]` (v6.71.0, CLAUDE.md) borró físicamente las bobinas `ALZ-*`. El reporte sigue funcionando para `GALV` (drywall, 38 bobinas vivas) — la sección aluzinc va a renderizar vacía hasta que se reimporten datos, no es un bug del reporte.
+
 ## Criterios de Sección
 - **ABIERTAS:** `isClosed === false && currentWeight > 0`.
 - **CERRADAS:** `isClosed === true && |currentWeight - initialWeight| < 0.01`.

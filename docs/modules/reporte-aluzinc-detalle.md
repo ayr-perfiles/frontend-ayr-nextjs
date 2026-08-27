@@ -1,5 +1,7 @@
 # Reporte Aluzinc Detalle (A3)
 
+> ⚠️ **BANNER DE ESTADO (2026-08-27) — LA LÍNEA ALUZINC ESTÁ VACÍA.** `[ALUZINC-RESET]` (v6.71.0, CLAUDE.md) borró físicamente todas las bobinas/producción/ventas de la línea. Este reporte (A3) nunca se implementó (sigue en terreno de recon) — si se implementa antes de reimportar datos, va a renderizar vacío, no un bug.
+
 ## A3 (net-new) — terreno PASO 0
 *Fecha: 2026-08-12*
 

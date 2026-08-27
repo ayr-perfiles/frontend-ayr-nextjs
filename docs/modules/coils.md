@@ -1,6 +1,8 @@
 # MÓDULO: coils (bobinas) — verdad de arquitectura
 > ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: **§7 → 2026-08-25** (frente #10 cerrado en develop, commit `bb09a111`, runtime validado por el dueño en desarrollo local — separación en dos páginas por línea de negocio). **§6 → 2026-08-25** (cierre del bug de Algolia, v6.61.0: filtros medidos 8/8 contra prod + código en `5c83f7bb`). **§1-§5 → 2026-07-29** (Frente B, runtime prod, finishes) — NO re-verificadas desde entonces. ⚠️ **§3 (tabla) y la descripción de `/admin/coils` como página única quedaron OBSOLETAS por §7** — ver nota al pie de §3.
 > ⚠️ SE PUDRE. Antes de tocar lógica/writes de bobinas: verificá (checklist). No confíes si la fecha está vieja.
+>
+> ⚠️ **BANNER DE ESTADO (2026-08-27, alcance: solo este banner, el resto del doc NO se re-verificó) — LA LÍNEA ALUZINC (metallic-roofing) ESTÁ VACÍA.** Frente `[ALUZINC-RESET]` (v6.71.0 en CLAUDE.md) borró físicamente las 130 bobinas `ALZ-*` y todo lo relacionado, autorizado por el dueño. **Todo número de §6/§7 (168 total, 130 `ALZ-*`, 38 `GALV`) describe el estado ANTES del borrado — hoy `coils` tiene 38 docs, todos `GALV`.** La ARQUITECTURA de §6/§7 (scoping por `coil.finish`, paginación en memoria, `getFinishIdsForLine`, filtros Algolia) sigue siendo el código real y no cambió — solo el DATO es distinto. `coil_finishes` (§3) sobrevive intacto, las 8 llaves `ALZ-*` siguen en el catálogo para cuando se reimporte.
 
 ## 1. Estado isClosed (regla de negocio verificada)
 - Bobinas NACEN CERRADAS (isClosed:true default en registerCoil + registerCoilsBulk). Supervisor abre para producir.
