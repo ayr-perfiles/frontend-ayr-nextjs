@@ -1,9 +1,9 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
 > Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.70.0).
-> **BASELINE (2026-08-27, v6.70.0) — ESCRITO DESPUES DEL COMMIT, no antes:**
->   - **Tip de CODIGO (develop, LOCAL): `f88cbb02`** (`chore(annulment): eliminar copia cliente muerta de la cascada (B)`). 4 commits sobre el baseline de v6.69.0: `bd1613d8` (A2, cobertura server-only) → `95a24458` (docs: en curso) → `7061cad2` (port B, 5 casos self) → `f88cbb02` (borrado B, 6 archivos).
->   - **Tip de REFS — NO COINCIDEN, medido con `git show-ref`, NADA PUSHEADO NI MERGEADO (regla explicita de esta tanda):** `develop` local en `f88cbb02` · `origin/develop` en `95a24458` (2 commits atras: falta pushear `7061cad2` y `f88cbb02`) · `master`/`origin/master` en `aa147102` (4 commits atras de `develop` local). Working tree limpio tras el commit de docs.
+> **BASELINE (2026-08-27, v6.70.0):**
+>   - **Commits del frente `[CASCADE-DUP]`, en orden:** `bd1613d8` (A2, cobertura server-only) → `95a24458` (docs: en curso) → `7061cad2` (port B, 5 casos self) → `f88cbb02` (borrado B, 6 archivos) → `41971a4f` (docs de cierre). El TIP actual no se transcribe: ver "Tip de REFS" abajo.
+>   - **Tip de REFS: los 4** (`heads/develop`, `heads/master`, `origin/develop`, `origin/master`) **quedan alineados en ESTE commit al cierre del frente.** Hash literal, NO transcrito acá: `git show-ref --verify refs/heads/develop` (un commit no puede contener el estado de refs posterior a su propio push — ver C0 ×7 en CLAUDE.md v6.70.0). Working tree limpio tras el commit de docs.
 >   - **RULES: SIN CAMBIOS en este frente** (frente 100% de tests de dominio puro, cero `firestore.rules`). Sigue vigente lo desplegado en v6.69.0: `ayrsteel-test` ruleset `02924da0` · `ayrsteel-2026` ruleset `f673f3ef`. ⚠️ **Deuda que sigue abierta, sin tocar:** el `firestore.rules` del repo ya NO es byte-identico a lo desplegado (la propia tanda de docs de v6.69.0 tocó un comentario de la rule despues del deploy). Re-deployar en el proximo frente que toque rules. Snapshots de revert en `~/ayr-scratch/2026-08-26-sales-status/deployed/`.
 > **4 comandos custodios DISJUNTOS, reportados por separado — PROHIBIDO sumarlos (regla B4):**
 >   - `npm run test` → **119 archivos / 1234 tests / 0 skip** (medido 2026-08-27; era 121/1248 antes de `[CASCADE-DUP]`: +25 de TANDA A2 → 123/1273 → +5 del port TANDA B → 123/1278 → -44 del borrado de la copia cliente + 2 `.parity.test.ts` → **119/1234**).
