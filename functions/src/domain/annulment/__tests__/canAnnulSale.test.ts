@@ -128,4 +128,74 @@ describe("canAnnulSale", () => {
       context: { quotationId: "C-NAT-3", activeLogIds: ["LOG-7", "LOG-8"] },
     });
   });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // TANDA B ([CASCADE-DUP], 2026-08-27) — 5 casos `self` (status QUOTATION)
+  // portados desde canAnnulSale.parity.test.ts, que se borra en este mismo
+  // frente. Cubren el fix v6.52.1: antes de esa version, el bloqueo por
+  // produccion ACTIVE solo aplicaba a `mode==='linked'`; una cotizacion en
+  // QUOTATION con produccion viva se anulaba sin bloqueo. `self` y `linked`
+  // comparten el mismo criterio desde entonces (canAnnulSale.ts:44). Fixtures
+  // copiados verbatim del parity; los resultados esperados se derivan de la
+  // MISMA logica (resolveSaleQuotationLink + el filtro de
+  // activeProductionLogs), no de una relectura del parity.
+  // ────────────────────────────────────────────────────────────────────────────
+
+  describe("mode self (status QUOTATION, fix v6.52.1)", () => {
+    it("QUOTATION nativa sin logs -> allowed", () => {
+      const result = canAnnulSale({
+        sale: { id: "C-NAT-9", status: "QUOTATION" },
+        activeProductionLogs: [],
+      });
+      expect(result).toEqual({ allowed: true });
+    });
+
+    it("QUOTATION nativa CON log ACTIVE propio -> ACTIVE_PRODUCTION", () => {
+      const result = canAnnulSale({
+        sale: { id: "C-NAT-9", status: "QUOTATION" },
+        activeProductionLogs: [
+          { id: "LOG-9", status: "ACTIVE", source: { type: "QUOTE", id: "C-NAT-9" } },
+        ],
+      });
+      expect(result).toEqual({
+        allowed: false,
+        reason: "ACTIVE_PRODUCTION",
+        context: { quotationId: "C-NAT-9", activeLogIds: ["LOG-9"] },
+      });
+    });
+
+    it("QUOTATION nativa con log VOIDED propio -> no bloquea (allowed)", () => {
+      const result = canAnnulSale({
+        sale: { id: "C-NAT-9", status: "QUOTATION" },
+        activeProductionLogs: [
+          { id: "LOG-10", status: "VOIDED", source: { type: "QUOTE", id: "C-NAT-9" } },
+        ],
+      });
+      expect(result).toEqual({ allowed: true });
+    });
+
+    it("percha IMPORTADA en QUOTATION con log ACTIVE (tambien es mode self) -> ACTIVE_PRODUCTION", () => {
+      const result = canAnnulSale({
+        sale: { id: "COT-IMP-9", status: "QUOTATION", relatedQuotationId: "COT-IMP-9" },
+        activeProductionLogs: [
+          { id: "LOG-11", status: "ACTIVE", source: { type: "QUOTE", id: "COT-IMP-9" } },
+        ],
+      });
+      expect(result).toEqual({
+        allowed: false,
+        reason: "ACTIVE_PRODUCTION",
+        context: { quotationId: "COT-IMP-9", activeLogIds: ["LOG-11"] },
+      });
+    });
+
+    it("QUOTATION con log ACTIVE de OTRA cotizacion -> no debe bloquear (allowed)", () => {
+      const result = canAnnulSale({
+        sale: { id: "C-NAT-9", status: "QUOTATION" },
+        activeProductionLogs: [
+          { id: "LOG-12", status: "ACTIVE", source: { type: "QUOTE", id: "C-OTRA" } },
+        ],
+      });
+      expect(result).toEqual({ allowed: true });
+    });
+  });
 });
