@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Sale } from "@/types";
 import {
   Plus,
@@ -12,7 +13,7 @@ import {
 import toast from "react-hot-toast";
 
 import { approveQuotation, cancelQuotation } from "@/services/salesService";
-import { duplicateIntentFromStatus } from "@/core/sales/salesDisplayLogic";
+import { buildDuplicateSaleUrl } from "@/core/sales/salesDisplayLogic";
 import { useAuth } from "@/context/AuthContext";
 import { useConfirm } from "@/context/ConfirmContext";
 import { useSales } from "@/core/hooks/useSales";
@@ -22,7 +23,7 @@ import { SalesTable } from "@/components/sales/SalesTable";
 import { SaleDetailsModal } from "@/components/sales/SaleDetailsModal";
 import { TablePagination } from "@/components/ui/TablePagination";
 
-function HeaderOptions({ onExport }: { onExport: () => void }) {
+function HeaderOptions({ onExport, onImport }: { onExport: () => void; onImport: () => void }) {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <div className="relative z-40">
@@ -44,7 +45,7 @@ function HeaderOptions({ onExport }: { onExport: () => void }) {
               <Download size={18} className="text-slate-400" /> Descargar Reporte Excel
             </button>
             <button
-              onClick={() => { setIsOpen(false); window.location.href = "/admin/sales/import"; }}
+              onClick={() => { setIsOpen(false); onImport(); }}
               className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-3 font-medium transition"
             >
               <FileSpreadsheet size={18} className="text-green-500" /> Importar Ventas (Excel)
@@ -59,6 +60,7 @@ function HeaderOptions({ onExport }: { onExport: () => void }) {
 export default function SalesPage() {
   const { user, role } = useAuth();
   const confirm = useConfirm();
+  const router = useRouter();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -134,9 +136,10 @@ export default function SalesPage() {
         <div className="flex items-center gap-3 w-full md:w-auto">
           <HeaderOptions
             onExport={() => toast.success("Generando Excel...")}
+            onImport={() => router.push("/admin/sales/import")}
           />
           <button
-            onClick={() => (window.location.href = "/admin/sales/new")}
+            onClick={() => router.push("/admin/sales/new")}
             className="bg-blue-600 text-white px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition active:scale-95 shadow-md shadow-blue-200 font-black flex-1 md:flex-none"
           >
             <Plus size={20} /> Nueva Venta
@@ -200,13 +203,9 @@ export default function SalesPage() {
           currentPage={currentPage}
           pageSize={pageSize}
           onDuplicate={(saleId, status) => {
-            const intent = duplicateIntentFromStatus(status);
-            const url = intent
-              ? `/admin/sales/new?duplicateId=${saleId}&as=${intent}`
-              : `/admin/sales/new?duplicateId=${saleId}`;
-            window.location.href = url;
+            router.push(buildDuplicateSaleUrl(saleId, status));
           }}
-          onEdit={(saleId) => (window.location.href = `/admin/sales/${saleId}/edit`)}
+          onEdit={(saleId) => router.push(`/admin/sales/${saleId}/edit`)}
         />
         {loading && (
           <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-2xl">
