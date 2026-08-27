@@ -65,9 +65,7 @@ Este doc lista cada patrón núcleo con su regla, dónde se cumple y — honesta
 | `finishCompat.ts` | `src/core/coils/domain/finishCompat.ts` | tests propios (`finishCompat.test.ts`, importa SOLO la copia cliente — **sin parity test**, paridad de `assertCoilFinishCompatible` visual, no anclada) | — |
 | ↳ *(nota 2026-08-24, `c337fc0e`)* | la copia cliente es **superset**: exporta además `getFinishIdsForLine` (scoping de listado por línea, **client-only por diseño** — ningún callable resuelve finishes por línea, los 4 sitios server leen `coil_finishes` por id). No es drift. | | |
 | `annulment/saleQuotationLink.ts` | `src/core/sales/saleProductionLink.ts` | `annulment/__tests__/saleQuotationLink.parity.test.ts` | v6.50.0 |
-| `annulment/canAnnulSale.ts` | `src/core/sales/annulment/canAnnulSale.ts` | `annulment/__tests__/canAnnulSale.parity.test.ts` | v6.50.0 |
 | `annulment/resolveSaleTwinPath.ts` | `src/core/sales/annulment/resolveSaleTwinPath.ts` | `annulment/__tests__/resolveSaleTwinPath.parity.test.ts` | v6.50.0 |
-| `annulment/buildAnnulmentCascade.ts` | `src/core/sales/annulment/buildAnnulmentCascade.ts` | `annulment/__tests__/buildAnnulmentCascade.parity.test.ts` | v6.50.0 |
 | `fulfillmentLogic.ts` (`hasActiveProduction`) | `src/core/production/fulfillmentLogic.ts` | `__tests__/fulfillmentLogic.parity.test.ts` | v6.52.1 |
 | `quotation/buildQuotationDoc.ts` (`buildSaleDoc` + `buildQuotationDoc`) | `src/core/sales/domain/saleDocBuilder.ts` | `quotation/__tests__/buildQuotationDoc.parity.test.ts` | **v6.53.0** |
 | `quotation/isImportedQuotation.ts` | `src/core/import/salesImportLogic.ts:9` | `quotation/__tests__/isImportedQuotation.parity.test.ts` | **v6.53.0** |
@@ -81,7 +79,6 @@ Este doc lista cada patrón núcleo con su regla, dónde se cumple y — honesta
 - `calcCoverageWeightKg` **no** se copió con el builder y no falta: el builder nunca calcula peso, solo lee `calculatedWeight` y hace passthrough de `weightSnapshot`.
 
 **⚠️ GAPS:**
-- **`canAnnulSale` cliente tiene 0 consumidores** — existe únicamente como fuente de paridad de la copia server. Se mantiene en sync a mano en cada cambio. Candidata a borrado si nunca se cablea (ver deudas de v6.52.1).
 - `calculateWeightedAverageCost` tiene una **tercera copia** en `src/modules/drywall/domain/costing.ts:54` sin SYNC-MARKER ni test cruzado.
 - El WAC de `produceFromCoils` está inline en el callable (`production.ts:152-157`), no extraído a domain ni testeado como dominio.
 - `computePricePerKg` (domain) no es llamada por los callables — estos llevan copias inline (F-C1).

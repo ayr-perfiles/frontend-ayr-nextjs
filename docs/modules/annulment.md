@@ -1,5 +1,5 @@
 # MÓDULO: annulment (anulación de venta, `annulSale`) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-22 (v6.56.0, `annulledAt` string→Timestamp cerrado, commits `545ee08e`+`62116ea5`, backend desplegado a test Y prod 425.07 KB ACTIVE, 2 docs de prod backfilleados; ver §7). **Actualizado 2026-08-24 (v6.59.0), alcance acotado: §0-bis completo (las 4 NC restantes fueron anuladas + nota NC-sin-costo), §0-ter completo (retro de cola CERRADO 0/6 + corrección de `PRODUCTION_QUEUE_FILTER`), y el párrafo de refuerzo empírico de `annulledAt` en §7. Resto del doc sin re-verificar en esta fecha.**
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-22 (v6.56.0, `annulledAt` string→Timestamp cerrado, commits `545ee08e`+`62116ea5`, backend desplegado a test Y prod 425.07 KB ACTIVE, 2 docs de prod backfilleados; ver §7). **Actualizado 2026-08-24 (v6.59.0), alcance acotado: §0-bis completo (las 4 NC restantes fueron anuladas + nota NC-sin-costo), §0-ter completo (retro de cola CERRADO 0/6 + corrección de `PRODUCTION_QUEUE_FILTER`), y el párrafo de refuerzo empírico de `annulledAt` en §7. Resto del doc sin re-verificar en esa fecha.** **Actualizado 2026-08-27 (v6.70.0, `[CASCADE-DUP]`, commit `f88cbb02`), alcance acotado: §0 (tabla de gates, fila 2 — "en las 2 copias" → copia server única) y §2 (Helpers puros, reescrito — `canAnnulSale.ts`/`buildAnnulmentCascade.ts` cliente BORRADOS, quedan 2 parity tests no 4). Resto del doc (§0-bis, §0-ter, §1, §3+) sin re-verificar en esta fecha — sus referencias a `buildAnnulmentCascade`/`canAnnulSale` son narrativa histórica en tiempo pasado, no afirman que la copia cliente exista.**
 > ⚠️ SE PUDRE. Antes de tocar `annulSale`/rules de `sales.status`: verificá (checklist). No confíes si la fecha está vieja.
 
 ## 0. ⚠️ LOS 2 GATES QUE HAY QUE MIRAR SIEMPRE (v6.52.1)
@@ -13,7 +13,7 @@ El bloqueo por producción activa vive en DOS sitios y **ambos** deben cubrir `l
 | # | Dónde | Qué hace |
 |---|---|---|
 | 1 | `functions/src/callables/sales.ts` (`if (link.mode === "linked" || link.mode === "self")`) | dispara la query de logs vía `hasActiveProductionForQuote` |
-| 2 | `canAnnulSale.ts` (mismo condicional, en las **2** copias) | evalúa el bloqueo y arma `context: {quotationId, activeLogIds}` |
+| 2 | `canAnnulSale.ts` (copia server ÚNICA desde v6.70.0, `[CASCADE-DUP]` — la copia cliente se borró) | evalúa el bloqueo y arma `context: {quotationId, activeLogIds}` |
 
 Hasta v6.52.0 los dos decían solo `"linked"` → una `QUOTATION` con producción ACTIVE se anulaba sin
 bloqueo (84 perchas reales expuestas en prod). **Arreglar uno solo no alcanza**: sin (1) el bloqueo
@@ -101,9 +101,9 @@ Barrido re-corrido sobre la query exacta de `PRODUCTION_QUEUE_FILTER` (v6.59.0):
 - `functions/src/callables/sales.ts` — callable `annulSale`, `onCall` v2 gen2, ÚNICO escritor legítimo de `sales.status → 'VOIDED'`.
 - Cliente: `src/core/sales/services/salesService.ts` (export `annulSale`) — wrapper thin de `httpsCallable`, ~15 líneas, **NO hace catch/rewrap del error** (necesario para que `parseAnnulError` lea `error.details` estructurado).
 
-## 2. Helpers puros (DUPLICADOS mecánicamente cliente↔server)
-- `src/core/sales/saleProductionLink.ts` (`resolveSaleQuotationLink`) + `src/core/sales/annulment/{canAnnulSale,resolveSaleTwinPath,buildAnnulmentCascade,parseAnnulError}.ts` (cliente).
-- `functions/src/domain/annulment/{saleQuotationLink,canAnnulSale,resolveSaleTwinPath,buildAnnulmentCascade}.ts` (server) — copias 1:1, con 4 parity tests en `__tests__/*.parity.test.ts` comparando contra la versión cliente.
+## 2. Helpers puros (server-only desde v6.70.0, salvo `resolveSaleTwinPath`)
+- Cliente: `src/core/sales/saleProductionLink.ts` (`resolveSaleQuotationLink`) + `src/core/sales/annulment/{resolveSaleTwinPath,parseAnnulError}.ts`. **`canAnnulSale.ts` y `buildAnnulmentCascade.ts` cliente fueron BORRADOS en v6.70.0 (`[CASCADE-DUP]`, commit `f88cbb02`)** — código muerto medido (0 consumidores en `src/` fuera de sus propios tests).
+- Server: `functions/src/domain/annulment/{saleQuotationLink,canAnnulSale,resolveSaleTwinPath,buildAnnulmentCascade}.ts` — la copia server es la ÚNICA para `canAnnulSale` y `buildAnnulmentCascade`. Solo `saleQuotationLink`↔`saleProductionLink.ts` y `resolveSaleTwinPath` siguen duplicados cliente↔server, con **2 parity tests** vivos (`saleQuotationLink.parity.test.ts`, `resolveSaleTwinPath.parity.test.ts`) — antes eran 4; `canAnnulSale.parity.test.ts` y `buildAnnulmentCascade.parity.test.ts` se borraron junto con la copia cliente que comparaban.
 - **Por qué duplicado y no compartido:** cross-boundary import (`functions/src/... → ../../../src/core/...`) rompe `tsc` (`TS6059`, `rootDir` de `functions/tsconfig.json`) y aunque compilara, `firebase.json` acota `source:"functions"` para el deploy — el zip nunca incluiría `../../../src/`. Mismo patrón sancionado que otros dominios (`coilProduction`, `drywallProduction`, `scrap`) — ver ADR "Dominio puro" en CLAUDE.md §10.
 - `parseAnnulError.ts` es SOLO cliente (clasifica el `FunctionsError` que el SDK del browser lanza).
 
