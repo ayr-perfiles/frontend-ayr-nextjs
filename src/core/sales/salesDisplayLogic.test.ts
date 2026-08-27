@@ -5,6 +5,7 @@ import {
   canDuplicate,
   duplicateIntentFromStatus,
   parseDuplicateIntent,
+  buildDuplicateSaleUrl,
 } from "./salesDisplayLogic";
 
 describe("salesDisplayLogic - resolveCustomerDoc", () => {
@@ -144,5 +145,35 @@ describe("salesDisplayLogic - parseDuplicateIntent (#9-B.2a-2: whitelist estrict
   it("string basura -> null (sin uppercase-coerce: 'sale' minúscula NO cuenta)", () => {
     expect(parseDuplicateIntent("sale")).toBeNull();
     expect(parseDuplicateIntent("XYZ")).toBeNull();
+  });
+});
+
+// PARITY test: ancla el string exacto que hoy arma inline `onDuplicate` en
+// `src/app/admin/sales/page.tsx` (`?duplicateId=${saleId}` + `&as=${intent}` si
+// hay intent). El helper `buildDuplicateSaleUrl` todavía NO existe en
+// `salesDisplayLogic.ts` — este describe es el RED de esa extracción futura.
+describe("salesDisplayLogic - buildDuplicateSaleUrl (parity con el inline de sales/page.tsx)", () => {
+  it("COMPLETED -> incluye &as=SALE", () => {
+    expect(buildDuplicateSaleUrl("abc123", "COMPLETED")).toBe(
+      "/admin/sales/new?duplicateId=abc123&as=SALE"
+    );
+  });
+
+  it("QUOTATION -> incluye &as=QUOTE", () => {
+    expect(buildDuplicateSaleUrl("abc123", "QUOTATION")).toBe(
+      "/admin/sales/new?duplicateId=abc123&as=QUOTE"
+    );
+  });
+
+  it("VOIDED -> sin &as= (fuera de la allowlist de intent)", () => {
+    expect(buildDuplicateSaleUrl("abc123", "VOIDED")).toBe(
+      "/admin/sales/new?duplicateId=abc123"
+    );
+  });
+
+  it("status undefined -> sin &as=", () => {
+    expect(buildDuplicateSaleUrl("abc123", undefined)).toBe(
+      "/admin/sales/new?duplicateId=abc123"
+    );
   });
 });

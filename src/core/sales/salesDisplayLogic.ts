@@ -56,6 +56,20 @@ export function duplicateIntentFromStatus(status: string | undefined): Duplicate
 }
 
 /**
+ * Arma la URL de "Duplicar Operación". Extraido del inline que vivia en
+ * `onDuplicate` de `src/app/admin/sales/page.tsx` ([NAV-HARD]). Parity
+ * exacta: `&as=` solo aparece si `duplicateIntentFromStatus` da intent.
+ */
+export function buildDuplicateSaleUrl(
+  saleId: string,
+  status: string | undefined,
+): string {
+  const intent = duplicateIntentFromStatus(status);
+  const base = `/admin/sales/new?duplicateId=${saleId}`;
+  return intent ? `${base}&as=${intent}` : base;
+}
+
+/**
  * Whitelist estricta del query param `?as=`. Nunca uppercase-coerce: solo
  * los literales exactos "SALE"/"QUOTE" cuentan, cualquier otra cosa -> null.
  */
