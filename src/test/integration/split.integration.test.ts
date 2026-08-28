@@ -75,6 +75,7 @@ describe('Split Module (Integration - Backend Callable)', () => {
     expect(child.initialWeight).toBe(2500);
     expect(child.densityFactor).toBe(0.00785);
     expect(child.finish).toBe("GALV");
+    expect(child.coilTypeKey).toBe("BOB-GALV-045");
     expect(child.pricePerKg).toBe(3.5);
     expect(child.parentCoilId).toBe("BOB-TEST-1");
     expect(child.status).toBe("AVAILABLE");
@@ -117,6 +118,43 @@ describe('Split Module (Integration - Backend Callable)', () => {
     expect(idempData.result.newParentWeight).toBe(7500);
     expect(idempData.result.newParentWidth).toBe(900);
     expect(idempData.result.childWeight).toBe(2500);
+  });
+
+  it('[COIL-TYPE-KEY] hija.coilTypeKey === madre.coilTypeKey aunque el ancho sea otro (el ancho NO entra en la clave, por diseño)', async () => {
+    const adminDb = admin.firestore();
+
+    // Madre ya con coilTypeKey seteado (simula un doc post-backfill).
+    await adminDb.collection("coils").doc("BOB-TYPEKEY-MOM").set({
+      initialWeight: 10000,
+      currentWeight: 10000,
+      masterWidth: 1200,
+      pricePerKg: 3.5,
+      status: "AVAILABLE",
+      thickness: 0.45,
+      finish: "GALV",
+      coilTypeKey: "BOB-GALV-045",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await adminDb.collection("coil_finishes").doc("GALV").set({ active: true, label: "GALV", densityFactor: 0.00785 });
+
+    const request = {
+      data: {
+        coilId: "BOB-TYPEKEY-MOM",
+        newChildWidthMm: 500, // ancho distinto al de la madre a propósito
+        requestId: "req-typekey-1",
+      },
+      auth: { uid: "admin-test-uid", token: { role: "ADMIN", email: "admin@test.com" } },
+    };
+
+    const result = await registerCoilSplit.run(request as any);
+
+    const motherSnap = await adminDb.collection("coils").doc("BOB-TYPEKEY-MOM").get();
+    const childSnap = await adminDb.collection("coils").doc(result.childId).get();
+
+    expect(motherSnap.data()!.masterWidth).not.toBe(childSnap.data()!.masterWidth); // anchos distintos, confirmado
+    expect(childSnap.data()!.coilTypeKey).toBe(motherSnap.data()!.coilTypeKey); // MISMA clave, por diseño
+    expect(childSnap.data()!.coilTypeKey).toBe("BOB-GALV-045");
   });
 
   it('Test 2: rechaza con permission-denied si el rol es OPERATOR', async () => {
@@ -211,6 +249,21 @@ describe('Split Module (Integration - Backend Callable)', () => {
     });
     await expect(registerCoilSplit.run({ data: { coilId: "BOB-TEST-4C", newChildWidthMm: 300, requestId: "req-4-3" }, auth } as any))
       .rejects.toMatchObject({ code: "failed-precondition" });
+
+    // 4. [COIL-TYPE-KEY] thickness inválido en la madre -> falla claro, NO crea la hija
+    await adminDb.collection("coils").doc("BOB-TEST-4D").set({
+      currentWeight: 1000,
+      masterWidth: 1200,
+      status: "AVAILABLE",
+      finish: "GALV",
+      thickness: 0,
+    });
+    await adminDb.collection("coil_finishes").doc("GALV").set({ active: true, label: "GALV", densityFactor: 0.00785 });
+    await expect(registerCoilSplit.run({ data: { coilId: "BOB-TEST-4D", newChildWidthMm: 300, requestId: "req-4-4" }, auth } as any))
+      .rejects.toMatchObject({ code: "invalid-argument" });
+
+    const childrenSnap = await adminDb.collection("coils").where("parentCoilId", "==", "BOB-TEST-4D").get();
+    expect(childrenSnap.size).toBe(0);
   });
 
   it('Test 5: idempotencia - mismo requestId 2x retorna mismo childId', async () => {

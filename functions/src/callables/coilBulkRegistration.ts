@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { generateCoilId } from "../domain/coilId";
+import { buildCoilTypeKey } from "../domain/coilTypeKey";
 
 interface BulkCoilInput {
   finish: string;
@@ -133,6 +134,7 @@ export const registerCoilsBulk = onCall(async (request) => {
             masterWidth: Number(coil.width),
             thickness: Number(coil.thickness),
             finish: coil.finish,
+            coilTypeKey: buildCoilTypeKey({ finish: coil.finish, thickness: Number(coil.thickness) }),
             pricePerKg,
             status: "AVAILABLE",
             isClosed: true,

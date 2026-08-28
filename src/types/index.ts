@@ -19,6 +19,7 @@ export interface Coil {
   masterWidth?: number;
   thickness?: number;
   finish?: string; // ID del acabado (materia prima)
+  coilTypeKey?: string; // BOB-{FINISH}-{ESPESOR}, ver src/core/coils/domain/coilTypeKey.ts. OPCIONAL: los 38 docs de prod hoy no lo tienen (backfill pendiente, tanda propia) — obligatorio miente sobre la coleccion real hasta que cierre.
   densityFactor?: number;
   pricePerKg: number;
   status: CoilStatus;

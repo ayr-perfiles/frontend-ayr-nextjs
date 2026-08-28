@@ -71,6 +71,41 @@ describe('registerCoilsBulk (Integration Composite ID & Dedup)', () => {
       expect(doc.id).not.toMatch(/^F001-13070-\d{2}$/);
       expect(doc.id.startsWith("REPRES-")).toBe(true);
     }
+
+    // [COIL-TYPE-KEY] cada doc del lote lleva su propia clave correcta
+    const byThickness = coilsSnap.docs.map((d) => d.data());
+    const galvanizado = byThickness.find((c) => c.finish === "GALVANIZADO")!;
+    const natural = byThickness.find((c) => c.finish === "NATURAL")!;
+    expect(galvanizado.coilTypeKey).toBe("BOB-GALVANIZADO-045");
+    expect(natural.coilTypeKey).toBe("BOB-NATURAL-040");
+  });
+
+  it('[COIL-TYPE-KEY] thickness invalido en un item -> ese invoice queda "failed" con motivo claro, NO crea coils de ese invoice', async () => {
+    const request = {
+      data: {
+        invoices: [{
+          serie: "F002",
+          nroDoc: "99000",
+          fecha: "2026-06-30",
+          provider: "PROV BAD",
+          providerDoc: "20123456789",
+          currency: "PEN" as const,
+          exchangeRate: 1,
+          coils: [
+            { finish: "GALV", width: 1200, thickness: 0, weight: 1000, value: 3000 },
+          ]
+        }]
+      },
+      auth: ADMIN_AUTH,
+    };
+
+    const result = await registerCoilsBulk.run(request as any);
+    expect(result.results[0].status).toBe("failed");
+    expect(result.results[0].reason).toBeTruthy();
+
+    const adminDb = admin.firestore();
+    const coilsSnap = await adminDb.collection("coils").where("metadata.invoiceNumber", "==", "F002-99000").get();
+    expect(coilsSnap.size).toBe(0);
   });
 
   it('1b. KEY CON GUION INTACTA: finish="ALU-AZUL" -> doc.id contiene "-ALU-AZUL-", finish="GALV" -> "-GALV-"', async () => {

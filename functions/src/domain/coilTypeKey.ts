@@ -1,4 +1,4 @@
-// SYNC-MARKER: functions/src/domain/coilTypeKey.ts (copia server, sin import cross-boundary posible — ver ADR/convención de dominio puro duplicado)
+// SYNC-MARKER: src/core/coils/domain/coilTypeKey.ts (copia cliente, byte-idéntica salvo este comentario — ver parity test coilTypeKey.parity.test.ts)
 /**
  * Clave de tipo de bobina: agrupa por acabado + espesor. Formato:
  * `BOB-{FINISH}-{ESPESOR}` (ej. `BOB-GALV-045`).

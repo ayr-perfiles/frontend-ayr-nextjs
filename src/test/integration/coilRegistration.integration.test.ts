@@ -63,6 +63,7 @@ describe('registerCoil (Integration)', () => {
     expect(coil1.masterWidth).toBe(1200);
     expect(coil1.thickness).toBe(0.45);
     expect(coil1.finish).toBe("GALV");
+    expect(coil1.coilTypeKey).toBe("BOB-GALV-045");
     expect(coil1.pricePerKg).toBe(3.0); // 15000 / 5000 = 3.0
     expect(coil1.registeredBy).toBe("admin@example.com");
     expect(coil1.metadata.originalCurrencyValue).toBe(15000);
@@ -71,6 +72,7 @@ describe('registerCoil (Integration)', () => {
 
     const snap2 = await adminDb.collection("coils").doc(coilId2).get();
     expect(snap2.data()!.pricePerKg).toBe(3.0); // 9000 / 3000 = 3.0
+    expect(snap2.data()!.coilTypeKey).toBe("BOB-GALV-040"); // thickness 0.40
 
     const auditSnap = await adminDb.collection("audit_logs")
       .where("action", "==", "REGISTER_COIL").get();
@@ -138,6 +140,24 @@ describe('registerCoil (Integration)', () => {
       auth: ADMIN_AUTH,
     };
     await expect(registerCoil.run(request as any)).rejects.toMatchObject({ code: 'failed-precondition' });
+  });
+
+  it('[COIL-TYPE-KEY] rechaza thickness <= 0 → NO crea el doc (ni con key parcial ni sin key)', async () => {
+    const adminDb = admin.firestore();
+    const request = {
+      data: {
+        coils: [{ coilId: "BOB-THICK-0", weight: 1000, width: 1200, thickness: 0, finish: "GALV", value: 3000 }],
+        invoice: baseInvoice,
+        requestId: "test-req-thick-0",
+      },
+      auth: ADMIN_AUTH,
+    };
+    await expect(registerCoil.run(request as any)).rejects.toThrow();
+
+    // Ningún doc de coils debe haberse creado (transacción atómica: el
+    // throw de buildCoilTypeKey ocurre antes del commit).
+    const coilsSnap = await adminDb.collection("coils").get();
+    expect(coilsSnap.size).toBe(0);
   });
 
   it('mismo invoiceNumber con distinto requestId SÍ crea la bobina (single no deduplica por invoiceNumber a propósito)', async () => {

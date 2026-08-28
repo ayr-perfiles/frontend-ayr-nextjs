@@ -3,6 +3,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 
 import { generateCoilId } from "../domain/coilId";
+import { buildCoilTypeKey } from "../domain/coilTypeKey";
 
 interface CoilInput {
   coilId: string;
@@ -133,6 +134,13 @@ export const registerCoil = onCall(async (request) => {
       const totalPEN = currency === "USD" ? inputValue * exchangeRate : inputValue;
       const pricePerKg = Number((totalPEN / weight).toFixed(6));
 
+      let coilTypeKey: string;
+      try {
+        coilTypeKey = buildCoilTypeKey({ finish: coil.finish, thickness: Number(coil.thickness) });
+      } catch (err: any) {
+        throw new HttpsError("invalid-argument", err.message);
+      }
+
       const coilDoc: Record<string, unknown> = {
         id,
         initialWeight: weight,
@@ -140,6 +148,7 @@ export const registerCoil = onCall(async (request) => {
         masterWidth: Number(coil.width),
         thickness: Number(coil.thickness),
         finish: coil.finish,
+        coilTypeKey,
         pricePerKg,
         status: "AVAILABLE",
         isClosed: true,

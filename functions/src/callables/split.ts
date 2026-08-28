@@ -4,6 +4,7 @@ import * as admin from "firebase-admin";
 import * as crypto from "crypto";
 import { validateAndCalculateSplit } from "../domain/coilPricing";
 import { determineCoilStatusAfterReversal } from "../domain/scrap";
+import { buildCoilTypeKey } from "../domain/coilTypeKey";
 
 export const registerCoilSplit = onCall(async (request) => {
   if (!request.auth) {
@@ -92,6 +93,13 @@ export const registerCoilSplit = onCall(async (request) => {
     
     // Cálculos realizados arriba
 
+    let childCoilTypeKey: string;
+    try {
+      childCoilTypeKey = buildCoilTypeKey({ finish: parent.finish, thickness: parent.thickness });
+    } catch (err: any) {
+      throw new HttpsError("invalid-argument", err.message);
+    }
+
     const childId = `${coilId}-S${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
     const splitId = crypto.randomUUID();
 
@@ -113,6 +121,7 @@ export const registerCoilSplit = onCall(async (request) => {
       masterWidth: newChildWidthMm,
       thickness: parent.thickness,
       finish: parent.finish,
+      coilTypeKey: childCoilTypeKey,
       densityFactor: finishData.densityFactor,
       pricePerKg: parent.pricePerKg || 0,
       status: "AVAILABLE",
