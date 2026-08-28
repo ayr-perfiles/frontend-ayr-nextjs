@@ -53,6 +53,7 @@ async function simulateImport(parsedSales: any[]) {
         const skusArray = Array.from(new Set(sale.items.map((i: any) => i.sku)));
         tx.set(saleRef, {
           ...sale,
+          status: sale.status || 'COMPLETED',
           skus: skusArray,
           uploadedAt: serverTimestamp(),
           metadata: { 
@@ -107,6 +108,7 @@ async function simulateImport(parsedSales: any[]) {
       }
     } catch (txError) {
       console.error(`Error transaccional en venta ${sale.documentNumber}:`, txError);
+      throw txError;
     }
   }
 }
