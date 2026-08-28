@@ -54,7 +54,7 @@ Este doc lista cada patrón núcleo con su regla, dónde se cumple y — honesta
 
 **Regla:** la lógica de cálculo vive en funciones puras (`functions/src/domain/` como canónico); si el cliente necesita la misma fórmula (preview), se mantiene copia con `// SYNC-MARKER` + test de paridad que importa ambas.
 
-**✅ Pares con SYNC-MARKER + test de paridad** *(tabla completada 2026-08-20 — le faltaban los 4 dominios agregados entre v6.50.0 y v6.53.0)*:
+**✅ Pares con SYNC-MARKER + test de paridad** *(tabla completada 2026-08-20 — le faltaban los 4 dominios agregados entre v6.50.0 y v6.53.0; fila `coilTypeKey.ts` agregada 2026-08-28, v6.74.0)*:
 
 | Backend (`functions/src/domain/`) | Cliente | Test | Desde |
 |---|---|---|---|
@@ -70,6 +70,7 @@ Este doc lista cada patrón núcleo con su regla, dónde se cumple y — honesta
 | `quotation/buildQuotationDoc.ts` (`buildSaleDoc` + `buildQuotationDoc`) | `src/core/sales/domain/saleDocBuilder.ts` | `quotation/__tests__/buildQuotationDoc.parity.test.ts` | **v6.53.0** |
 | `quotation/isImportedQuotation.ts` | `src/core/import/salesImportLogic.ts:9` | `quotation/__tests__/isImportedQuotation.parity.test.ts` | **v6.53.0** |
 | `catalog/classifyLine.ts` | `src/core/import/catalogImport.ts:83` | `catalog/__tests__/classifyLine.parity.test.ts` | **v6.53.0** |
+| `coilTypeKey.ts` (`buildCoilTypeKey`) | `src/core/coils/domain/coilTypeKey.ts` | `functions/src/domain/coilTypeKey.parity.test.ts` | **v6.74.0** |
 
 **Los 4 bloqueos al import cross-boundary** (por qué se duplica en vez de importar de `src/`): `rootDir`/`TS6059` · `firebase.json source:"functions"` acota el deploy · el alias `@/` (functions no declara `paths`) · y —descubierto en v6.53.0— **un import de módulo pesado en el archivo origen**: `catalogImport.ts:1` importa `xlsx` a nivel de módulo, así que traer `classifyLine` de ahí arrastraría el paquete entero al bundle del callable. Por eso se porta la **función**, nunca el archivo.
 

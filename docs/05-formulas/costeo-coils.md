@@ -32,12 +32,12 @@ export function computePricePerKg(totalValue, weightKg, currency, exchangeRate) 
   return Number((totalValue / weightKg).toFixed(6));
 }
 ```
-2. **Inline en `registerCoil`:** `functions/src/callables/coilRegistration.ts:124-127`
+2. **Inline en `registerCoil`:** `functions/src/callables/coilRegistration.ts:134-135` (offset corregido en v6.74.0 — el `[COIL-TYPE-KEY]` de esa misma tanda insertó líneas antes de este punto; era `:124-127`).
 ```typescript
 const totalPEN = currency === "USD" ? inputValue * exchangeRate : inputValue;
 const pricePerKg = Number((totalPEN / weight).toFixed(6));
 ```
-3. **Inline en `registerCoilsBulk`:** `functions/src/callables/coilBulkRegistration.ts:114-118` (idéntica a la #2).
+3. **Inline en `registerCoilsBulk`:** `functions/src/callables/coilBulkRegistration.ts:127-128` (idéntica a la #2; offset corregido en v6.74.0, era `:114-118`).
 
 **Entradas:** `totalValue` (PEN|USD, >0) · `weightKg` (kg, >0, throw) · `exchangeRate` (adimensional; domain exige >1, callables exigen [2,7] — ver F-C10).
 **Salida:** PEN/kg, `toFixed(6)`.
