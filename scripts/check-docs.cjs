@@ -92,11 +92,21 @@ Flags:
   --help, -h    Muestra esta ayuda y termina sin correr nada.
 
 Allowlist (scripts/check-docs.allow, opcional, una linea por cita):
-  Formato:  doc:linea | tipo | referencia | motivo
-  Un ROTO que matchea (doc, linea, tipo, referencia) EXACTO con una fila
-  del allowlist se sigue reportando en el listado (marcado [ALLOWLISTED])
-  pero no rompe el exit code — pensado para el bucket CAUSAL: citas cuyo
-  "simbolo" es vocabulario de runtime/contexto (codigos de error tipo
+  Formato:  doc | tipo | referencia | simbolo | motivo
+  SIN numero de linea a proposito (v6.74.0/PASO 6, [DOCS-CHECKER]): una
+  entrada anclada por linea se huerfana entera cuando una tanda de docs
+  inserta texto arriba de la cita, aunque el hallazgo real no haya
+  cambiado en nada (medido: 20 de 40 entradas volaron de una sola vez
+  por esto). El match ahora es la tupla (doc, tipo, referencia, simbolo)
+  — lo que NO se mueve con una edicion. Para tipos sin concepto de
+  simbolo (path/npm command/commit hash) esa columna va vacia; doc+tipo+
+  referencia ya es inequivoco para esos casos. Una sola entrada cubre
+  TODAS las ocurrencias de esa tupla en ese doc (si la misma cita ROTA
+  aparece 3 veces en el mismo archivo, 1 fila la tapa a las 3).
+  Un ROTO que matchea la tupla EXACTA con una fila del allowlist se
+  sigue reportando en el listado (marcado [ALLOWLISTED]) pero no rompe
+  el exit code — pensado para el bucket CAUSAL: citas cuyo "simbolo" es
+  vocabulario de runtime/contexto (codigos de error tipo
   PERMISSION_DENIED, labels de recon como Q1/Q2, RUCs) que nunca va a
   vivir como texto en el archivo citado, así que ningun barrido lo va a
   encontrar jamas. NO es el lugar para tapar bugs del propio heuristico
@@ -548,7 +558,7 @@ function resolveAndEvaluate(citedPath, startLine, symbol, fileIndex) {
   };
 }
 
-function pushResolved(findings, docFile, docLineNo, reference, result, fixBase) {
+function pushResolved(findings, docFile, docLineNo, reference, result, fixBase, symbol) {
   const fixInfo =
     (result.verdict === 'DRIFT' || result.verdict === 'MOVIDO') && result.foundAt != null && fixBase
       ? { ...fixBase, newLine: String(result.foundAt) }
@@ -558,6 +568,7 @@ function pushResolved(findings, docFile, docLineNo, reference, result, fixBase) 
     line: docLineNo,
     type: 'file:line',
     reference,
+    symbol: symbol || null,
     verdict: result.verdict,
     detail: result.detail,
     resolvedPath: result.resolvedPath,
@@ -607,7 +618,7 @@ function checkFileLine(docFile, docLineNo, maskedLine, match, fileIndex, finding
       matchIndex: matchStart,
       matchText: match[0],
       oldLine: range1,
-    });
+    }, pair.symbolA);
     const r2 = resolveAndEvaluate(citedPath, parseInt(continuation.range2Start, 10), pair.symbolB, fileIndex);
     pushResolved(findings, docFile, docLineNo, ref2, r2, {
       docFile,
@@ -615,7 +626,7 @@ function checkFileLine(docFile, docLineNo, maskedLine, match, fileIndex, finding
       matchIndex: continuation.citeAbsoluteStart,
       matchText: continuation.citeText,
       oldLine: continuation.range2Start,
-    });
+    }, pair.symbolB);
     return continuation.totalConsumed;
   }
 
@@ -627,7 +638,7 @@ function checkFileLine(docFile, docLineNo, maskedLine, match, fileIndex, finding
     matchIndex: matchStart,
     matchText: match[0],
     oldLine: range1,
-  });
+  }, symbol);
   return 0;
 }
 
@@ -934,8 +945,16 @@ function applyFixLines(findings) {
 
 const ALLOWLIST_PATH = path.join(REPO_ROOT, 'scripts', 'check-docs.allow');
 
+// Ancla por lo que NO se mueve con una edicion de docs: doc + tipo + referencia
+// citada + simbolo (si el tipo lo tiene). Deliberadamente SIN numero de linea —
+// una tanda que inserta texto arriba corre todo lo de abajo, y una entrada
+// anclada por linea queda huerfana de un dia para el otro sin que el hallazgo
+// real haya cambiado en nada (medido en v6.74.0: 20 de 40 entradas volaron por
+// esto). Para tipos sin concepto de simbolo (path/npm command/commit hash),
+// `f.symbol` es undefined -> se normaliza a cadena vacia, y el match queda
+// dado por doc+tipo+referencia solamente (ya inequivoco para esos tipos).
 function findingKey(f) {
-  return `${f.doc}:${f.line}|${f.type}|${f.reference}`;
+  return `${f.doc}|${f.type}|${f.reference}|${f.symbol || ''}`;
 }
 
 function loadAllowlist() {
@@ -947,8 +966,9 @@ function loadAllowlist() {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;
       const parts = trimmed.split('|').map((p) => p.trim());
-      if (parts.length < 3) continue; // need at least doc:line | type | reference
-      entries.push({ key: `${parts[0]}|${parts[1]}|${parts[2]}`, raw: trimmed, motivo: parts[3] || '' });
+      if (parts.length < 4) continue; // need at least doc | type | reference | simbolo
+      const symbol = parts[3] || '';
+      entries.push({ key: `${parts[0]}|${parts[1]}|${parts[2]}|${symbol}`, raw: trimmed, motivo: parts[4] || '' });
     }
   }
   return { present, entries };
