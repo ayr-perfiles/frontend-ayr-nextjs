@@ -115,3 +115,5 @@ HANDOFF.md | path (sin linea, basename) | sidebar.tsx | | narrativa historica, v
 HANDOFF.md | path (sin linea, basename) | ProductionBlockedAnnulModal.test.tsx | | narrativa historica, verbo fuera de la clausula -- rename narrado explicitamente pero en otra clausula/oracion (menciona R039/R069 de git)
 HANDOFF.md | path (sin linea, basename) | annulSaleCascade.integration.test.ts | | narrativa historica, verbo fuera de la clausula -- mismo caso que CLAUDE.md:373
 HANDOFF.md | path (sin linea, basename) | sidebar.test.ts | | narrativa historica, verbo fuera de la clausula -- mismo caso que sidebar.tsx en HANDOFF.md
+HANDOFF.md | path (sin linea, basename) | recon-c2-output.json | | CAUSAL: scratch fuera del repo, vive en ~/ayr-scratch/2026-08-28-import-cost-zero/ segun el propio doc ([IMPORT-SIM-DRIFT], v6.76.0)
+HANDOFF.md | path (sin linea, basename) | recon-d2-output.json | | CAUSAL: scratch fuera del repo, mismo directorio que recon-c2-output.json
