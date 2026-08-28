@@ -112,6 +112,7 @@ async function simulateImport(parsedSales: any[], user: any) {
                 customerName: sale.customerName,
                 sellerId: user?.email || 'SISTEMA',
                 avgCost: item.baseCost,
+                frozenCost: item.baseCost ?? 0,
               };
 
               if (isNCWithStock) {

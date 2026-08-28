@@ -87,6 +87,7 @@ async function simulateImport(parsedSales: any[]) {
                 avgCost: item.baseCost,
                 motivo: isNCWithStock ? `NC ${sale.documentNumber}` : undefined,
                 ref: (sale.adjustedDocument as string) || undefined,
+                frozenCost: item.baseCost ?? 0,
               };
 
               if (isNCWithStock) {
