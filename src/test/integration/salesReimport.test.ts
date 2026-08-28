@@ -89,7 +89,7 @@ async function simulateImport(parsedSales: any[], user: any) {
             documentType: sale.documentType,
             uploadedBy: user?.email,
           },
-        }, { merge: true });
+        });
 
         for (const item of sale.items) {
           if (item.sku && item.sku !== "GENERIC" && !item.isCoil) {
