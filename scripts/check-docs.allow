@@ -1,0 +1,64 @@
+# check-docs.allow — citas ROTO aceptadas a propósito.
+# Formato: doc:linea | tipo | referencia | motivo
+# Solo para el bucket CAUSAL (vocabulario de runtime/contexto, archivos
+# explicitamente fuera del repo/en node_modules/planeados a futuro, o
+# lineas de ejemplo de una plantilla, que nunca van a resolver contra el
+# arbol de este repo). NO meter aca: bugs del heuristico del checker (se
+# arreglan en scripts/check-docs.cjs) ni citas realmente rotas (se
+# arreglan en el doc).
+# Confirmadas 1x1 contra el codigo real en PASO 2/3/4 (2026-08-27, misma sesion).
+
+# --- PASO 2: codigos de error / labels de runtime, nunca texto del archivo citado ---
+CLAUDE.md:31 | file:line | firestore.rules:81 | CAUSAL: PERMISSION_DENIED es el codigo de error que Firestore emite en runtime cuando una rule aborta; nunca es texto que viva en firestore.rules
+HANDOFF.md:46 | file:line | firestore.rules:81 | CAUSAL: mismo caso que CLAUDE.md:31 (PERMISSION_DENIED), el otro archivo del par CLAUDE.md/HANDOFF.md
+docs/modules/ventas.md:182 | file:line | firestore.rules:78 | CAUSAL: updateDoc es una funcion del SDK cliente de Firestore; las rules son declarativas y jamas la invocan literalmente
+
+# --- PASO 3/4: archivos de backup/scratch explicitamente fuera del repo (~/ayr-scratch/2026-08-27-aluzinc/, ver [ALUZINC-RESET] v6.71.0) ---
+CLAUDE.md:48 | path (sin linea, basename) | ids-frozen.json | CAUSAL: backup de [ALUZINC-RESET] vive en ~/ayr-scratch/2026-08-27-aluzinc/, nunca en el repo
+CLAUDE.md:53 | path (sin linea, basename) | ids-frozen.json | CAUSAL: mismo caso, otra mencion en el mismo frente
+HANDOFF.md:300 | path (sin linea, basename) | ids-frozen.json | CAUSAL: mismo caso, mencion en HANDOFF.md
+CLAUDE.md:48 | path (sin linea, basename) | integrity.json | CAUSAL: backup de [ALUZINC-RESET] vive en ~/ayr-scratch/2026-08-27-aluzinc/, nunca en el repo
+CLAUDE.md:49 | path (sin linea, basename) | integrity.json | CAUSAL: mismo caso, otra mencion en el mismo frente
+HANDOFF.md:65 | path (sin linea, basename) | integrity.json | CAUSAL: mismo caso, mencion en HANDOFF.md
+CLAUDE.md:48 | path (sin linea, basename) | delete-aluzinc.cjs | CAUSAL: script de [ALUZINC-RESET] vive en ~/ayr-scratch/2026-08-27-aluzinc/, nunca en el repo
+CLAUDE.md:50 | path (sin linea, basename) | survivors-before.json | CAUSAL: backup de [ALUZINC-RESET] vive en ~/ayr-scratch/2026-08-27-aluzinc/, nunca en el repo
+CLAUDE.md:50 | path (sin linea, basename) | survivors-after.json | CAUSAL: backup de [ALUZINC-RESET] vive en ~/ayr-scratch/2026-08-27-aluzinc/, nunca en el repo
+
+# --- PASO 3/4: archivos de una dependencia de node_modules, citados como narrativa de investigacion, correctamente fuera del alcance de resolucion del repo ---
+CLAUDE.md:357 | path (sin linea, basename) | https.js | CAUSAL: archivo interno de firebase-functions en node_modules, citado para narrar una investigacion de SDK, no una cita del repo
+CLAUDE.md:909 | path (sin linea, basename) | https.js | CAUSAL: misma cita repetida en el backlog de deuda
+HANDOFF.md:228 | path (sin linea, basename) | https.js | CAUSAL: misma cita, mencion en HANDOFF.md
+CLAUDE.md:357 | path (sin linea, basename) | index.cjs.js | CAUSAL: archivo interno de @firebase/functions en node_modules, misma investigacion que https.js arriba
+CLAUDE.md:909 | path (sin linea, basename) | index.cjs.js | CAUSAL: misma cita repetida en el backlog de deuda
+HANDOFF.md:228 | path (sin linea, basename) | index.cjs.js | CAUSAL: misma cita, mencion en HANDOFF.md
+
+# --- PASO 3/4: scripts locales/gitignored y archivo planeado a futuro ---
+CLAUDE.md:773 | path (sin linea, basename) | recon_magnitudes.cjs | CAUSAL: script suelto bajo scripts/local/ (gitignored, "throwaway con credenciales" segun el propio doc), nunca trackeado
+CLAUDE.md:773 | path (sin linea, basename) | recon_cola.cjs | CAUSAL: mismo caso que recon_magnitudes.cjs, mismo frente
+CLAUDE.md:792 | path (sin linea, basename) | proxy.ts | CAUSAL: item de ROADMAP ("Capa 2 server-side... + proxy.ts"), archivo planeado a futuro, el doc nunca afirma que ya exista
+
+# --- PASO 4: scripts de scratch fuera del repo (~/ayr-scratch/2026-08-24-algolia-finish/) ---
+docs/03-arquitectura/busqueda-algolia.md:52 | path (sin linea, basename) | verify-post-save.cjs | CAUSAL: scratch fuera del repo, vive en ~/ayr-scratch/2026-08-24-algolia-finish/ segun el propio doc
+docs/03-arquitectura/busqueda-algolia.md:52 | path (sin linea, basename) | g-otros-indices.cjs | CAUSAL: scratch fuera del repo, mismo directorio que verify-post-save.cjs
+docs/03-arquitectura/busqueda-algolia.md:52 | path (sin linea, basename) | h-sales-index.cjs | CAUSAL: scratch fuera del repo, mismo directorio que verify-post-save.cjs
+
+# --- PASO 5: docs/04-dominio/lineas-negocio/template.md, linea ficticia "tubing" ---
+# Medido: son 15 citas, no 11 (BusinessLineContext.tsx aparece 2 veces, lineas 49 y 499).
+# NO se excluyo template.md por nombre de archivo a proposito -- cada cita queda
+# explicita aca, auditable, y si el dia de manana el checker suma una cita NUEVA
+# de una linea de negocio real bajo un nombre parecido, no se pierde en un exclude ciego.
+docs/04-dominio/lineas-negocio/template.md:49 | path (sin linea) | src/context/BusinessLineContext.tsx | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:63 | path (sin linea) | src/modules/tubing/types.ts | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:74 | path (sin linea) | src/modules/tubing/schemas/catalog.ts | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:122 | path (sin linea) | src/modules/tubing/domain/rollForming.ts | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:176 | path (sin linea) | src/modules/tubing/domain/validation.ts | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:203 | path (sin linea) | src/modules/tubing/services/productionService.ts | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:218 | path (sin linea) | src/modules/tubing/services/inventoryService.ts | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:230 | path (sin linea) | src/modules/tubing/engines/production.ts | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:327 | path (sin linea) | src/modules/tubing/engines/inventory.ts | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:370 | path (sin linea) | src/modules/tubing/config/permissions.ts | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:382 | path (sin linea) | src/modules/tubing/config/sidebar.ts | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:409 | path (sin linea) | src/modules/tubing/routes.ts | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:440 | path (sin linea) | src/modules/tubing/index.ts | plantilla, linea de ejemplo intencional
+docs/04-dominio/lineas-negocio/template.md:499 | path (sin linea) | src/context/BusinessLineContext.tsx | plantilla, linea de ejemplo intencional (segunda mencion)
+docs/04-dominio/lineas-negocio/template.md:521 | path (sin linea) | src/components/layout/BusinessLineSelector.tsx | plantilla, linea de ejemplo intencional

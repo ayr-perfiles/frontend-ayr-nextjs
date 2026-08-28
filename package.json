@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "type-check": "tsc --noEmit",
+    "check:docs": "node scripts/check-docs.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",

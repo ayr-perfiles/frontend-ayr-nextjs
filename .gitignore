@@ -75,6 +75,7 @@ sales_quotation_test_backup_*.json
 !scripts/emuPortGuard.cjs
 !scripts/emuPortGuard.test.cjs
 !scripts/with-emulator.cjs
+!scripts/check-docs.cjs
 /recon.js
 /test-prod.ts
 /dump_*.cjs
