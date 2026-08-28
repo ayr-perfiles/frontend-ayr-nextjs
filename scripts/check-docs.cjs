@@ -79,7 +79,22 @@ Veredictos:
   AMBIGUO       2+ archivos/candidatos calzan igual de bien; no se adivina.
   ROTO          El simbolo/archivo no aparece en ninguna parte. Es el
                 UNICO veredicto que rompe el exit code — salvo que la cita
-                este en scripts/check-docs.allow (ver abajo).
+                este en scripts/check-docs.allow (ver abajo), o que su
+                contenedor sintactico narre su propia historia (ver HISTORICA).
+  HISTORICA     Seria ROTO, pero el MISMO contenedor sintactico que la
+                atribucion de simbolo (celda/clausula/parentesis — ver
+                computeContainer) narra explicitamente que el archivo/simbolo
+                fue borrado/eliminado/renombrado/reemplazado/movido/
+                consolidado/corregido ("muerto"), en participio O en
+                preterito (borró/eliminó/renombró/etc — agregado PASO 2), o
+                menciona un hash de commit ("en <hash>") o una version del
+                proyecto ("en vX.Y.Z"/
+                "desde vX.Y.Z"). NO rompe el exit code — la cita es correcta,
+                esta narrando codigo muerto a proposito. Se cuenta aparte de
+                ROTO en el resumen. Riesgo aceptado: un verbo de muerte
+                ajeno en el MISMO contenedor de una cita rota de verdad la
+                silenciaria — el contenedor angosto (no la linea/vinieta
+                entera) existe para acotar ese riesgo.
   NO_PARSEABLE  Cita compuesta (dos citas comprimidas en una linea, ej.
                 "A"/"B" (file:R1 y :R2)) que no calza con el patron
                 reconocido — no se adivina el simbolo, se muestra el texto
@@ -439,6 +454,63 @@ function attributedSymbol(line, matchStart, matchEnd) {
   return candidates[0].name;
 }
 
+// ---------- HISTORICA: la cita narra un borrado/rename/consolidacion a
+// proposito, no es un bug de documentacion ----------
+//
+// Reusa el MISMO contenedor sintactico que la atribucion de simbolo
+// (computeContainer: celda de tabla + clausula ·/;/—/,/fin-de-oracion +
+// pareja de parentesis) — nunca la linea entera, para no silenciar una cita
+// rota de verdad que solo comparte bullet con un verbo de muerte ajeno.
+//
+// Patrones EXACTOS (reportados en PASO 1/A1 y ampliados en PASO 2/1 de
+// [DOCS-STALE-SWEEP]):
+//  1. Verbo de muerte, PARTICIPIO con genero: borrado/borrada,
+//     eliminado/eliminada, renombrado/renombrada, reemplazado/reemplazada,
+//     movido/movida, consolidado/consolidada, muerto/muerta,
+//     corregido/corregida.
+//  1b. Verbo de muerte, PRETERITO (agregado PASO 2 — "se borró"/"se eliminó"
+//     no matcheaba el participio): borró/eliminó/renombró/reemplazó/movió/
+//     consolidó/corrigió.
+//  2. "en <hash hex 8-40>" — ligado a un commit real (ej. "borrado en f88cbb02").
+//  3. "en vX.Y.Z" / "desde vX.Y.Z" — ligado a una version del proyecto.
+// `\b` de JS es ASCII-only (su `\w` no incluye vocales acentuadas) — un
+// patron terminado en "ó" con `\b` detras NUNCA matchea, porque JS no ve
+// frontera entre "ó" y el espacio siguiente (ninguno de los dos es "\w"
+// para el motor). Confirmado con test aislado: `/\bborr[oó]\b/i` da FALSE
+// contra "se borró", `/\bborro\b/i` (sin tilde) da TRUE. Fix: reemplazar
+// `\b` por lookaround explicito sobre un rango de letras latinas que SI
+// incluye acentuadas (A-Za-zÀ-ÖØ-öø-ÿ), para los preteritos con tilde.
+const LATIN_LETTER_CLASS = 'A-Za-zÀ-ÖØ-öø-ÿ';
+const HISTORICA_DEATH_VERB_RE = new RegExp(
+  `(?<![${LATIN_LETTER_CLASS}])(borrad[oa]|eliminad[oa]|renombrad[oa]|reemplazad[oa]|movid[oa]|consolidad[oa]|muert[oa]|corregid[oa]|borr[oó]|elimin[oó]|renombr[oó]|reemplaz[oó]|movi[oó]|consolid[oó]|corrig[ioó])(?![${LATIN_LETTER_CLASS}])`,
+  'i',
+);
+const HISTORICA_HASH_RE = /\ben\s+[0-9a-f]{8,40}\b/i;
+const HISTORICA_VERSION_RE = /\b(?:en|desde)\s+v\d+\.\d+\.\d+\b/i;
+
+function isHistoricaContainer(line, matchStart, matchEnd) {
+  const { start, end } = computeContainer(line, matchStart, matchEnd);
+  const container = line.slice(start, end);
+  return (
+    HISTORICA_DEATH_VERB_RE.test(container) ||
+    HISTORICA_HASH_RE.test(container) ||
+    HISTORICA_VERSION_RE.test(container)
+  );
+}
+
+// Solo degrada ROTO -> HISTORICA. Nunca toca OK/DRIFT/MOVIDO/AMBIGUO/SIN_SIMBOLO
+// -- HISTORICA es una explicacion de POR QUE algo esta ROTO, no un verdict que
+// compita con los demas.
+function maybeHistorica(result, line, matchStart, matchEnd) {
+  if (result.verdict !== 'ROTO') return result;
+  if (!isHistoricaContainer(line, matchStart, matchEnd)) return result;
+  return {
+    ...result,
+    verdict: 'HISTORICA',
+    detail: `${result.detail} [contenedor narra historia: verbo de muerte o hash/version de proyecto]`,
+  };
+}
+
 // ---------- compound citations: "`A`/`B` (... file:R1 y :R2 ...)" ----------
 // Two symbols share one file, cited as two ranges, the second one a bare
 // ":N" shorthand. Picking "nearest backtick" for the FIRST range often grabs
@@ -611,7 +683,8 @@ function checkFileLine(docFile, docLineNo, maskedLine, match, fileIndex, finding
       pushNoParseable(findings, docFile, docLineNo, ref2, rawText);
       return continuation.totalConsumed;
     }
-    const r1 = resolveAndEvaluate(citedPath, parseInt(range1, 10), pair.symbolA, fileIndex);
+    const r1raw = resolveAndEvaluate(citedPath, parseInt(range1, 10), pair.symbolA, fileIndex);
+    const r1 = maybeHistorica(r1raw, maskedLine, matchStart, matchEnd);
     pushResolved(findings, docFile, docLineNo, ref1, r1, {
       docFile,
       docLineNo,
@@ -619,7 +692,8 @@ function checkFileLine(docFile, docLineNo, maskedLine, match, fileIndex, finding
       matchText: match[0],
       oldLine: range1,
     }, pair.symbolA);
-    const r2 = resolveAndEvaluate(citedPath, parseInt(continuation.range2Start, 10), pair.symbolB, fileIndex);
+    const r2raw = resolveAndEvaluate(citedPath, parseInt(continuation.range2Start, 10), pair.symbolB, fileIndex);
+    const r2 = maybeHistorica(r2raw, maskedLine, continuation.citeAbsoluteStart, continuation.citeAbsoluteStart + continuation.citeText.length);
     pushResolved(findings, docFile, docLineNo, ref2, r2, {
       docFile,
       docLineNo,
@@ -631,7 +705,8 @@ function checkFileLine(docFile, docLineNo, maskedLine, match, fileIndex, finding
   }
 
   const symbol = attributedSymbol(maskedLine, matchStart, matchEnd);
-  const result = resolveAndEvaluate(citedPath, parseInt(range1, 10), symbol, fileIndex);
+  const resultRaw = resolveAndEvaluate(citedPath, parseInt(range1, 10), symbol, fileIndex);
+  const result = maybeHistorica(resultRaw, maskedLine, matchStart, matchEnd);
   pushResolved(findings, docFile, docLineNo, ref1, result, {
     docFile,
     docLineNo,
@@ -661,13 +736,19 @@ function checkPathNoLine(docFile, docLineNo, maskedLine, fileIndex, findings) {
   while ((m = QUALIFIED_PATH_RE.exec(maskedLine))) {
     const p = m[0];
     const exists = fs.existsSync(path.join(REPO_ROOT, p));
+    let verdict = exists ? 'OK' : 'ROTO';
+    let detail = exists ? 'existe' : 'archivo no existe';
+    if (!exists && isHistoricaContainer(maskedLine, m.index, m.index + m[0].length)) {
+      verdict = 'HISTORICA';
+      detail = `${detail} [contenedor narra historia: verbo de muerte o hash/version de proyecto]`;
+    }
     findings.push({
       doc: docFile,
       line: docLineNo,
       type: 'path (sin linea)',
       reference: p,
-      verdict: exists ? 'OK' : 'ROTO',
-      detail: exists ? 'existe' : 'archivo no existe',
+      verdict,
+      detail,
       resolvedPath: exists ? p : null,
       candidates: null,
       fixInfo: null,
@@ -681,6 +762,10 @@ function checkPathNoLine(docFile, docLineNo, maskedLine, fileIndex, findings) {
     if (candidates.length === 0) {
       verdict = 'ROTO';
       detail = 'ningun archivo con ese nombre en el repo';
+      if (isHistoricaContainer(maskedLine, m.index, m.index + m[0].length)) {
+        verdict = 'HISTORICA';
+        detail = `${detail} [contenedor narra historia: verbo de muerte o hash/version de proyecto]`;
+      }
     } else if (candidates.length === 1) {
       verdict = 'OK';
       detail = candidates[0];

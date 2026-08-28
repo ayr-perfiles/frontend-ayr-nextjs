@@ -99,7 +99,7 @@ firebase emulators:start
 
 **Solución:** Script para migrar roles a custom claims.
 
-**Archivo:** `scripts/migrate-roles-to-claims.ts`
+**Archivo:** `scripts/migrate-roles-to-claims.js`
 
 **Con Claude Dev:**
 ```
@@ -476,8 +476,8 @@ npm run build   # Debe compilar
 **Usar template:** `docs/adr/TEMPLATE.md`
 
 **Entregables:**
-- [x] `docs/adr/ADR-001-monorepo-modular.md`
-- [x] `docs/adr/ADR-002-firebase-backend.md`
+- [x] `docs/adr/ADR-001-monorepo-modularizado.md`
+- [x] `docs/adr/ADR-002-firebase-firestore.md`
 
 ---
 
@@ -1084,8 +1084,7 @@ PERMISOS:
 **Entregables:**
 - [x] Página `/admin/roofing/catalog`
 - [x] `ProductCatalogTable.tsx`
-- [x] `AddProductModal.tsx` con auto-generación de SKU
-- [x] `EditProductModal.tsx`
+- [x] `ProductModal.tsx` (agrega y edita, con auto-generación de SKU — consolidado en un único componente, ver `src/modules/roofing/components/catalog/ProductModal.tsx`)
 - [x] Validación frontend + toast notifications
 - [x] RBAC correctamente implementado
 
