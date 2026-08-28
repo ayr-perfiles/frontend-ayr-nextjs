@@ -396,9 +396,19 @@ function MetallicProductionForm() {
         source: selectedQuoteId ? { type: "QUOTE", id: selectedQuoteId, label: selectedQuoteLabel } : null,
       });
 
-      if (result.hasNegativeCoilWarning) {
+      if (result.hasNegativeCoilWarning && result.hasWacResetWarning) {
+        toast.success(
+          `Producción registrada. ⚠️ Una o más bobinas quedaron con peso negativo. ⚠️ El costo promedio se recalculó desde cero (el stock tenía saldo ≤0 antes de esta producción).`,
+          { duration: 6000 },
+        );
+      } else if (result.hasNegativeCoilWarning) {
         toast.success(
           `Producción registrada. ⚠️ Una o más bobinas quedaron con peso negativo.`,
+          { duration: 6000 },
+        );
+      } else if (result.hasWacResetWarning) {
+        toast.success(
+          `Producción registrada. ⚠️ El costo promedio se recalculó desde cero (el stock tenía saldo ≤0 antes de esta producción).`,
           { duration: 6000 },
         );
       } else {

@@ -24,6 +24,7 @@ export interface ProduceFromCoilsParams {
 export interface ProduceFromCoilsResult {
   success: true;
   hasNegativeCoilWarning: boolean;
+  hasWacResetWarning: boolean;
   cantidadProducida: number;
   costoUnitarioPEN: number;
 }

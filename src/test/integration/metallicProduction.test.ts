@@ -228,6 +228,226 @@ describe('produceFromCoils — Conformado Aluzinc (Integration — Emulador)', (
     expect(stockSnap.data()!.avgCost).toBeCloseTo(19.13, 1);
   });
 
+  // ── 4b. [STOCK-NEG-WAC] — el guard del WAC mira el saldo previo, no el resultante ──
+  // Geometría propia (densityFactor=0.001, thickness=1, masterWidth=1000) para que
+  // weightPerML = 1×1000×0.001 = 1 kg/ML exacto, y con pricePerKg=4 el costoUnitarioPEN
+  // sale 4.00 exacto en los 3 casos — evita ruido de punto flotante en las assertions.
+
+  it('R1: currentQty negativa, la producción CRUZA a positivo → WAC = costo del lote (no la mezcla)', async () => {
+    await seedAluzincFinish(0.001);
+    await seedStock(db, 'metallic_roofing_stock', 'SKU-WAC-R1', {
+      sku: 'SKU-WAC-R1',
+      productName: 'TEST-R1',
+      quantity: -2796.8,
+      avgCost: 0,
+      totalValue: 0,
+    });
+    const coilId = await seedAluzincCoil({ id: 'BOB-WAC-R1', currentWeight: 10000, thickness: 1, masterWidth: 1000, pricePerKg: 4 });
+
+    await produceFromCoils({
+      targetSku: 'SKU-WAC-R1',
+      requestId: "req-" + Math.random().toString(),
+      productKind: 'COBERTURA_ML',
+      lengthM: null,
+      coilInputs: [{ coilId, declared: 3500 }],
+      source: { type: 'QUOTE', id: 'COT-TEST-R1' }
+    });
+
+    const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'SKU-WAC-R1'));
+    expect(stockSnap.data()!.quantity).toBeCloseTo(703.2, 4);
+    expect(stockSnap.data()!.avgCost).toBe(4);
+    expect(stockSnap.data()!.totalValue).toBeCloseTo(2812.8, 2);
+  });
+
+  it('R2: currentQty negativa, la producción NO alcanza a cruzar → sigue negativa', async () => {
+    await seedAluzincFinish(0.001);
+    await seedStock(db, 'metallic_roofing_stock', 'SKU-WAC-R2', {
+      sku: 'SKU-WAC-R2',
+      productName: 'TEST-R2',
+      quantity: -2796.8,
+      avgCost: 0,
+      totalValue: 0,
+    });
+    const coilId = await seedAluzincCoil({ id: 'BOB-WAC-R2', currentWeight: 2000, thickness: 1, masterWidth: 1000, pricePerKg: 4 });
+
+    await produceFromCoils({
+      targetSku: 'SKU-WAC-R2',
+      requestId: "req-" + Math.random().toString(),
+      productKind: 'COBERTURA_ML',
+      lengthM: null,
+      coilInputs: [{ coilId, declared: 1000 }],
+      source: { type: 'QUOTE', id: 'COT-TEST-R2' }
+    });
+
+    const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'SKU-WAC-R2'));
+    expect(stockSnap.data()!.quantity).toBeCloseTo(-1796.8, 4);
+    expect(stockSnap.data()!.avgCost).toBe(4);
+    expect(stockSnap.data()!.totalValue).toBeCloseTo(-7187.2, 2);
+  });
+
+  it('R3: currentQty EXACTAMENTE 0 (borde del guard) → WAC = costo del lote', async () => {
+    await seedAluzincFinish(0.001);
+    await seedStock(db, 'metallic_roofing_stock', 'SKU-WAC-R3', {
+      sku: 'SKU-WAC-R3',
+      productName: 'TEST-R3',
+      quantity: 0,
+      avgCost: 0,
+      totalValue: 0,
+    });
+    const coilId = await seedAluzincCoil({ id: 'BOB-WAC-R3', currentWeight: 2000, thickness: 1, masterWidth: 1000, pricePerKg: 4 });
+
+    await produceFromCoils({
+      targetSku: 'SKU-WAC-R3',
+      requestId: "req-" + Math.random().toString(),
+      productKind: 'COBERTURA_ML',
+      lengthM: null,
+      coilInputs: [{ coilId, declared: 1000 }],
+      source: { type: 'QUOTE', id: 'COT-TEST-R3' }
+    });
+
+    const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'SKU-WAC-R3'));
+    expect(stockSnap.data()!.quantity).toBe(1000);
+    expect(stockSnap.data()!.avgCost).toBe(4);
+    expect(stockSnap.data()!.totalValue).toBe(4000);
+  });
+
+  it('R4 (no-regresión): currentQty POSITIVA → mezcla ponderada clásica intacta', async () => {
+    await seedStock(db, 'metallic_roofing_stock', 'SKU-WAC-R4', {
+      sku: 'SKU-WAC-R4',
+      productName: 'TEST-R4',
+      quantity: 20,
+      avgCost: 30,
+      totalValue: 600,
+    });
+    const coilId = await seedAluzincCoil({ id: 'BOB-WAC-R4', currentWeight: 2000, thickness: 0.45, masterWidth: 1200, pricePerKg: 4 });
+
+    await produceFromCoils({
+      targetSku: 'SKU-WAC-R4',
+      requestId: "req-" + Math.random().toString(),
+      productKind: 'COBERTURA_ML',
+      lengthM: null,
+      coilInputs: [{ coilId, declared: 100 }],
+      source: { type: 'QUOTE', id: 'COT-TEST-R4' }
+    });
+
+    const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'SKU-WAC-R4'));
+    expect(stockSnap.data()!.quantity).toBe(120);
+    expect(stockSnap.data()!.avgCost).toBeCloseTo(19.13, 1);
+  });
+
+  it('R5: currentQty negativa CON avgCost previo ≠0, la producción cruza a positivo (2da parte de una carga en 2 tandas)', async () => {
+    // Encadena exactamente donde termina R2: quantity:-1796.8, avgCost:4.00 (el resultado
+    // de una primera producción que no alcanzó a cruzar). Acá llega la segunda producción,
+    // a OTRO costo unitario (6.00), y esta sí cruza a positivo.
+    //
+    // Ni el valor NUEVO (6.00, el costo de este lote) ni el VIEJO (11.110353, la mezcla que
+    // arrastra el avgCost residual del lote anterior) son el costo "verdadero" multi-lote —
+    // ese sería 19000/3500 = 5.428571, y exigiría un acumulador de valor histórico que
+    // NINGUNA de las 3 implementaciones de WAC del repo (esta, drywall, adjustStock) tiene.
+    // El fix no persigue exactitud multi-lote (decisión ya tomada de no construir ese
+    // acumulador) — busca acotar el error a "costo del lote que cruza", no "mezcla con un
+    // avgCost residual que nunca fue un WAC real". NO "corregir" este número a 5.428571 sin
+    // abrir ese frente aparte.
+    await seedAluzincFinish(0.001);
+    await seedStock(db, 'metallic_roofing_stock', 'SKU-WAC-R5', {
+      sku: 'SKU-WAC-R5',
+      productName: 'TEST-R5',
+      quantity: -1796.8,
+      avgCost: 4.00,
+      totalValue: -7187.2,
+    });
+    const coilId = await seedAluzincCoil({ id: 'BOB-WAC-R5', currentWeight: 5000, thickness: 1, masterWidth: 1000, pricePerKg: 6 });
+
+    await produceFromCoils({
+      targetSku: 'SKU-WAC-R5',
+      requestId: "req-" + Math.random().toString(),
+      productKind: 'COBERTURA_ML',
+      lengthM: null,
+      coilInputs: [{ coilId, declared: 2500 }],
+      source: { type: 'QUOTE', id: 'COT-TEST-R5' }
+    });
+
+    const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'SKU-WAC-R5'));
+    expect(stockSnap.data()!.quantity).toBeCloseTo(703.2, 4);
+    expect(stockSnap.data()!.avgCost).toBe(6);
+    expect(stockSnap.data()!.totalValue).toBeCloseTo(4219.2, 2);
+  });
+
+  it('hasWacResetWarning: true cuando el saldo previo era <0 (el WAC se reseteó)', async () => {
+    await seedAluzincFinish(0.001);
+    await seedStock(db, 'metallic_roofing_stock', 'SKU-WAC-FLAG-A', {
+      sku: 'SKU-WAC-FLAG-A',
+      productName: 'TEST-FLAG-A',
+      quantity: -2796.8,
+      avgCost: 0,
+      totalValue: 0,
+    });
+    const coilId = await seedAluzincCoil({ id: 'BOB-WAC-FLAG-A', currentWeight: 10000, thickness: 1, masterWidth: 1000, pricePerKg: 4 });
+
+    const result = await produceFromCoils({
+      targetSku: 'SKU-WAC-FLAG-A',
+      requestId: "req-" + Math.random().toString(),
+      productKind: 'COBERTURA_ML',
+      lengthM: null,
+      coilInputs: [{ coilId, declared: 3500 }],
+      source: { type: 'QUOTE', id: 'COT-TEST-FLAG-A' }
+    });
+
+    expect(result.hasWacResetWarning).toBe(true);
+  });
+
+  it('hasWacResetWarning: false cuando el saldo previo era positivo (mezcla ponderada normal)', async () => {
+    await seedStock(db, 'metallic_roofing_stock', 'SKU-WAC-FLAG-B', {
+      sku: 'SKU-WAC-FLAG-B',
+      productName: 'TEST-FLAG-B',
+      quantity: 20,
+      avgCost: 30,
+      totalValue: 600,
+    });
+    const coilId = await seedAluzincCoil({ id: 'BOB-WAC-FLAG-B', currentWeight: 2000, thickness: 0.45, masterWidth: 1200, pricePerKg: 4 });
+
+    const result = await produceFromCoils({
+      targetSku: 'SKU-WAC-FLAG-B',
+      requestId: "req-" + Math.random().toString(),
+      productKind: 'COBERTURA_ML',
+      lengthM: null,
+      coilInputs: [{ coilId, declared: 100 }],
+      source: { type: 'QUOTE', id: 'COT-TEST-FLAG-B' }
+    });
+
+    expect(result.hasWacResetWarning).toBe(false);
+  });
+
+  it('R6: currentQty EXACTAMENTE 0 → hasWacResetWarning false (no se pierde valor, no hay reset)', async () => {
+    // Mismo seed que R3: con saldo previo 0, currentQty*currentAvgCost se anula, newValue
+    // queda igual a costoTotalPEN, y las 2 ramas del ternario dan el mismo numero — no hay
+    // perdida de informacion que advertir. Es el borde donde el guard (>0) y la advertencia
+    // (<0) dejan de coincidir a propósito: preguntan cosas distintas.
+    await seedAluzincFinish(0.001);
+    await seedStock(db, 'metallic_roofing_stock', 'SKU-WAC-R6', {
+      sku: 'SKU-WAC-R6',
+      productName: 'TEST-R6',
+      quantity: 0,
+      avgCost: 0,
+      totalValue: 0,
+    });
+    const coilId = await seedAluzincCoil({ id: 'BOB-WAC-R6', currentWeight: 2000, thickness: 1, masterWidth: 1000, pricePerKg: 4 });
+
+    const result = await produceFromCoils({
+      targetSku: 'SKU-WAC-R6',
+      requestId: "req-" + Math.random().toString(),
+      productKind: 'COBERTURA_ML',
+      lengthM: null,
+      coilInputs: [{ coilId, declared: 1000 }],
+      source: { type: 'QUOTE', id: 'COT-TEST-R6' }
+    });
+
+    expect(result.hasWacResetWarning).toBe(false);
+
+    const stockSnap = await getDoc(doc(db, 'metallic_roofing_stock', 'SKU-WAC-R6'));
+    expect(stockSnap.data()!.avgCost).toBe(4);
+  });
+
   // ── 5. Acabado sin densityFactor → bloquea con error claro ───────────────
 
   it('acabado sin densityFactor → bloquea producción con mensaje claro', async () => {

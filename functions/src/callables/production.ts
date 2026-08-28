@@ -216,7 +216,20 @@ export const produceFromCoils = onCall(async (request) => {
     const currentAvgCost = stockSnap.exists ? (stockSnap.data()!.avgCost || 0) : 0;
     const newQty = currentQty + result.cantidadProducida;
     const newValue = currentQty * currentAvgCost + result.costoTotalPEN;
-    const newAvgCost = newQty > 0 ? Number((newValue / newQty).toFixed(6)) : result.costoUnitarioPEN;
+    // [STOCK-NEG-WAC] Guard sobre el saldo PREVIO (currentQty), no el resultante (newQty).
+    // Con saldo previo <=0, las unidades que se vendieron en negativo se llevaron cantidad
+    // sin llevarse valor (nunca hubo stock real detrás) — arrastrar ese "valor" previo
+    // inflaría el WAC. Por eso ahí el costo pasa a ser directamente el de este lote.
+    const newAvgCost = currentQty > 0 ? Number((newValue / newQty).toFixed(6)) : result.costoUnitarioPEN;
+    // [STOCK-NEG-WAC] Advertencia de PÉRDIDA DE INFORMACIÓN, no del mismo borde que el
+    // guard de arriba a propósito. El guard pregunta "¿mezclo o reseteo?" (empate en 0, por
+    // eso usa `>0`). Esto pregunta "¿perdí valor acumulado?" — en currentQty===0 no hay
+    // nada que perder (`currentQty*currentAvgCost` se anula, `newValue` ya es exactamente
+    // `costoTotalPEN`, las 2 ramas del ternario de arriba dan el mismo número) — por eso
+    // usa `<0`, no `<=0`. NO re-alinear con el discriminante de `newAvgCost` "por simetría":
+    // si se unifican, la advertencia empieza a dispararse en la primera producción de
+    // cualquier SKU nuevo (el caso más común y sano) y deja de mirarse.
+    const hasWacResetWarning = currentQty < 0;
 
     let hasNegativeCoilWarning = false;
     const now = FieldValue.serverTimestamp();
@@ -368,6 +381,7 @@ export const produceFromCoils = onCall(async (request) => {
     const responsePayload = {
       success: true,
       hasNegativeCoilWarning,
+      hasWacResetWarning,
       cantidadProducida: result.cantidadProducida,
       costoUnitarioPEN: result.costoUnitarioPEN
     };
