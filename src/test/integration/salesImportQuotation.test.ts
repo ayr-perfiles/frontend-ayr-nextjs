@@ -15,6 +15,11 @@ import { buildImportWrites } from '@/core/import/salesImportLogic';
 vi.unmock('@/lib/firebase/clientApp');
 
 // Simulación exacta de la función de importación masiva (SalesImportPage handleUploadToFirebase)
+// [IMPORT-SIM-DRIFT] A diferencia de salesImport.test.ts/salesReimport.test.ts, esta
+// función SÍ delega en buildImportWrites (el builder real) para venta+percha -- pero
+// sigue sin llamar a la transacción del importador entera. Extraerla está registrado
+// como frente [IMPORT-EXTRACT]. La AUSENCIA de movimiento de stock acá es alcance
+// intencional (este archivo prueba solo la atomicidad venta+percha), no un olvido.
 async function simulateImportWithLogic(parsedSales: any[]) {
   const results: any[] = [];
   for (const sale of parsedSales) {

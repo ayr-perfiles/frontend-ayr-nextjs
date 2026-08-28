@@ -18,6 +18,9 @@ vi.unmock('@/lib/firebase/clientApp');
 
 // Simulación de la función de importación masiva (BulkUploadSales.tsx)
 // con la lógica de idempotencia y NC real.
+// [IMPORT-SIM-DRIFT] Esta función REIMPLEMENTA la transacción del importador
+// (import/page.tsx) en vez de llamarla -- por eso puede divergir en silencio.
+// Extraerla a una función compartida está registrado como frente [IMPORT-EXTRACT].
 async function simulateImport(parsedSales: any[]) {
   let importedCount = 0;
   const omittedIds: string[] = [];

@@ -17,6 +17,9 @@ import { db, auth } from '@/lib/firebase/clientApp';
 vi.unmock('@/lib/firebase/clientApp');
 
 // Simulación de la función de importación actualizada con branching por estado
+// [IMPORT-SIM-DRIFT] Esta función REIMPLEMENTA la transacción del importador
+// (import/page.tsx) en vez de llamarla -- por eso puede divergir en silencio.
+// Extraerla a una función compartida está registrado como frente [IMPORT-EXTRACT].
 async function simulateImport(parsedSales: any[], user: any) {
   for (const sale of parsedSales) {
     try {
