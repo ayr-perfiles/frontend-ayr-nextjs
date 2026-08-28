@@ -220,7 +220,7 @@ Tarea: Mueve el código de drywall a src/modules/drywall/ siguiendo esta estruct
 1. Crea carpetas: modules/drywall/{components,services,domain,hooks,routes,types.ts}
 
 2. Mueve componentes:
-   - src/components/forms/AddCoilForm.tsx → modules/drywall/components/forms/
+   - src/components/forms/AddCoilForm.tsx → modules/drywall/components/forms/ (⚠️ referencia a código eliminado: este plan no se ejecutó así — el archivo terminó en `src/core/coils/components/` y fue borrado por completo en `5a9035aa`, v6.52.0. No hay sucesor 1:1 que reapuntar; queda como registro histórico del plan, no como instrucción vigente.)
    - src/components/forms/ProductionForm.tsx → modules/drywall/components/forms/
    - src/components/inventory/* → modules/drywall/components/inventory/
    - src/components/production/* → modules/drywall/components/production/

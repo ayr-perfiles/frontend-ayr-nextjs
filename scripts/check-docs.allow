@@ -85,7 +85,6 @@ docs/04-dominio/lineas-negocio/template.md | path (sin linea) | src/modules/tubi
 docs/04-dominio/lineas-negocio/template.md | path (sin linea) | src/modules/tubing/config/sidebar.ts | | plantilla, linea de ejemplo intencional
 docs/04-dominio/lineas-negocio/template.md | path (sin linea) | src/modules/tubing/routes.ts | | plantilla, linea de ejemplo intencional
 docs/04-dominio/lineas-negocio/template.md | path (sin linea) | src/modules/tubing/index.ts | | plantilla, linea de ejemplo intencional
-docs/04-dominio/lineas-negocio/template.md | path (sin linea) | src/components/layout/BusinessLineSelector.tsx | | plantilla, linea de ejemplo intencional
 
 # --- PASO 2 [DOCS-STALE-SWEEP]: residuo HISTORICA que el detector automatico
 # (verbo de muerte / hash / version en el MISMO contenedor sintactico que la
@@ -112,9 +111,7 @@ HANDOFF.md | path (sin linea, basename) | canAnnulSale.parity.test.ts | | narrat
 HANDOFF.md | path (sin linea) | src/components/forms/AddCoilForm.tsx | | narrativa historica, verbo fuera de la clausula -- bullet dice "BORRADOS" con checkmark, en un fragmento previo al nombre del archivo
 HANDOFF.md | path (sin linea) | src/components/purchases/PurchaseCoilFromXml.tsx | | narrativa historica, verbo fuera de la clausula -- mismo bullet que AddCoilForm.tsx
 HANDOFF.md | path (sin linea) | src/components/inventory/EditCoilModal.tsx | | narrativa historica, verbo fuera de la clausula -- mismo bullet que AddCoilForm.tsx
-HANDOFF.md | path (sin linea) | src/components/layout/navItems.ts | | narrativa historica, verbo fuera de la clausula -- bullet de HANDOFF.md:213, reclasificado de OPERATIVA en PASO 2 (sidebar.tsx minuscula era el nombre real hasta 9f080f8a)
-HANDOFF.md | path (sin linea, basename) | sidebar.tsx | | narrativa historica, verbo fuera de la clausula -- mismo bullet HANDOFF.md:213, reclasificado de OPERATIVA en PASO 2
-HANDOFF.md | path (sin linea, basename) | navItems.ts | | narrativa historica, verbo fuera de la clausula -- mismo bullet HANDOFF.md:213, reclasificado de OPERATIVA en PASO 2
+HANDOFF.md | path (sin linea, basename) | sidebar.tsx | | narrativa historica, verbo fuera de la clausula -- ocurrencias en HANDOFF.md:271/278/282 (v6.49.0, swap sidebar); el bullet de HANDOFF.md:213 se reescribio en PASO 3 y ya no cita el nombre en minuscula
 HANDOFF.md | path (sin linea, basename) | ProductionBlockedAnnulModal.test.tsx | | narrativa historica, verbo fuera de la clausula -- rename narrado explicitamente pero en otra clausula/oracion (menciona R039/R069 de git)
 HANDOFF.md | path (sin linea, basename) | annulSaleCascade.integration.test.ts | | narrativa historica, verbo fuera de la clausula -- mismo caso que CLAUDE.md:373
 HANDOFF.md | path (sin linea, basename) | sidebar.test.ts | | narrativa historica, verbo fuera de la clausula -- mismo caso que sidebar.tsx en HANDOFF.md

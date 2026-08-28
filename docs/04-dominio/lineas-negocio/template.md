@@ -513,13 +513,17 @@ El selector del sidebar y el menú dinámico funcionarán automáticamente.
 
 ---
 
-## Paso 10 — Agregar ícono al selector (5 min)
+## Paso 10 — Agregar ícono al sidebar (5 min)
 
-Si el módulo usa un ícono nuevo (no `Factory`, `Database`, `Smartphone`, `Package`),
-agrégalo al mapa en dos lugares:
+> ⚠️ **Corregido `[DOCS-STALE-SWEEP]` PASO 3 (v6.74.0) — la guía anterior describía una arquitectura que ya no existe** (y uno de los dos archivos que citaba nunca existió en el repo: 0 hits en `git log --diff-filter=A`, candidato a haber sido solo un plan). Verificado contra el código real de hoy.
 
-1. `src/components/layout/BusinessLineSelector.tsx` → función `ModuleIcon`
-2. `src/components/layout/sidebar.tsx` → función `resolveIcon` + import en la cabecera
+El sidebar (`src/components/layout/Sidebar.tsx`) es **data-driven**: cada grupo/ítem de `NAV_GROUPS` lleva un campo `icon` que es un **string** (ej. `icon: "Factory"`), no un componente. La resolución string → componente es un mapa único:
+
+Si el módulo usa un ícono nuevo (no ya presente en el mapa), agrégalo en **un solo lugar**:
+
+1. `src/components/layout/Sidebar.tsx` → agregar el import de `lucide-react` en la cabecera del archivo, y una entrada nueva en `ICON_MAP` (`Record<string, LucideIcon>`, línea ~192). `getIcon(name)` (línea ~214) resuelve el string del `NAV_GROUPS` contra ese mapa, con `Layers` como fallback si el nombre no está registrado.
+
+No hay un segundo archivo que tocar — el selector de módulo que la guía vieja nombraba no es parte de la arquitectura real.
 
 ---
 

@@ -39,7 +39,7 @@ export function calculateWeightedAverageCost(params: {
 }
 ```
 
-**Costo:** WAC-ACTUAL — `currentAverageCost` = `inventory_stock/{sku}.lastCostPerPiece` releído dentro de la tx (`functions/src/callables/drywallProduction.ts:95-97`).
+**Costo:** WAC-ACTUAL — `currentAverageCost` = `inventory_stock/{sku}.lastCostPerPiece` releído dentro de la tx (`functions/src/domain/drywallProduction.ts:5,9,15,69` — corregido `[DOCS-STALE-SWEEP]` PASO 3, apuntaba al archivo hermano `callables/` en vez de `domain/`).
 **Nota de campo:** en drywall el WAC vive en `lastCostPerPiece` (nombre heredado), no en `avgCost` como las otras líneas.
 
 ---
@@ -153,30 +153,36 @@ const newAvgCostPerKg = newTotalWeight > 0
 
 ---
 
-## F-D6 · ⚠️ `restoredWidth` ratio — reversa de producción drywall (client-side, WRITE 7 PENDIENTE)
+## F-D6 · `restoredWidth` ratio — reversa de producción drywall coil-directo
 
-**Propósito:** al anular un log de producción, devolver peso a la bobina proporcional al ancho usado.
+> ⚠️ **Reescrito `[DOCS-STALE-SWEEP]` PASO 3 (v6.74.0) — la ficha anterior describía una implementación client-side que ya no existe.** WRITE 7 drywall cerró en **v6.23** (WRITE 7b): la reversa migró a callable server-side, y el costo restaurado es **congelado** (violaba el Principio 1 en la versión vieja; la versión real desde v6.23 lo cumple). Ver CLAUDE.md v6.23 (línea 545) y `[DOCS-STALE-SWEEP]` PASO 3 A1.
+
+**Propósito:** al anular un log de producción drywall "coil-directo" (bypasea el pool de flejes), devolver peso a la bobina proporcional al ancho usado y descontar el costo **congelado** del log del valor de PT.
 
 **Notación:**
 ```
-restoredW = totalUsedWidth × (initialWeight / masterWidth)
-newWeight = min(initialWeight, currentWeight + restoredW)
+restoredWeight  = totalUsedWidth × (initialWeight / masterWidth)
+coilNewWeight   = min(initialWeight, currentWeight + restoredWeight)
+newQuantity     = ptStock.totalQuantity − log.piecesProduced
+newLastCostPerPiece = (ptStock.totalQuantity × ptStock.lastCostPerPiece − log.stripCost) / newQuantity   (si newQuantity > 0)
 ```
 
-**Implementación:** `src/modules/drywall/services/productionService.ts:320-324` (`revertProductionLog`, **runTransaction CLIENT-SIDE**)
+**Implementación:** callable `revertProductionLog` (`functions/src/callables/drywallProduction.ts:206`, ADMIN-only) invoca el dominio puro `calcRevertProductionFromCoil` (`functions/src/domain/drywallProduction.ts:130-171`):
 ```typescript
-const restoredW = (logData.totalUsedWidth || 0) * (cData.initialWeight / cData.masterWidth!);
-transaction.update(coilRef, {
-  plannedStrips: upStrips,
-  status: "IN_PROGRESS",
-  currentWeight: Math.min(cData.initialWeight, (cData.currentWeight || 0) + restoredW),
-```
-Y la restauración de fleje promedio (`:330-338`):
-```typescript
-totalWeight: ssData.totalWeight + (ssData.totalWeight / (ssData.totalStrips || 1)),
-// movimiento: weight = ssData.totalWeight / (ssData.totalStrips || 1), costPerKg: ssData.avgCostPerKg
+const restoredWeight = log.totalUsedWidth * (coil.initialWeight / coil.masterWidth);
+const coilNewWeight = Math.min(coil.initialWeight, coil.currentWeight + restoredWeight);
+
+const newQuantity = ptStock.totalQuantity - log.piecesProduced;
+let newLastCostPerPiece = ptStock.lastCostPerPiece;
+if (newQuantity > 0) {
+  const ptValueBefore = ptStock.totalQuantity * ptStock.lastCostPerPiece;
+  const newValue = ptValueBefore - log.stripCost;
+  newLastCostPerPiece = newValue / newQuantity;
+} else {
+  negativeStockWarning = true;
+}
 ```
 
-**Costo:** ⚠️ **VIOLA el Principio 1** — el costo restaurado usa WAC-lookback (`previousValidCost` = `costPerPiece` del log ACTIVO anterior, y el fleje se restaura a `avgCostPerKg` ACTUAL del strip stock), no el costo congelado del propio log. Además el `initialWeight/masterWidth` ratio asume proporcionalidad que un split posterior podría romper.
-**Estado:** deuda reconocida — WRITE 7 drywall (HANDOFF opción 3): migrar a callable + decidir si se preserva el lookback legacy o se alinea a costo congelado + agregar guard posterior (ADR-010).
-**Paridad:** ninguna — no existe `voidProductionFromStrip` en backend.
+**Costo:** CONGELADO — `log.stripCost` es el costo guardado en el propio `production_log` al momento de producir; se resta directo de `ptValueBefore`, **nunca se recalcula contra un WAC vivo**. Cumple el Principio 1. `approximateWeight: true` marca que el `initialWeight/masterWidth` ratio sigue asumiendo proporcionalidad (un split posterior de la bobina podría romperla — deuda menor, no bloqueante). `negativeStockWarning: true` si `newQuantity <= 0` — congela `lastCostPerPiece` en vez de dividir por cero o negativo (mismo patrón que otras reversas del repo).
+**Estado:** CERRADO EN PROD desde v6.23 (WRITE 7b). Confirmado `ACTIVE` en `ayrsteel-2026` (`firebase functions:list`, `[DOCS-STALE-SWEEP]` PASO 3).
+**Paridad:** no aplica — `calcRevertProductionFromCoil` es dominio puro server-only, sin preview client-side que lo duplique.

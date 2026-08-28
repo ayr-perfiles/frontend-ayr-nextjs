@@ -3,6 +3,7 @@
 > **Módulo:** `src/modules/roofing/`  
 > **Sprint:** 3 (Mayo 2026)  
 > **Estado:** 🚧 En desarrollo
+> ⚠️ **Corrección puntual 2026-08-28 (`[DOCS-STALE-SWEEP]` PASO 3):** solo las secciones "Stock" y "Strategy de venta" — los 2 nombres de archivo que citaba la versión anterior de esta página nunca existieron en el repo (ver esas secciones para los nombres reales). Resto del doc SIN re-verificar desde Sprint 3.
 
 ---
 
@@ -147,18 +148,18 @@ match /roofing_stock_movements/{movementId} {
 
 > `createProduct` usa `runTransaction` con `where('_combinationKey', '==', comboKey)` para validar que no exista la misma combinación material+color+largo antes de insertar.
 
-### `stockService.ts`
+### Stock (⚠️ corregido `[DOCS-STALE-SWEEP]` PASO 3, v6.74.0 — `stockService.ts` NUNCA existió con ese nombre; las 2 funciones de esta sección viven en 2 archivos reales distintos)
 
-| Función        | Rol mínimo  | Descripción                                                   |
-|----------------|-------------|---------------------------------------------------------------|
-| `adjustStock`  | SUPERVISOR  | ENTRADA / SALIDA / AJUSTE manual. Recalcula avgCost en ENTRADA |
-| `getStock`     | AUTH        | Devuelve snapshot de `roofing_stock/{sku}`                    |
+| Función        | Archivo real                                                | Rol mínimo  | Descripción                                                   |
+|----------------|--------------------------------------------------------------|-------------|-----------------------------------------------------------------|
+| `adjustStock`  | `src/modules/roofing/services/stockAdjustmentService.ts`     | SUPERVISOR  | ENTRADA / SALIDA / AJUSTE manual. Recalcula avgCost en ENTRADA |
+| `getStock`     | `src/modules/roofing/services/inventoryService.ts`           | AUTH        | Devuelve snapshot de `roofing_stock/{sku}`                    |
 
-> El costo promedio ponderado **solo se recalcula en ENTRADA**. EXIT y AJUSTE no modifican `avgCost`. Ver fórmula en `docs/05-formulas/costeo-pvc.md`.
+> El costo promedio ponderado **solo se recalcula en ENTRADA**. EXIT y AJUSTE no modifican `avgCost`. Ver fórmula en `docs/05-formulas/costeo-pvc.md` (esa ficha ya tiene su propio banner de corrección para el mismo nombre fantasma, desde 2026-07-07).
 
-### `roofingSaleStrategy.ts` (en `core/sales/strategies/`)
+### Strategy de venta (⚠️ corregido `[DOCS-STALE-SWEEP]` PASO 3 — `roofingSaleStrategy.ts` nunca existió como archivo separado)
 
-Implementa `StockStrategy`. Es invocado por `processSale` cuando `item.businessLine === 'roofing'`.
+Implementado dentro de `getStockStrategy('roofing')`, en `src/core/sales/strategies/index.ts` (factory única, línea ~576) — la arquitectura real consolidó TODAS las strategies por línea en un solo archivo desde el principio, nunca hubo un archivo por línea. Es invocado por `processSale` cuando `item.businessLine === 'roofing'`.
 
 ```typescript
 const strategy = getStockStrategy('roofing');
