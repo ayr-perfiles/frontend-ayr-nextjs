@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { parseImportRows, skipReasonLabel } from "@/core/import/parseImportRows";
+import { parseImportRows, skipReasonLabel, CatalogRef } from "@/core/import/parseImportRows";
 import { BusinessLine } from "@/types";
+import type { CoilFinish } from "@/core/coils/services/finishService";
 
 describe("parseImportRows", () => {
   it("should parse valid sales and capture skipped rows", () => {
@@ -74,7 +75,7 @@ describe("parseImportRows", () => {
       }
     ];
 
-    const result = parseImportRows(jsonData, { catalogRef, stockRef, exchangeRates });
+    const result = parseImportRows(jsonData, { catalogRef, stockRef, exchangeRates, finishRef: [] });
 
     // Assertions
     expect(result.parsedSales).toHaveLength(2); // F001-001 and F001-002
@@ -102,6 +103,108 @@ describe("parseImportRows", () => {
       documentNumber: "F001-004",
       reason: "UNRECOGNIZED_PRODUCT"
     });
+  });
+});
+
+describe("parseImportRows — [IMPORT-WEIGHT-BYPASS] GREEN", () => {
+  // Fixture calcada de datos reales de prod: BBV1-347 (item COB030ROJO) +
+  // metallic_roofing_catalog/COB030ROJO + coil_finishes/ALZ-ROJO-3002.
+  // El catalogo real NO tiene standardWeight ni weight (medido: 0/54 docs los tienen).
+  // El peso teorico sale de finishRef (coil_finishes) + dimensiones del catalogo.
+  it("COBERTURA sin standardWeight/weight en catalogo -> calculatedWeight usa el peso teorico (351.36)", () => {
+    const catalogRef: CatalogRef[] = [
+      {
+        sku: "COB030ROJO",
+        businessLine: "metallic-roofing",
+        displayName: "COBERTURA ALZ-ROJO-3002 0.3MM X 1.220",
+        family: "COBERTURA",
+        unit: "METRO",
+        thickness: 0.3,
+        widthMm: 1220,
+        finish: "ALZ-ROJO-3002",
+      },
+    ];
+    const stockRef: any[] = [
+      { sku: "COB030ROJO", businessLine: "metallic-roofing", avgCost: 0 },
+    ];
+    const finishRef: CoilFinish[] = [
+      { id: "ALZ-ROJO-3002", label: "Rojo 3002", active: true, lines: ["metallic-roofing" as BusinessLine], densityFactor: 0.008 },
+    ];
+    const exchangeRates = {};
+
+    const jsonData = [
+      {
+        "SERIE - NÚMERO": "BBV1-TEST-COB",
+        "ESTADO COMPROBANTE": "Declarado",
+        "CÓDIGO PRODUCTO": "COB030ROJO",
+        "NOMBRE PRODUCTO": "COBERTURA DE ALUZINC 0.30MM COLOR ROJO TR5",
+        "CLIENTE": "12345678901 - Cliente Test",
+        "MONEDA": "Soles",
+        "F. EMISIÓN": "01/01/2023",
+        "TIPO COMPROBANTE": "Boleta",
+        "CANTIDAD": "120",
+        "VALOR DE VENTA": "1220.34",
+        "PRECIO DE VENTA": "1440",
+        "UNIDAD MEDIDA": "METRO LINEAL",
+      },
+    ];
+
+    const result = parseImportRows(jsonData, { catalogRef, stockRef, exchangeRates, finishRef });
+    const sale = result.parsedSales.find((s) => s.documentNumber === "BBV1-TEST-COB");
+    const item = sale!.items[0];
+
+    // Peso teorico derivado a mano ANTES de correr: 120 ML * 0.3mm * 1220mm * 0.008 = 351.36
+    expect(item.calculatedWeight).toBe(351.36);
+  });
+
+  it("PLANCHA sin standardWeight/weight en catalogo -> calculatedWeight usa el peso teorico (175.68)", () => {
+    const catalogRef: CatalogRef[] = [
+      {
+        sku: "PL030AZ6MT",
+        businessLine: "metallic-roofing",
+        displayName: "PLANCHA ALZ-AZUL-5002 0.3MM X 1.220 X 6.00MT",
+        family: "PLANCHA",
+        unit: "PIEZA",
+        thickness: 0.3,
+        widthMm: 1220,
+        length: 6,
+        finish: "ALZ-AZUL-5002",
+      },
+    ];
+    const stockRef: any[] = [
+      { sku: "PL030AZ6MT", businessLine: "metallic-roofing", avgCost: 0 },
+    ];
+    const finishRef: CoilFinish[] = [
+      { id: "ALZ-AZUL-5002", label: "Azul 5002", active: true, lines: ["metallic-roofing" as BusinessLine], densityFactor: 0.008 },
+    ];
+    const exchangeRates = {};
+
+    const jsonData = [
+      {
+        "SERIE - NÚMERO": "BBV1-TEST-PL",
+        "ESTADO COMPROBANTE": "Declarado",
+        "CÓDIGO PRODUCTO": "PL030AZ6MT",
+        "NOMBRE PRODUCTO": "PLANCHA ALUZINC AZUL 0.30MM X 6MT",
+        "CLIENTE": "12345678901 - Cliente Test",
+        "MONEDA": "Soles",
+        "F. EMISIÓN": "01/01/2023",
+        "TIPO COMPROBANTE": "Boleta",
+        "CANTIDAD": "10",
+        "VALOR DE VENTA": "500",
+        "PRECIO DE VENTA": "590",
+        "UNIDAD MEDIDA": "UNIDAD",
+      },
+    ];
+
+    const result = parseImportRows(jsonData, { catalogRef, stockRef, exchangeRates, finishRef });
+    const sale = result.parsedSales.find((s) => s.documentNumber === "BBV1-TEST-PL");
+    const item = sale!.items[0];
+
+    // Peso teorico derivado a mano ANTES de correr:
+    // metrosTotales = cantidad(10 piezas) * length(6m) = 60
+    // pesoKg = metrosTotales * thicknessMm(0.3) * widthMm(1220) * densityFactor(0.008)
+    //        = 60 * 0.3 * 1220 * 0.008 = 175.68
+    expect(item.calculatedWeight).toBe(175.68);
   });
 });
 

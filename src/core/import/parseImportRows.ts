@@ -6,6 +6,8 @@ import {
   classifyNCStockAction,
   NcStockAction
 } from "@/utils/importHelpers";
+import type { CoilFinish } from "@/core/coils/services/finishService";
+import { calcCoverageWeightKg } from "@/modules/metallic-roofing/domain/coverageWeightCalc";
 
 export interface CatalogRef {
   sku: string;
@@ -13,6 +15,13 @@ export interface CatalogRef {
   standardWeight?: number;
   weight?: number;
   displayName: string;
+  /** Solo metallic-roofing (COBERTURA/PLANCHA); las otras 3 líneas no lo traen. */
+  finish?: string;
+  family?: string;
+  unit?: string;
+  thickness?: number;
+  widthMm?: number;
+  length?: number;
 }
 
 export interface StockRef {
@@ -112,6 +121,7 @@ export interface ParseImportRowsOptions {
   catalogRef: CatalogRef[];
   stockRef: StockRef[];
   exchangeRates: Record<string, number>;
+  finishRef: CoilFinish[];
 }
 
 export interface ParseImportRowsResult {
@@ -146,7 +156,7 @@ interface InternalParsedSale extends Omit<ParsedSale, 'businessLines' | 'allFlag
 }
 
 export function parseImportRows(jsonData: any[], opts: ParseImportRowsOptions): ParseImportRowsResult {
-  const { catalogRef, stockRef, exchangeRates } = opts;
+  const { catalogRef, stockRef, exchangeRates, finishRef } = opts;
   const salesMap = new Map<string, InternalParsedSale>();
   const customersMap = new Map<string, any>();
   const tempMissingSkus = new Map<string, MissingSku>();
@@ -267,6 +277,30 @@ export function parseImportRows(jsonData: any[], opts: ParseImportRowsOptions): 
     }
     
     const catalogWeight = productInfo?.standardWeight || productInfo?.weight || 0;
+
+    // [IMPORT-WEIGHT-BYPASS] metallic-roofing (COBERTURA/PLANCHA) no trae standardWeight/weight
+    // en su catálogo (medido: 0/54 docs de metallic_roofing_catalog los tienen) — su peso sale
+    // de densityFactor (coil_finishes) + dimensiones del catálogo, vía la misma fórmula que ya
+    // usa el POS (ProductSelector.tsx). Las otras 3 líneas no entran acá, camino de hoy intacto.
+    let metallicWeightOverrideKg: number | null = null;
+    if (bLine === 'metallic-roofing' && (productInfo?.family === 'COBERTURA' || productInfo?.family === 'PLANCHA')) {
+      const finishMeta = finishRef.find((f) => f.id === productInfo?.finish);
+      const densityFactor = finishMeta?.densityFactor ?? null;
+      const coverageCalc = calcCoverageWeightKg({
+        family: productInfo!.family as 'COBERTURA' | 'PLANCHA',
+        unit: (productInfo?.unit as 'PIEZA' | 'METRO' | 'KILOGRAMO' | 'TONELADA') ?? 'METRO',
+        quantity: cantidad,
+        thicknessMm: productInfo?.thickness ?? 0,
+        widthMm: productInfo?.widthMm ?? 0,
+        densityFactor,
+        lengthM: productInfo?.length ?? null,
+        colorFinish: productInfo?.finish ?? '',
+      });
+      if (coverageCalc.pesoKg !== null) {
+        metallicWeightOverrideKg = coverageCalc.pesoKg;
+      }
+    }
+
     const baseCost = stockInfo?.lastCostPerPiece || stockInfo?.avgCost || 0;
     
     const rawUnitMeasure = row["UNIDAD MEDIDA"] || "UNIDAD";
@@ -286,8 +320,8 @@ export function parseImportRows(jsonData: any[], opts: ParseImportRowsOptions): 
       unitValue: cantidad > 0 ? (valorVentaSoles / multiplier) / cantidad : 0,
       baseCost: baseCost,
       profit: itemProfit,
-      unitWeight: catalogWeight,
-      calculatedWeight: weightKg,
+      unitWeight: metallicWeightOverrideKg !== null ? (cantidad > 0 ? metallicWeightOverrideKg / cantidad : 0) : catalogWeight,
+      calculatedWeight: metallicWeightOverrideKg !== null ? metallicWeightOverrideKg : weightKg,
       unitOfMeasure: rawUnitMeasure,
       businessLine: bLine,
       isCoil: targetLine === "coil",

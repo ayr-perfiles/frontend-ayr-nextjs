@@ -54,6 +54,7 @@ import {
 } from "@/utils/importHelpers";
 import { buildImportWrites } from "@/core/import/salesImportLogic";
 import { parseImportRows, SkippedRow, MissingSku, CatalogRef, StockRef, skipReasonLabel, ParsedSale, ParsedSaleItem } from "@/core/import/parseImportRows";
+import type { CoilFinish } from "@/core/coils/services/finishService";
 
 // ── Types & Constants ─────────────────────────────────────────────────────
 
@@ -112,6 +113,7 @@ export default function SalesImportPage() {
 
   const [catalogRef, setCatalogRef] = useState<CatalogRef[]>([]);
   const [stockRef, setStockRef] = useState<StockRef[]>([]);
+  const [finishRef, setFinishRef] = useState<CoilFinish[]>([]);
   const [importResults, setImportResults] = useState<ImportRowResult[]>([]);
   const [showResultModal, setShowResultModal] = useState(false);
   const [resultFilter, setResultFilter] = useState<ImportStatus | 'ALL'>('ALL');
@@ -143,7 +145,8 @@ export default function SalesImportPage() {
         roofingProd, roofingStock,
         metallicProd, metallicStock,
         tradingProd, tradingStock,
-        servicesProd
+        servicesProd,
+        finishesSnap
       ] = await Promise.all([
         getDocs(collection(db, "products")),
         getDocs(collection(db, "inventory_stock")),
@@ -153,7 +156,8 @@ export default function SalesImportPage() {
         getDocs(collection(db, "metallic_roofing_stock")),
         getDocs(collection(db, "trading_catalog")),
         getDocs(collection(db, "trading_stock")),
-        getDocs(collection(db, "services_catalog"))
+        getDocs(collection(db, "services_catalog")),
+        getDocs(collection(db, "coil_finishes"))
       ]);
 
       const catalogs: CatalogRef[] = [
@@ -171,8 +175,11 @@ export default function SalesImportPage() {
         ...tradingStock.docs.map(d => ({ sku: d.id, businessLine: 'trading' as const, ...d.data() } as any)),
       ];
 
+      const finishes: CoilFinish[] = finishesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+
       setCatalogRef(catalogs);
       setStockRef(stocks);
+      setFinishRef(finishes);
     } catch (error) {
       console.error("Error cargando referencias multi-línea:", error);
       toast.error("Error cargando catálogos de productos.");
@@ -283,7 +290,8 @@ export default function SalesImportPage() {
       const { parsedSales, parsedCustomers, missingSkus, skippedRows } = parseImportRows(jsonData, {
         catalogRef,
         stockRef,
-        exchangeRates: newRates
+        exchangeRates: newRates,
+        finishRef
       });
 
       setParsedSales(parsedSales);
