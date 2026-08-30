@@ -36,6 +36,8 @@ import {
   query,
   where,
   DocumentSnapshot,
+  QuerySnapshot,
+  DocumentData,
   setDoc,
   addDoc,
   runTransaction,
@@ -55,6 +57,11 @@ import {
 import { buildImportWrites } from "@/core/import/salesImportLogic";
 import { parseImportRows, SkippedRow, MissingSku, CatalogRef, StockRef, skipReasonLabel, ParsedSale, ParsedSaleItem } from "@/core/import/parseImportRows";
 import type { CoilFinish } from "@/core/coils/services/finishService";
+import {
+  collectFailedRefs,
+  buildRefFailureMessage,
+  toRefsWithId,
+} from "@/core/import/referenceRefs";
 
 // ── Types & Constants ─────────────────────────────────────────────────────
 
@@ -138,52 +145,100 @@ export default function SalesImportPage() {
     fetchReferences();
   }, []);
 
+  /**
+   * [IMPORT-FETCH-ALLORNOTHING] Las 10 colecciones de referencia del importador.
+   * El orden ES el contrato: el destructuring de abajo depende de él.
+   */
+  const REFERENCE_COLLECTIONS = [
+    "products",
+    "inventory_stock",
+    "roofing_catalog",
+    "roofing_stock",
+    "metallic_roofing_catalog",
+    "metallic_roofing_stock",
+    "trading_catalog",
+    "trading_stock",
+    "services_catalog",
+    "coil_finishes",
+  ] as const;
+
+  const toCatalogRefs = (snap: QuerySnapshot<DocumentData>, businessLine: BusinessLine) =>
+    toRefsWithId<CatalogRef>(snap.docs, businessLine);
+
+  const toStockRefs = (snap: QuerySnapshot<DocumentData>, businessLine: BusinessLine) =>
+    toRefsWithId<StockRef>(snap.docs, businessLine);
+
   const fetchReferences = async () => {
-    try {
-      const [
-        drywallProd, drywallStock,
-        roofingProd, roofingStock,
-        metallicProd, metallicStock,
-        tradingProd, tradingStock,
-        servicesProd,
-        finishesSnap
-      ] = await Promise.all([
-        getDocs(collection(db, "products")),
-        getDocs(collection(db, "inventory_stock")),
-        getDocs(collection(db, "roofing_catalog")),
-        getDocs(collection(db, "roofing_stock")),
-        getDocs(collection(db, "metallic_roofing_catalog")),
-        getDocs(collection(db, "metallic_roofing_stock")),
-        getDocs(collection(db, "trading_catalog")),
-        getDocs(collection(db, "trading_stock")),
-        getDocs(collection(db, "services_catalog")),
-        getDocs(collection(db, "coil_finishes"))
-      ]);
+    // `allSettled` en vez de `all`: con `all`, una sola caída rechaza el lote
+    // entero y el catch no puede decir CUÁL colección falló. El mensaje pasa a
+    // nombrarlas una por una.
+    const settled = await Promise.allSettled(
+      REFERENCE_COLLECTIONS.map((name) => getDocs(collection(db, name))),
+    );
 
-      const catalogs: CatalogRef[] = [
-        ...drywallProd.docs.map(d => ({ sku: d.id, businessLine: 'drywall' as const, ...d.data() } as any)),
-        ...roofingProd.docs.map(d => ({ sku: d.id, businessLine: 'roofing' as const, ...d.data() } as any)),
-        ...metallicProd.docs.map(d => ({ sku: d.id, businessLine: 'metallic-roofing' as const, ...d.data() } as any)),
-        ...tradingProd.docs.map(d => ({ sku: d.id, businessLine: 'trading' as const, ...d.data() } as any)),
-        ...servicesProd.docs.map(d => ({ sku: d.id, businessLine: 'services' as const, ...d.data() } as any)),
-      ];
+    const failedNames = collectFailedRefs(REFERENCE_COLLECTIONS, settled);
 
-      const stocks: StockRef[] = [
-        ...drywallStock.docs.map(d => ({ sku: d.id, businessLine: 'drywall' as const, ...d.data() } as any)),
-        ...roofingStock.docs.map(d => ({ sku: d.id, businessLine: 'roofing' as const, ...d.data() } as any)),
-        ...metallicStock.docs.map(d => ({ sku: d.id, businessLine: 'metallic-roofing' as const, ...d.data() } as any)),
-        ...tradingStock.docs.map(d => ({ sku: d.id, businessLine: 'trading' as const, ...d.data() } as any)),
-      ];
-
-      const finishes: CoilFinish[] = finishesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
-      setCatalogRef(catalogs);
-      setStockRef(stocks);
-      setFinishRef(finishes);
-    } catch (error) {
-      console.error("Error cargando referencias multi-línea:", error);
-      toast.error("Error cargando catálogos de productos.");
+    // LAS 10 SON CRÍTICAS, y no es una elección conservadora: se midió contra
+    // `parseImportRows`. Los 5 catálogos alimentan el PESO (`catalogWeight`),
+    // los 4 stocks alimentan el COSTO (`baseCost = lastCostPerPiece || avgCost`),
+    // y `coil_finishes` alimenta el `densityFactor` del peso metallic.
+    //
+    // Con una caída parcial los avisos existentes MENTIRÍAN: un SKU que sí está
+    // en el catálogo saldría marcado "sin catálogo", y uno con costo real
+    // saldría "sin costo". Peor todavía, `coil_finishes` es el único que degrada
+    // SIN NINGÚN flag — su caída deja el peso metallic en 0 y en silencio, que
+    // es exactamente el defecto que [IMPORT-WEIGHT-BYPASS] (v6.78.0) cerró.
+    //
+    // Por eso se conserva el corte total: los refs quedan vacíos y
+    // `handleFileUpload` bloquea la subida con `catalogRef.length === 0`.
+    if (failedNames.length > 0) {
+      REFERENCE_COLLECTIONS.forEach((name, i) => {
+        const r = settled[i];
+        if (r.status === "rejected") {
+          console.error(`[import] falló la carga de la colección "${name}":`, r.reason);
+        }
+      });
+      toast.error(buildRefFailureMessage(failedNames, REFERENCE_COLLECTIONS.length), {
+        duration: 12000,
+        style: { whiteSpace: "pre-line", maxWidth: "32rem" },
+      });
+      return;
     }
+
+    const [
+      drywallProd, drywallStock,
+      roofingProd, roofingStock,
+      metallicProd, metallicStock,
+      tradingProd, tradingStock,
+      servicesProd,
+      finishesSnap
+    ] = settled.map(
+      (r) => (r as PromiseFulfilledResult<QuerySnapshot<DocumentData>>).value,
+    );
+
+    const catalogs: CatalogRef[] = [
+      ...toCatalogRefs(drywallProd, "drywall"),
+      ...toCatalogRefs(roofingProd, "roofing"),
+      ...toCatalogRefs(metallicProd, "metallic-roofing"),
+      ...toCatalogRefs(tradingProd, "trading"),
+      ...toCatalogRefs(servicesProd, "services"),
+    ];
+
+    const stocks: StockRef[] = [
+      ...toStockRefs(drywallStock, "drywall"),
+      ...toStockRefs(roofingStock, "roofing"),
+      ...toStockRefs(metallicStock, "metallic-roofing"),
+      ...toStockRefs(tradingStock, "trading"),
+    ];
+
+    const finishes: CoilFinish[] = finishesSnap.docs.map((d) => ({
+      ...(d.data() as Omit<CoilFinish, "id">),
+      id: d.id,
+    }));
+
+    setCatalogRef(catalogs);
+    setStockRef(stocks);
+    setFinishRef(finishes);
   };
 
   // ── Helpers ──────────────────────────────────────────────────────────────
