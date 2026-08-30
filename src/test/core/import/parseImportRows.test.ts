@@ -155,6 +155,7 @@ describe("parseImportRows — [IMPORT-WEIGHT-BYPASS] GREEN", () => {
 
     // Peso teorico derivado a mano ANTES de correr: 120 ML * 0.3mm * 1220mm * 0.008 = 351.36
     expect(item.calculatedWeight).toBe(351.36);
+    expect(sale!.totalWeight).toBe(351.36);
   });
 
   it("PLANCHA sin standardWeight/weight en catalogo -> calculatedWeight usa el peso teorico (175.68)", () => {
@@ -205,6 +206,7 @@ describe("parseImportRows — [IMPORT-WEIGHT-BYPASS] GREEN", () => {
     // pesoKg = metrosTotales * thicknessMm(0.3) * widthMm(1220) * densityFactor(0.008)
     //        = 60 * 0.3 * 1220 * 0.008 = 175.68
     expect(item.calculatedWeight).toBe(175.68);
+    expect(sale!.totalWeight).toBe(175.68);
   });
 });
 

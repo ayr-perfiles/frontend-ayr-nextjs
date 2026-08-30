@@ -362,7 +362,7 @@ export function parseImportRows(jsonData: any[], opts: ParseImportRowsOptions): 
     sale.totalCost += (cantidad * baseCost) * multiplier;
     sale.totalProfit += itemProfit;
     const weightMult = docType !== 'NOTA CRÉDITO' ? 1 : (ncStockAction === 'RETURNS_STOCK' ? -1 : 0);
-    sale.totalWeight += weightKg * weightMult;
+    sale.totalWeight += metallicWeightOverrideKg !== null ? metallicWeightOverrideKg : weightKg * weightMult;
     sale.businessLines.add(bLine);
     saleItem.flags.forEach((f: string) => sale.allFlags.add(f));
 
