@@ -291,6 +291,65 @@ describe("parseImportRows — [IMPORT-WEIGHT-BYPASS] GREEN", () => {
     //   totalWeight = 351.36 + 175.68 = 527.04
     expect(sale!.totalWeight).toBe(527.04);
   });
+
+  // [IMPORT-WEIGHT-ZEROQTY] Hueco de cobertura que la mutacion M3 de v6.78.0 dejo al
+  // descubierto: sacar el guard `cantidad > 0` del unitWeight NO ponia ningun test en
+  // rojo. La fila es ALCANZABLE — los 3 unicos guards del loop (NO_DOC_NUMBER /
+  // INVALID_STATUS / UNRECOGNIZED_PRODUCT) miran docNumber, estado y clasificacion,
+  // ninguno mira CANTIDAD, y `cantidad` se parsea DESPUES de los tres.
+  // Mecanismo: calcCoverageWeightKg con quantity 0 devuelve pesoKg = 0 (NO null), asi
+  // que el override queda en 0 y `0 / 0` daria NaN sin el guard.
+  it("cantidad 0 en item metallic -> unitWeight es 0, nunca NaN (guard `cantidad > 0`)", () => {
+    const catalogRef: CatalogRef[] = [
+      {
+        sku: "COB030ROJO",
+        businessLine: "metallic-roofing",
+        displayName: "COBERTURA ALZ-ROJO-3002 0.3MM X 1.220",
+        family: "COBERTURA",
+        unit: "METRO",
+        thickness: 0.3,
+        widthMm: 1220,
+        finish: "ALZ-ROJO-3002",
+      },
+    ];
+    const stockRef: any[] = [
+      { sku: "COB030ROJO", businessLine: "metallic-roofing", avgCost: 0 },
+    ];
+    const finishRef: CoilFinish[] = [
+      { id: "ALZ-ROJO-3002", label: "Rojo 3002", active: true, lines: ["metallic-roofing" as BusinessLine], densityFactor: 0.008 },
+    ];
+    const exchangeRates = {};
+
+    const jsonData = [
+      {
+        "SERIE - NÚMERO": "BBV1-TEST-ZEROQTY",
+        "ESTADO COMPROBANTE": "Declarado",
+        "CÓDIGO PRODUCTO": "COB030ROJO",
+        "NOMBRE PRODUCTO": "COBERTURA DE ALUZINC 0.30MM COLOR ROJO TR5",
+        "CLIENTE": "12345678901 - Cliente Test",
+        "MONEDA": "Soles",
+        "F. EMISIÓN": "01/01/2023",
+        "TIPO COMPROBANTE": "Boleta",
+        "CANTIDAD": "0",
+        "VALOR DE VENTA": "0",
+        "PRECIO DE VENTA": "0",
+        "UNIDAD MEDIDA": "METRO LINEAL",
+      },
+    ];
+
+    const result = parseImportRows(jsonData, { catalogRef, stockRef, exchangeRates, finishRef });
+    const sale = result.parsedSales.find((s) => s.documentNumber === "BBV1-TEST-ZEROQTY");
+
+    // La fila NO se descarta: llega viva a la rama metallic.
+    expect(sale).toBeDefined();
+    expect(result.skippedRows).toHaveLength(0);
+
+    const item = sale!.items[0];
+    expect(Number.isNaN(item.unitWeight)).toBe(false);
+    expect(item.unitWeight).toBe(0);
+    expect(item.calculatedWeight).toBe(0);
+    expect(sale!.totalWeight).toBe(0);
+  });
 });
 
 describe("skipReasonLabel", () => {
