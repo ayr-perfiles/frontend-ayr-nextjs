@@ -208,6 +208,89 @@ describe("parseImportRows — [IMPORT-WEIGHT-BYPASS] GREEN", () => {
     expect(item.calculatedWeight).toBe(175.68);
     expect(sale!.totalWeight).toBe(175.68);
   });
+
+  // [IMPORT-WEIGHT-MULTIITEM] Los 2 casos de arriba tienen UN item cada uno, asi que
+  // ninguno distingue un acumulador (`+=`) de una asignacion (`=`). Este cubre la
+  // cabecera con DOS items metallic distintos: totalWeight tiene que ser la SUMA.
+  it("cabecera con DOS items metallic -> totalWeight es la suma de ambos (351.36 + 175.68 = 527.04)", () => {
+    const catalogRef: CatalogRef[] = [
+      {
+        sku: "COB030ROJO",
+        businessLine: "metallic-roofing",
+        displayName: "COBERTURA ALZ-ROJO-3002 0.3MM X 1.220",
+        family: "COBERTURA",
+        unit: "METRO",
+        thickness: 0.3,
+        widthMm: 1220,
+        finish: "ALZ-ROJO-3002",
+      },
+      {
+        sku: "PL030AZ6MT",
+        businessLine: "metallic-roofing",
+        displayName: "PLANCHA ALZ-AZUL-5002 0.3MM X 1.220 X 6.00MT",
+        family: "PLANCHA",
+        unit: "PIEZA",
+        thickness: 0.3,
+        widthMm: 1220,
+        length: 6,
+        finish: "ALZ-AZUL-5002",
+      },
+    ];
+    const stockRef: any[] = [
+      { sku: "COB030ROJO", businessLine: "metallic-roofing", avgCost: 0 },
+      { sku: "PL030AZ6MT", businessLine: "metallic-roofing", avgCost: 0 },
+    ];
+    const finishRef: CoilFinish[] = [
+      { id: "ALZ-ROJO-3002", label: "Rojo 3002", active: true, lines: ["metallic-roofing" as BusinessLine], densityFactor: 0.008 },
+      { id: "ALZ-AZUL-5002", label: "Azul 5002", active: true, lines: ["metallic-roofing" as BusinessLine], densityFactor: 0.008 },
+    ];
+    const exchangeRates = {};
+
+    // Las DOS filas comparten "SERIE - NÚMERO" -> una sola cabecera, dos items.
+    const jsonData = [
+      {
+        "SERIE - NÚMERO": "BBV1-TEST-MULTI",
+        "ESTADO COMPROBANTE": "Declarado",
+        "CÓDIGO PRODUCTO": "COB030ROJO",
+        "NOMBRE PRODUCTO": "COBERTURA DE ALUZINC 0.30MM COLOR ROJO TR5",
+        "CLIENTE": "12345678901 - Cliente Test",
+        "MONEDA": "Soles",
+        "F. EMISIÓN": "01/01/2023",
+        "TIPO COMPROBANTE": "Boleta",
+        "CANTIDAD": "120",
+        "VALOR DE VENTA": "1220.34",
+        "PRECIO DE VENTA": "1440",
+        "UNIDAD MEDIDA": "METRO LINEAL",
+      },
+      {
+        "SERIE - NÚMERO": "BBV1-TEST-MULTI",
+        "ESTADO COMPROBANTE": "Declarado",
+        "CÓDIGO PRODUCTO": "PL030AZ6MT",
+        "NOMBRE PRODUCTO": "PLANCHA ALUZINC AZUL 0.30MM X 6MT",
+        "CLIENTE": "12345678901 - Cliente Test",
+        "MONEDA": "Soles",
+        "F. EMISIÓN": "01/01/2023",
+        "TIPO COMPROBANTE": "Boleta",
+        "CANTIDAD": "10",
+        "VALOR DE VENTA": "500",
+        "PRECIO DE VENTA": "590",
+        "UNIDAD MEDIDA": "UNIDAD",
+      },
+    ];
+
+    const result = parseImportRows(jsonData, { catalogRef, stockRef, exchangeRates, finishRef });
+    const sale = result.parsedSales.find((s) => s.documentNumber === "BBV1-TEST-MULTI");
+
+    expect(sale!.items).toHaveLength(2);
+    expect(sale!.items[0].calculatedWeight).toBe(351.36);
+    expect(sale!.items[1].calculatedWeight).toBe(175.68);
+
+    // Derivado a mano ANTES de correr:
+    //   COB030ROJO -> 120 ML * 0.3 * 1220 * 0.008 = 351.36
+    //   PL030AZ6MT -> (10 piezas * 6 m) * 0.3 * 1220 * 0.008 = 175.68
+    //   totalWeight = 351.36 + 175.68 = 527.04
+    expect(sale!.totalWeight).toBe(527.04);
+  });
 });
 
 describe("skipReasonLabel", () => {
