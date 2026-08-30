@@ -9,6 +9,12 @@ const {
   isEmulatorProcess,
   killPid,
 } = require("./emuPortGuard.cjs");
+const {
+  isLibStale,
+  startsFunctionsEmulator,
+  readNpmScript,
+  readFunctionsMtimes,
+} = require("./emuStaleGuard.cjs");
 
 function holdersFor(port) {
   const output = getPortHoldersOutput(port);
@@ -30,6 +36,39 @@ function preCheck(ports) {
     console.error("[with-emulator] Abortando ANTES de arrancar. Matá el/los PID de arriba y reintentá.");
     process.exit(1);
   }
+}
+
+/**
+ * Aborta si `functions/lib` está desactualizado respecto de `functions/src`
+ * Y el comando interno arranca el emulador de functions (frente
+ * [EMU-STALE-LIB]). `emulators:exec` NO corre el `predeploy` build de
+ * `functions/`, así que sin este guard una corrida contra un callable con
+ * cambios sin recompilar mide código VIEJO en silencio.
+ *
+ * NO auto-compila a propósito: denuncia en vez de esconder.
+ */
+function staleCheck(scriptName) {
+  if (!startsFunctionsEmulator(readNpmScript(scriptName))) return;
+
+  const { srcMtimes, libMtimes } = readFunctionsMtimes();
+  if (!isLibStale(srcMtimes, libMtimes)) return;
+
+  const motivo =
+    libMtimes.length === 0
+      ? "functions/lib no existe o está vacío (nunca se compiló)."
+      : "functions/src tiene cambios más nuevos que functions/lib.";
+
+  console.error(`[with-emulator] ${motivo}`);
+  console.error(
+    "[with-emulator] El emulador de Functions carga functions/lib/*.js YA COMPILADO,",
+  );
+  console.error(
+    "[with-emulator] y `emulators:exec` NO corre el build. Correr esta suite ahora mediría",
+  );
+  console.error("[with-emulator] código VIEJO en silencio (falso verde).");
+  console.error("[with-emulator] Corré esto y reintentá:");
+  console.error("[with-emulator]     cd functions && npm run build");
+  process.exit(1);
 }
 
 function reap(ports) {
@@ -61,6 +100,9 @@ function main() {
 
   const ports = readEmulatorPorts(readFirebaseJson());
 
+  // Primero el guard de staleness: es más barato que el de puertos y su
+  // remedio (`cd functions && npm run build`) no depende de nada externo.
+  staleCheck(scriptName);
   preCheck(ports);
 
   // `shell: true` es obligatorio en Windows: `npm`/`npm.cmd` es un batch file,

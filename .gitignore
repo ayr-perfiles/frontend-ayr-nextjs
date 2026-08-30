@@ -74,6 +74,8 @@ sales_quotation_test_backup_*.json
 # no scripts ad-hoc de un solo uso (esos van a ~/ayr-scratch/ por regla de oro).
 !scripts/emuPortGuard.cjs
 !scripts/emuPortGuard.test.cjs
+!scripts/emuStaleGuard.cjs
+!scripts/emuStaleGuard.test.cjs
 !scripts/with-emulator.cjs
 !scripts/check-docs.cjs
 /recon.js
