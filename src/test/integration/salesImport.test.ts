@@ -11,109 +11,26 @@ import {
 } from './firestore-helpers';
 import { getStockStrategy } from '@/core/sales/strategies';
 import { classifyNCStockAction, NcStockAction } from '@/utils/importHelpers';
-import { doc, getDoc, collection, getDocs, writeBatch, serverTimestamp, query, where, runTransaction, DocumentSnapshot } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, runTransaction } from 'firebase/firestore';
 import { db } from '@/lib/firebase/clientApp';
+import { runSaleImportTransaction } from '@/core/import/runSaleImportTransaction';
 
 vi.unmock('@/lib/firebase/clientApp');
 
-// Simulación de la función de importación masiva (BulkUploadSales.tsx)
-// con la lógica de idempotencia y NC real.
-// [IMPORT-SIM-DRIFT] Esta función REIMPLEMENTA la transacción del importador
-// (import/page.tsx) en vez de llamarla -- por eso puede divergir en silencio.
-// Extraerla a una función compartida está registrado como frente [IMPORT-EXTRACT].
-async function simulateImport(parsedSales: any[]) {
-  let importedCount = 0;
-  const omittedIds: string[] = [];
-
+// [IMPORT-EXTRACT] MIGRADO en v6.89.0 (TANDA 10): este archivo ya NO reimplementa la
+// transacción del importador -- la LLAMA. La copia local que vivía acá fue borrada;
+// lo que queda es solo el bucle por comprobante, que es lo que hace el call-site real
+// (`handleUploadToFirebase`). El `catch` de la copia hacía `console.error` + `throw`,
+// o sea que no atrapaba nada: se elimina sin cambio de comportamiento.
+//
+// La copia borrada decidía la omisión con un `exists()` CIEGO al status; la función
+// real ramifica por `status` (COMPLETED -> OMITTED, VOIDED -> reemplazo). Es el punto
+// 1 de la divergencia medida en v6.87.0/v6.88.0, y la celda A1xP1 de la matriz: sobre
+// un doc ya COMPLETED las dos ramas devuelven "OMITTED", así que el valor observado no
+// cambia -- medido, no derivado (ver el mensaje de este commit).
+async function importSales(parsedSales: any[]) {
   for (const sale of parsedSales) {
-    try {
-      const result = await runTransaction(db, async (tx) => {
-        const saleRef = doc(db, "sales", sale.documentNumber);
-        
-        // a. LECTURA 1: Verificar existencia de la venta
-        const existingSaleSnap = await tx.get(saleRef);
-        if (existingSaleSnap.exists()) {
-          return "OMITTED";
-        }
-
-        // b. LECTURAS DE STOCK: Agrupar referencias únicas para cumplir la regla read-before-write
-        const stockRefsToRead = new Map<string, any>();
-        for (const item of sale.items) {
-          if (item.sku && item.sku !== "GENERIC" && !item.isCoil) {
-            const strategy = getStockStrategy(item.businessLine);
-            const stockRef = strategy.getStockRef(item.sku);
-            stockRefsToRead.set(stockRef.path, { ref: stockRef, strategy, sku: item.sku });
-          }
-        }
-
-        const stockSnaps = new Map<string, DocumentSnapshot>();
-        for (const [path, info] of Array.from(stockRefsToRead.entries())) {
-           const snap = await tx.get(info.ref);
-           stockSnaps.set(path, snap as DocumentSnapshot);
-        }
-
-        // c. ESCRITURAS: Crear venta
-        const skusArray = Array.from(new Set(sale.items.map((i: any) => i.sku)));
-        tx.set(saleRef, {
-          ...sale,
-          status: sale.status || 'COMPLETED',
-          skus: skusArray,
-          uploadedAt: serverTimestamp(),
-          metadata: { 
-            isHistorical: true, 
-            documentType: sale.documentType,
-            adjustedDocument: sale.adjustedDocument,
-          },
-        });
-
-        // d. ESCRITURAS DE STOCK
-        for (const item of sale.items) {
-          if (item.sku && item.sku !== "GENERIC" && !item.isCoil) {
-            const strategy = getStockStrategy(item.businessLine);
-            const stockRef = strategy.getStockRef(item.sku);
-            const stockSnap = stockSnaps.get(stockRef.path)!;
-            
-            const currentQty = strategy.extractQuantity(stockSnap);
-            
-            const isNCWithStock = sale.documentType === 'NOTA CRÉDITO' && sale.ncStockAction === 'RETURNS_STOCK';
-            const shouldMoveStock = (sale.documentType === 'FACTURA' || sale.documentType === 'BOLETA') || isNCWithStock;
-            
-            if (shouldMoveStock) {
-              const newBalance = isNCWithStock ? currentQty + item.quantity : currentQty - item.quantity;
-              const writeParams = {
-                sku: item.sku,
-                quantity: item.quantity,
-                newBalance,
-                saleId: sale.documentNumber,
-                customerName: sale.customerName,
-                sellerId: sale.sellerId || 'SISTEMA',
-                avgCost: item.baseCost,
-                motivo: isNCWithStock ? `NC ${sale.documentNumber}` : undefined,
-                ref: (sale.adjustedDocument as string) || undefined,
-                frozenCost: item.baseCost ?? 0,
-              };
-
-              if (isNCWithStock) {
-                strategy.writeSaleReversal(writeParams, stockSnap, tx);
-              } else {
-                strategy.writeSaleDecrement(writeParams, stockSnap, tx);
-              }
-            }
-          }
-        }
-        
-        return "IMPORTED";
-      });
-
-      if (result === "OMITTED") {
-        omittedIds.push(sale.documentNumber);
-      } else {
-        importedCount++;
-      }
-    } catch (txError) {
-      console.error(`Error transaccional en venta ${sale.documentNumber}:`, txError);
-      throw txError;
-    }
+    await runTransaction(db, (tx) => runSaleImportTransaction(tx, { db, sale }));
   }
 }
 
@@ -137,6 +54,8 @@ describe('Sales Import Logic (Integration)', () => {
     const saleData = {
       documentNumber: 'F001-000001',
       documentType: 'FACTURA',
+      currency: 'PEN',
+      timestamp: new Date('2026-06-05T17:00:00.000Z'),
       adjustedDocument: '',
       customerName: 'Cliente Test',
       items: [{
@@ -149,13 +68,13 @@ describe('Sales Import Logic (Integration)', () => {
     };
 
     // Primera importación
-    await simulateImport([saleData]);
+    await importSales([saleData]);
 
     const stockSnap1 = await getDoc(doc(db, 'roofing_stock', sku));
     expect(stockSnap1.data()?.quantity).toBe(90);
 
     // Segunda importación (misma data)
-    await simulateImport([saleData]);
+    await importSales([saleData]);
 
     const stockSnap2 = await getDoc(doc(db, 'roofing_stock', sku));
     expect(stockSnap2.data()?.quantity).toBe(90); // Se mantuvo en 90, NO bajó a 80
@@ -174,6 +93,8 @@ describe('Sales Import Logic (Integration)', () => {
     const saleSI = {
       documentNumber: 'NC-001',
       documentType: 'NOTA CRÉDITO',
+      currency: 'PEN',
+      timestamp: new Date('2026-06-05T17:00:00.000Z'),
       adjustedDocument: '',
       ncStockAction: 'RETURNS_STOCK' as NcStockAction,
       customerName: 'Cliente SI',
@@ -191,6 +112,8 @@ describe('Sales Import Logic (Integration)', () => {
     const saleNO = {
       documentNumber: 'NC-002',
       documentType: 'NOTA CRÉDITO',
+      currency: 'PEN',
+      timestamp: new Date('2026-06-05T17:00:00.000Z'),
       adjustedDocument: '',
       ncStockAction: 'MONEY_ONLY' as NcStockAction,
       customerName: 'Cliente NO',
@@ -204,7 +127,7 @@ describe('Sales Import Logic (Integration)', () => {
       }]
     };
 
-    await simulateImport([saleSI, saleNO]);
+    await importSales([saleSI, saleNO]);
 
     const stockSI = await getDoc(doc(db, 'roofing_stock', skuSI));
     const stockNO = await getDoc(doc(db, 'roofing_stock', skuNO));
@@ -233,6 +156,8 @@ describe('Sales Import Logic (Integration)', () => {
     const saleNC = {
       documentNumber: 'NC-SUNAT-001',
       documentType: 'NOTA CRÉDITO',
+      currency: 'PEN',
+      timestamp: new Date('2026-06-05T17:00:00.000Z'),
       adjustedDocument: 'FFB1-0001',
       ncStockAction,
       customerName: 'Cliente SUNAT',
@@ -246,7 +171,7 @@ describe('Sales Import Logic (Integration)', () => {
       }]
     };
 
-    await simulateImport([saleNC]);
+    await importSales([saleNC]);
 
     const stockSnap = await getDoc(doc(db, 'roofing_stock', sku));
     // "Sí" → RETURNS_STOCK → stock IN: 50 + 5 = 55
