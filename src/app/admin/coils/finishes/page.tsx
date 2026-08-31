@@ -1,7 +1,5 @@
 "use client";
 
-"use client";
-
 import { useState } from "react";
 import { useFinishes } from "@/core/coils/hooks/useFinishes";
 import { createFinish, updateFinish, migrateFinishDensityFactors, CoilFinish, formatFinishChip } from "@/core/coils/services/finishService";
