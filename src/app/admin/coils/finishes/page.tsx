@@ -11,7 +11,7 @@ import { BusinessLine } from "@/types";
 
 const PRODUCTION_LINES: BusinessLine[] = ['drywall', 'metallic-roofing'];
 export default function FinishesPage() {
-  const { finishes, loading, error } = useFinishes(false);
+  const { finishes, loading, error, refetch } = useFinishes(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -48,7 +48,7 @@ export default function FinishesPage() {
       }
       setIsAdding(false);
       setEditingId(null);
-      window.location.reload(); // Simple refresh for now
+      await refetch();
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -58,7 +58,7 @@ export default function FinishesPage() {
     try {
       await migrateFinishDensityFactors();
       toast.success("Factor de densidad migrado en ALUZINC y NATURAL");
-      window.location.reload();
+      await refetch();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Error en migración");
     }
@@ -219,6 +219,7 @@ export default function FinishesPage() {
                   <p className="text-[10px] font-mono text-gray-400">{f.id}</p>
                 </div>
                 <button
+                  title={`Editar acabado ${f.id}`}
                   onClick={() => {
                     setEditingId(f.id);
                     setFormData(f);
