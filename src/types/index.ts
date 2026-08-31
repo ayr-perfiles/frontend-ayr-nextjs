@@ -19,7 +19,7 @@ export interface Coil {
   masterWidth?: number;
   thickness?: number;
   finish?: string; // ID del acabado (materia prima)
-  coilTypeKey?: string; // BOB-{FINISH}-{ESPESOR}, ver src/core/coils/domain/coilTypeKey.ts. OPCIONAL: los 38 docs de prod hoy no lo tienen (backfill pendiente, tanda propia) — obligatorio miente sobre la coleccion real hasta que cierre.
+  coilTypeKey: string; // BOB-{FINISH}-{ESPESOR}, ver src/core/coils/domain/coilTypeKey.ts. OBLIGATORIO desde v6.80.0: el backfill de [COIL-TYPE-KEY] (v6.74.0) dejo 38/38 docs de ayrsteel-2026 con el campo, y los 3 escritores (registerCoil / registerCoilsBulk / registerCoilSplit) lo computan siempre. ⚠️ ayrsteel-test tiene 1 bobina SIN el campo (medido 2026-08-31) — dato de sandbox, no de negocio.
   densityFactor?: number;
   pricePerKg: number;
   status: CoilStatus;
