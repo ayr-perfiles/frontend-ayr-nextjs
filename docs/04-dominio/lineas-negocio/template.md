@@ -556,8 +556,9 @@ Componentes y rutas
   [ ] ROUTE_PERMISSIONS actualizado en admin/layout.tsx
 
 Integración
-  [ ] ACTIVE_MODULES actualizado en BusinessLineContext.tsx
-  [ ] Íconos nuevos registrados en BusinessLineSelector + sidebar (si aplica)
+  [ ] Módulo registrado en el registry: src/core/registry/businessLineRegistry.ts,
+      implementando el contrato de src/core/contracts/BusinessLineModule.ts
+  [ ] Íconos nuevos registrados en el sidebar (si aplica)
 
 Validación final
   [ ] npx tsc --noEmit pasa sin errores

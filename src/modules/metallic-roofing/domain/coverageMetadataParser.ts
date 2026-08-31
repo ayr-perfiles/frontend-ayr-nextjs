@@ -114,7 +114,7 @@ function detectLength(tokens: string[]): number | null {
   return null;
 }
 
-/** Mapea family al productKind equivalente (A1: usa family+unit). */
+/** Mapea family al productKind equivalente. Deriva SOLO de `family` — `unit` no interviene. */
 function toProductKind(family: MetallicFamily): ProductKind {
   switch (family) {
     case 'COBERTURA': return 'COBERTURA_ML';
