@@ -79,6 +79,8 @@ sales_quotation_test_backup_*.json
 !scripts/with-emulator.cjs
 !scripts/check-docs.cjs
 !scripts/checkDocs.test.cjs
+!scripts/check-tsc.cjs
+!scripts/checkTsc.test.cjs
 /recon.js
 /test-prod.ts
 /dump_*.cjs

@@ -581,7 +581,8 @@ Integración
   [ ] Íconos nuevos registrados en el sidebar (si aplica)
 
 Validación final
-  [ ] npx tsc --noEmit pasa sin errores
+  [ ] npm run check:tsc pasa sin errores (NUNCA `npx tsc --noEmit | tail`:
+      el pipe devuelve el exit de `tail`, no el de tsc — ver scripts/check-tsc.cjs)
   [ ] npm run build compila
   [ ] npm run lint pasa
   [ ] Probado en emulador (npm run emulate)

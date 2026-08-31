@@ -185,6 +185,6 @@ allow update: if canWrite()
 
 ## 9. VERIFICAR antes de cambio grande
 - ¿El caller necesita `error.details` estructurado? Si sí, el wrapper NO debe hacer `catch`/rewrap (ver `productionService.ts` como contraejemplo del patrón que NO aplica acá).
-- ¿Tocaste `functions/src/callables/sales.ts`? Correr `npm run build` DE VERDAD (no solo `tsc --noEmit`) antes de `test:emu` — el emulador carga `functions/lib/` compilado, no el TypeScript fuente.
+- ¿Tocaste `functions/src/callables/sales.ts`? Correr `npm run build` DE VERDAD (no solo `npm run check:tsc`) antes de `test:emu` — el emulador carga `functions/lib/` compilado, no el TypeScript fuente.
 - ¿Agregaste un test con `firebase-functions-test`'s `wrap()`? Recordá que NO pasa por el runtime real — complementar con un smoke HTTP real contra el callable desplegado antes de dar algo por validado.
 - `FieldValue` siempre modular (`firebase-admin/firestore`), nunca `admin.firestore.FieldValue`.
