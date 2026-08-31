@@ -103,6 +103,8 @@ sales_quotation_test_backup_*.json
 *.bat
 # Editor/agente
 /.claude/
+# Artefactos generados por el MCP de Playwright (snapshots/screenshots/logs), no versionar
+/.playwright-mcp/
 
 # Scripts one-shot de recon/backup/verify/post-mortem (NUNCA versionar, viven en ~/ayr-scratch/)
 /micro_recon*.cjs
