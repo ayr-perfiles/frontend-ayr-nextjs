@@ -78,6 +78,7 @@ sales_quotation_test_backup_*.json
 !scripts/emuStaleGuard.test.cjs
 !scripts/with-emulator.cjs
 !scripts/check-docs.cjs
+!scripts/checkDocs.test.cjs
 /recon.js
 /test-prod.ts
 /dump_*.cjs

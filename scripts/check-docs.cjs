@@ -195,17 +195,57 @@ const BANNER_TRIGGER = /no se re-verific|sin re-verificar|no re-verificad|no cor
 const DEPRECATED_TRIGGER = /DEPRECAD[OA]/;
 const BANNER_SCAN_WINDOW = 20;
 
+/**
+ * [CHECKDOCS-BANNER] La prosa de staleness SOLA no alcanza para apagar la verificacion
+ * del resto del archivo. Antes bastaba con que una linea `>` cualquiera de las primeras 20
+ * dijera "no re-verificado" — y en v6.76.0 eso apago el 47% de CLAUDE.md en silencio,
+ * porque la cabecera del changelog es un blockquote continuo y una frase de prosa normal
+ * (`tsc limpio (... no re-verificado en esta tanda)`) matcheo el trigger.
+ *
+ * Ahora se exige ADEMAS una MARCA explicita de banner deliberado. Los 5 banners reales del
+ * corpus la tienen (medido 2026-08-31):
+ *   docs/modules/coils.md                       -> "ÚLTIMA VERIFICACIÓN CÓDIGO+PROD:"
+ *   docs/modules/annulment.md                   -> "ÚLTIMA VERIFICACIÓN CÓDIGO+PROD:"
+ *   docs/modules/metallic.md                    -> "⚠️ **BANNER DE ESTADO ..."
+ *   docs/04-dominio/lineas-negocio/roofing.md   -> "⚠️ **Corrección puntual ..."
+ *   docs/09-seguridad/firestore-rules-explicadas.md -> "⚠️ **ESTE DOCUMENTO NO CORRESPONDE ..."
+ * y la linea que disparo el falso positivo (`> **Estado:** Build ...`) NO la tiene.
+ */
+const BANNER_MARKER = /^>\s*(?:\*\*)?⚠|ÚLTIMA VERIFICACI[ÓO]N/i;
+
+/** true si la linea es un banner de staleness DELIBERADO (marca + prosa), no prosa suelta. */
+function isBannerLine(line) {
+  if (!/^>/.test(line)) return false;
+  if (!BANNER_MARKER.test(line)) return false;
+  return BANNER_TRIGGER.test(line);
+}
+
 function computeSkipBodyStart(lines) {
   const limit = Math.min(BANNER_SCAN_WINDOW, lines.length);
   for (let i = 0; i < limit; i++) {
-    const line = lines[i];
-    if (!/^>/.test(line)) continue;
-    if (!BANNER_TRIGGER.test(line)) continue;
+    if (!isBannerLine(lines[i])) continue;
     let end = i;
     while (end + 1 < lines.length && /^>/.test(lines[end + 1])) end++;
     return end + 2; // 1-indexed line number where skip starts
   }
   return null;
+}
+
+/**
+ * [CHECKDOCS-BANNER] Docs cuya verificacion NO puede apagarse en silencio: si alguno cae
+ * en la lista de saltados, el checker sale con exit != 0. Antes pasaban desapercibidos —
+ * la lista de saltados era informativa y no movia el exit code, asi que apagar la
+ * verificacion de CLAUDE.md entero se veia igual que una corrida sana (peor: el conteo de
+ * ROTO BAJABA, porque dejaba de mirar medio archivo).
+ */
+const PROTECTED_DOCS = ['CLAUDE.md', 'HANDOFF.md', 'GEMINI.md'];
+
+/** Nombres de PROTECTED_DOCS presentes en la lista de saltados. [] si ninguno. */
+function protectedSkips(skippedFiles) {
+  return skippedFiles
+    .map((s) => (typeof s === 'string' ? s : s.file))
+    .map((f) => String(f).replace(/\\/g, '/').split('/').pop())
+    .filter((base) => PROTECTED_DOCS.includes(base));
 }
 
 function maskStrikethrough(line) {
@@ -1164,7 +1204,22 @@ function main() {
   fs.writeFileSync(path.join(outDir, 'check-docs-out.txt'), report);
 
   const hasBlockingRoto = findings.some((f) => f.verdict === 'ROTO' && !f.allowlisted);
-  process.exitCode = hasBlockingRoto ? 1 : 0;
+
+  // [CHECKDOCS-BANNER] Un doc protegido saltado es ERROR DURO, no una linea informativa.
+  const protectedSkipped = protectedSkips(skippedFiles);
+  if (protectedSkipped.length > 0) {
+    console.error('');
+    console.error(
+      `ERROR: doc protegido en la lista de saltados: ${protectedSkipped.join(', ')}. ` +
+        'Un banner de staleness apago la verificacion de un archivo que nunca debe apagarse ' +
+        '(el conteo de ROTO puede BAJAR sin que nadie haya arreglado nada). ' +
+        'Revisa la marca de banner en las primeras ' + BANNER_SCAN_WINDOW + ' lineas de ese archivo.',
+    );
+  }
+
+  process.exitCode = hasBlockingRoto || protectedSkipped.length > 0 ? 1 : 0;
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = { isBannerLine, protectedSkips, computeSkipBodyStart, PROTECTED_DOCS };
