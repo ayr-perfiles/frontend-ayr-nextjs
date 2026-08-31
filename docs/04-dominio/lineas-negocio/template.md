@@ -46,7 +46,7 @@ src/modules/<linea>/
 ```
 
 La línea se activa en **dos lugares** solamente:
-1. `src/context/BusinessLineContext.tsx` (array `ACTIVE_MODULES`)
+1. `src/core/registry/businessLineRegistry.ts` (array `businessLines`)
 2. Sus propias páginas en `src/app/admin/<linea>/`
 
 El sidebar y el selector se actualizan automáticamente.
@@ -496,17 +496,37 @@ const ROUTE_PERMISSIONS: Record<string, UserRole[]> = {
 
 ## Paso 9 — Registrar el módulo (15 min)
 
-`src/context/BusinessLineContext.tsx` — **un solo cambio**:
+`src/core/registry/businessLineRegistry.ts` — **un solo cambio**. El módulo debe
+implementar el contrato de `src/core/contracts/BusinessLineModule.ts`:
 
 ```typescript
-// Antes:
+// Antes (estado real del registry al escribir esto: 5 líneas activas):
+import type { BusinessLineModule } from '@/core/contracts';
 import { drywallModule } from '@/modules/drywall';
-const ACTIVE_MODULES: BusinessLineModule[] = [drywallModule];
+import { roofingModule } from '@/modules/roofing';
+import { metallicRoofingModule } from '@/modules/metallic-roofing';
+import { tradingModule } from '@/modules/trading';
+import { servicesModule } from '@/modules/services';
 
-// Después:
-import { drywallModule } from '@/modules/drywall';
+export const businessLines: BusinessLineModule[] = [
+  drywallModule,
+  metallicRoofingModule,
+  roofingModule,
+  tradingModule,
+  servicesModule,
+];
+
+// Después: agregar el import y la entrada del array, sin tocar las existentes.
 import { tubingModule } from '@/modules/tubing';        // ← agregar
-const ACTIVE_MODULES: BusinessLineModule[] = [drywallModule, tubingModule]; // ← agregar
+
+export const businessLines: BusinessLineModule[] = [
+  drywallModule,
+  metallicRoofingModule,
+  roofingModule,
+  tradingModule,
+  servicesModule,
+  tubingModule,                                         // ← agregar
+];
 ```
 
 El selector del sidebar y el menú dinámico funcionarán automáticamente.

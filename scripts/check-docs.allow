@@ -20,8 +20,10 @@
 # propio directorio de scratch -- el checker no puede ni necesita distinguir
 # CUAL mencion es, las 2 son CAUSAL por la misma razon), `integrity.json` en
 # CLAUDE.md (2 menciones, mismo origen), `https.js` en CLAUDE.md (2),
-# `index.cjs.js` en CLAUDE.md (2), y `src/context/BusinessLineContext.tsx`
-# en template.md (2 menciones, lineas 49 y 499 del doc).
+# `index.cjs.js` en CLAUDE.md (2). (Habia una tercera de este tipo, el
+# archivo de context de lineas de negocio en template.md con 2 menciones;
+# la entrada se BORRO en v6.83.0 al corregir la plantilla -- el doc ya no
+# cita ese path, cita el registry real, que resuelve solo.)
 #
 # Solo para el bucket CAUSAL (vocabulario de runtime/contexto, archivos
 # explicitamente fuera del repo/en node_modules/planeados a futuro, o
@@ -66,13 +68,12 @@ docs/03-arquitectura/busqueda-algolia.md | path (sin linea, basename) | g-otros-
 docs/03-arquitectura/busqueda-algolia.md | path (sin linea, basename) | h-sales-index.cjs | | CAUSAL: scratch fuera del repo, mismo directorio que verify-post-save.cjs
 
 # --- PASO 5: docs/04-dominio/lineas-negocio/template.md, linea ficticia "tubing" ---
-# Medido: son 15 citas, no 11 (BusinessLineContext.tsx aparece 2 veces, lineas
-# 49 y 499 -- consolidadas en 1 entrada bajo el formato nuevo, ver nota de
-# migracion arriba). NO se excluyo template.md por nombre de archivo a
+# Medido en su momento: 15 citas, no 11. En v6.83.0 la plantilla dejo de citar
+# el archivo de context inexistente (pasa a citar el registry REAL, que resuelve
+# solo) y esa entrada se borro de aca. NO se excluyo template.md por nombre de archivo a
 # proposito -- cada cita queda explicita aca, auditable, y si el dia de manana
 # el checker suma una cita NUEVA de una linea de negocio real bajo un nombre
 # parecido, no se pierde en un exclude ciego.
-docs/04-dominio/lineas-negocio/template.md | path (sin linea) | src/context/BusinessLineContext.tsx | | plantilla, linea de ejemplo intencional (2 menciones en el doc, lineas 49 y 499, misma tupla)
 docs/04-dominio/lineas-negocio/template.md | path (sin linea) | src/modules/tubing/types.ts | | plantilla, linea de ejemplo intencional
 docs/04-dominio/lineas-negocio/template.md | path (sin linea) | src/modules/tubing/schemas/catalog.ts | | plantilla, linea de ejemplo intencional
 docs/04-dominio/lineas-negocio/template.md | path (sin linea) | src/modules/tubing/domain/rollForming.ts | | plantilla, linea de ejemplo intencional
