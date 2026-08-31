@@ -11,126 +11,27 @@ import {
   setTestUserAdmin
 } from './firestore-helpers';
 import { getStockStrategy } from '@/core/sales/strategies';
-import { doc, getDoc, collection, getDocs, serverTimestamp, runTransaction, DocumentSnapshot, query, where } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, serverTimestamp, runTransaction, query, where } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase/clientApp';
+import { runSaleImportTransaction } from '@/core/import/runSaleImportTransaction';
 
 vi.unmock('@/lib/firebase/clientApp');
 
-// Simulación de la función de importación actualizada con branching por estado
-// [IMPORT-SIM-DRIFT] Esta función REIMPLEMENTA la transacción del importador
-// (import/page.tsx) en vez de llamarla -- por eso puede divergir en silencio.
-// Extraerla a una función compartida está registrado como frente [IMPORT-EXTRACT].
-async function simulateImport(parsedSales: any[], user: any) {
+// [IMPORT-EXTRACT] MIGRADO en v6.89.0 (TANDA 10): este archivo ya NO reimplementa la
+// transacción del importador -- la LLAMA. La copia local que vivía acá fue borrada;
+// lo que queda es solo el bucle por comprobante, que es lo que hace el call-site real
+// (`handleUploadToFirebase`). El `catch` de la copia hacía `console.error` + `throw`,
+// o sea que no atrapaba nada: se elimina sin cambio de comportamiento.
+async function importSales(parsedSales: any[], user: any) {
   for (const sale of parsedSales) {
-    try {
-      await runTransaction(db, async (tx) => {
-        const saleRef = doc(db, "sales", sale.documentNumber);
-        
-        // --- TODAS LAS LECTURAS PRIMERO ---
-        const existingSaleSnap = await tx.get(saleRef);
-        let isReplacement = false;
-
-        if (existingSaleSnap.exists()) {
-          const existingData = existingSaleSnap.data();
-          if (existingData.status === "COMPLETED") {
-            return "OMITTED";
-          } else if (existingData.status === "VOIDED") {
-            isReplacement = true;
-          } else {
-            return "OMITTED";
-          }
-        }
-
-        const stockRefsToRead = new Map<string, any>();
-        for (const item of sale.items) {
-          if (item.sku && item.sku !== "GENERIC" && !item.isCoil) {
-            const strategy = getStockStrategy(item.businessLine);
-            const stockRef = strategy.getStockRef(item.sku);
-            stockRefsToRead.set(stockRef.path, { ref: stockRef, strategy, sku: item.sku });
-          }
-        }
-
-        const stockSnaps = new Map<string, DocumentSnapshot>();
-        for (const [path, info] of Array.from(stockRefsToRead.entries())) {
-           const snap = await tx.get(info.ref);
-           stockSnaps.set(path, snap as DocumentSnapshot);
-        }
-
-        // --- TODAS LAS ESCRITURAS DESPUÉS ---
-
-        if (isReplacement) {
-          const existingData = existingSaleSnap.data()!;
-          const historyRef = doc(collection(saleRef, "history"));
-          tx.set(historyRef, {
-            ...existingData,
-            archivedAt: serverTimestamp(),
-            archivedReason: 're-import correction',
-            archivedByUserId: user?.uid || 'sistema'
-          });
-
-          const auditRef = doc(collection(db, "audit_logs"));
-          tx.set(auditRef, {
-            action: 'SALE_REPLACED',
-            documentNumber: sale.documentNumber,
-            previousStatus: existingData.status,
-            historyPath: historyRef.path,
-            reason: 're-import correction',
-            userId: user?.uid || 'sistema',
-            timestamp: serverTimestamp(),
-          });
-        }
-
-        const skusArray = Array.from(new Set(sale.items.map((i: any) => i.sku)));
-        tx.set(saleRef, {
-          ...sale,
-          status: sale.status || 'COMPLETED',
-          skus: skusArray,
-          uploadedAt: serverTimestamp(),
-          metadata: { 
-            isHistorical: true, 
-            isReplacement,
-            documentType: sale.documentType,
-            uploadedBy: user?.email,
-          },
-        });
-
-        for (const item of sale.items) {
-          if (item.sku && item.sku !== "GENERIC" && !item.isCoil) {
-            const strategy = getStockStrategy(item.businessLine);
-            const stockRef = strategy.getStockRef(item.sku);
-            const stockSnap = stockSnaps.get(stockRef.path)!;
-            
-            const currentQty = strategy.extractQuantity(stockSnap);
-            
-            const isNCWithStock = sale.documentType === 'NOTA CRÉDITO' && sale.ncStockAction === 'RETURNS_STOCK';
-            const shouldMoveStock = (sale.documentType === 'FACTURA' || sale.documentType === 'BOLETA') || isNCWithStock;
-            
-            if (shouldMoveStock) {
-              const newBalance = isNCWithStock ? currentQty + item.quantity : currentQty - item.quantity;
-              const writeParams = {
-                sku: item.sku,
-                quantity: item.quantity,
-                newBalance,
-                saleId: sale.documentNumber,
-                customerName: sale.customerName,
-                sellerId: user?.email || 'SISTEMA',
-                avgCost: item.baseCost,
-                frozenCost: item.baseCost ?? 0,
-              };
-
-              if (isNCWithStock) {
-                strategy.writeSaleReversal(writeParams, stockSnap, tx);
-              } else {
-                strategy.writeSaleDecrement(writeParams, stockSnap, tx);
-              }
-            }
-          }
-        }
-      });
-    } catch (txError) {
-      console.error(`Error in simulateImport:`, txError);
-      throw txError;
-    }
+    await runTransaction(db, (tx) =>
+      runSaleImportTransaction(tx, {
+        db,
+        sale,
+        userUid: user?.uid,
+        userEmail: user?.email,
+      }),
+    );
   }
 }
 
@@ -168,15 +69,17 @@ describe('Sales Re-import Logic (Integration)', () => {
       documentNumber: 'F001-0001',
       documentType: 'FACTURA',
       status: 'COMPLETED',
+      currency: 'PEN',
+      timestamp: new Date('2026-06-05T17:00:00.000Z'),
       customerName: 'Cliente 1',
       items: [{ sku, quantity: 10, businessLine: 'roofing', isCoil: false, baseCost: 10 }]
     };
 
-    await simulateImport([saleData], mockUser);
+    await importSales([saleData], mockUser);
     const stock1 = (await getDoc(doc(db, 'roofing_stock', sku))).data();
     expect(stock1?.quantity).toBe(90);
 
-    await simulateImport([saleData], mockUser);
+    await importSales([saleData], mockUser);
     const stock2 = (await getDoc(doc(db, 'roofing_stock', sku))).data();
     expect(stock2?.quantity).toBe(90); // Omitida
   });
@@ -192,12 +95,14 @@ describe('Sales Re-import Logic (Integration)', () => {
       documentNumber: 'F001-0002',
       documentType: 'FACTURA',
       status: 'COMPLETED',
+      currency: 'PEN',
+      timestamp: new Date('2026-06-05T17:00:00.000Z'),
       customerName: 'Cliente Original',
       items: [{ sku, quantity: 10, businessLine: 'roofing', isCoil: false, baseCost: 10 }]
     };
 
     // 1. Importar
-    await simulateImport([saleV1], mockUser);
+    await importSales([saleV1], mockUser);
     
     // 2. Anular manualmente (simulado)
     const saleRef = doc(db, 'sales', 'F001-0002');
@@ -222,10 +127,12 @@ describe('Sales Re-import Logic (Integration)', () => {
       documentNumber: 'F001-0002',
       documentType: 'FACTURA',
       status: 'COMPLETED',
+      currency: 'PEN',
+      timestamp: new Date('2026-06-05T17:00:00.000Z'),
       customerName: 'Cliente Corregido',
       items: [{ sku, quantity: 15, businessLine: 'roofing', isCoil: false, baseCost: 10 }]
     };
-    await simulateImport([saleV2], mockUser);
+    await importSales([saleV2], mockUser);
 
     const saleFinal = (await getDoc(saleRef)).data();
     expect(saleFinal?.status).toBe('COMPLETED');
@@ -255,10 +162,12 @@ describe('Sales Re-import Logic (Integration)', () => {
 
     for (let i = 1; i <= 3; i++) {
         // Importar
-        await simulateImport([{
+        await importSales([{
             documentNumber: 'F001-0003',
             documentType: 'FACTURA',
             status: 'COMPLETED',
+            currency: 'PEN',
+            timestamp: new Date('2026-06-05T17:00:00.000Z'),
             customerName: `Cliente V${i}`,
             items: [{ sku, quantity: 10, businessLine: 'roofing', isCoil: false, baseCost: 10 }]
         }], mockUser);
@@ -275,10 +184,12 @@ describe('Sales Re-import Logic (Integration)', () => {
     }
 
     // Ultima re-importacion para dejarla activa
-    await simulateImport([{
+    await importSales([{
         documentNumber: 'F001-0003',
         documentType: 'FACTURA',
         status: 'COMPLETED',
+        currency: 'PEN',
+        timestamp: new Date('2026-06-05T17:00:00.000Z'),
         customerName: `Cliente Final`,
         items: [{ sku, quantity: 10, businessLine: 'roofing', isCoil: false, baseCost: 10 }]
     }], mockUser);
@@ -301,11 +212,13 @@ describe('Sales Re-import Logic (Integration)', () => {
     const saleRef = doc(db, 'sales', 'NC-0004');
 
     // 1. Importar NC (RETURNS_STOCK) -> sube stock a 110
-    await simulateImport([{
+    await importSales([{
         documentNumber: 'NC-0004',
         documentType: 'NOTA CRÉDITO',
         ncStockAction: 'RETURNS_STOCK',
         status: 'COMPLETED',
+        currency: 'PEN',
+        timestamp: new Date('2026-06-05T17:00:00.000Z'),
         customerName: 'NC V1',
         items: [{ sku, quantity: 10, businessLine: 'roofing', isCoil: false, baseCost: 10 }]
     }], mockUser);
@@ -324,11 +237,13 @@ describe('Sales Re-import Logic (Integration)', () => {
     expect((await getDoc(doc(db, 'roofing_stock', sku))).data()?.quantity).toBe(100);
 
     // 3. Re-importar NC (MONEY_ONLY) -> stock queda en 100
-    await simulateImport([{
+    await importSales([{
         documentNumber: 'NC-0004',
         documentType: 'NOTA CRÉDITO',
         ncStockAction: 'MONEY_ONLY',
         status: 'COMPLETED',
+        currency: 'PEN',
+        timestamp: new Date('2026-06-05T17:00:00.000Z'),
         customerName: 'NC V2',
         items: [{ sku, quantity: 10, businessLine: 'roofing', isCoil: false, baseCost: 10 }]
     }], mockUser);
@@ -340,11 +255,13 @@ describe('Sales Re-import Logic (Integration)', () => {
         // No movemos stock aquí porque era MONEY_ONLY (simulado)
     });
 
-    await simulateImport([{
+    await importSales([{
         documentNumber: 'NC-0004',
         documentType: 'NOTA CRÉDITO',
         ncStockAction: 'RETURNS_STOCK',
         status: 'COMPLETED',
+        currency: 'PEN',
+        timestamp: new Date('2026-06-05T17:00:00.000Z'),
         customerName: 'NC V3',
         items: [{ sku, quantity: 10, businessLine: 'roofing', isCoil: false, baseCost: 10 }]
     }], mockUser);
