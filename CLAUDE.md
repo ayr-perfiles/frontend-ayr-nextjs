@@ -15,6 +15,10 @@
 > bobinas aluzinc, WAC de metallic o cola de producción de la línea sigue describiendo un
 > sistema SIN MATERIA PRIMA** — verificar `docs/modules/coils.md` y `docs/modules/metallic.md`
 > (banners agregados) antes de asumir que hay inventario o histórico vivo.
+> ✅ **DECISIÓN DE NEGOCIO (2026-08-31, v6.84.0): los 14 docs de `metallic_roofing_stock` con
+> `quantity` negativa y `baseCost:0` SE QUEDAN ASÍ.** Comportamiento ACEPTADO, consistente con
+> `[STOCK-NEG-GUARD]` (v6.77.0) — no hay backfill, no hay anulación, no se toca prod, no se
+> re-mide. **No re-abrir sin pedido explícito del dueño.**
 
 > **Sprint actual:** Sprint 7 (Seguridad Capa 2) — CERRADO EN PROD ✅
 > **Estado:** Build 🟢 (52 páginas/rutas, último real 2026-08-30 en `TANDA AUTONOMA 1`; NO re-corrido en v6.83.0 — el guard de E2 no agrega rutas) | tsc limpio (**0 errores, raíz**) — y desde v6.83.0 se mide con **`npm run check:tsc`**, que propaga el exit real e imprime `TSC_VEREDICTO` al final para que sobreviva a un `tail`; la trampa del pipe (v6.74.0/v6.81.0) deja de depender de que alguien recuerde la regla | **4 comandos custodios DISJUNTOS, reportados por separado — PROHIBIDO sumarlos (regla B4, ver v6.70.0):** `npm run test` → **RE-MEDIDO en v6.83.0: 126 archivos / 1313 tests / 0 skip, exit 0** (+1 archivo / +16 tests sobre v6.82.0, todos de `[CHECK-TSC-SCRIPT]`; delta predicho antes de correr y coincidente 1:1) · `npx vitest run --config vitest.emu.config.ts src/test/rules` (`test:emu:rules`) → **7 archivos / 127 tests**, NO medido en v6.83.0 (esta tanda no tocó `firestore.rules`), último valor real 2026-08-30 · `test:emu` (src/test/integration) → **RE-MEDIDO en v6.83.0: 36 archivos / 242 passed / 3 skipped / 0 failed (245), exit 0** (+1 archivo / +3 tests sobre v6.82.0, todos de `[IMPORT-OVERWRITE]`; delta predicho y coincidente 1:1) · `test:emu:functions` (functions/src/callables) → **47/47**, no medido desde v6.52.0 | `check:docs` → **19 ROTO / 5 saltados**, sin moverse | Borón masivo ejecutado | Functions v2 operativa.
