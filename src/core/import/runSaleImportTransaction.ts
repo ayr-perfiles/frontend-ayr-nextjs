@@ -18,17 +18,21 @@ import type { ParsedSale } from "@/core/import/parseImportRows";
  * En v6.82.0 (`[IMPORT-EXTRACT]`) la extracción fue un MOVIMIENTO PURO: cuerpo verbatim
  * del inline previo, sin guard nuevo y sin tocar ningún fallback.
  *
- * En v6.83.0 (`[IMPORT-OVERWRITE]`) se agregó el ÚNICO cambio de comportamiento que este
- * módulo tiene desde entonces: el guard de la percha `COT-*`, que antes se escribía con un
- * `tx.set` sin `tx.get` previo. Ver el bloque marcado más abajo. Los fallbacks (`?? 0`,
- * `?? 1200`) siguen SIN tocar — son frentes propios.
+ * En v6.83.0 (`[IMPORT-OVERWRITE]`) se agregó el guard de la percha `COT-*`, que antes se
+ * escribía con un `tx.set` sin `tx.get` previo: percha `CANCELLED` o con producción ACTIVA
+ * ahora aborta la transacción entera. En v6.84.0 (`[IMPORT-PERCHA-ARCHIVE]`, COLA #47) se
+ * agregó la otra mitad de esa misma decisión: percha `QUOTATION` SIN producción se archiva a
+ * `history` antes de pisarse, igual que `saleRef` ya hace. Ver los 2 bloques marcados más
+ * abajo. Los fallbacks (`?? 0`, `?? 1200`) siguen SIN tocar — son frentes propios.
  *
  * Escribe: `sales/{documentNumber}` · `sales/{documentNumber}/history/{auto}` y un
  * `audit_logs` `SALE_REPLACED` (solo si reemplaza una VOIDED) · `sales/COT-{documentNumber}`
- * (solo si el comprobante genera percha) · un `audit_logs`
- * `SALE_IMPORTED_WITH_MANUAL_NC_ACTION` (solo si la NC se resolvió a mano) · y el stock de
- * cada ítem vía la strategy de su línea. El upsert de `customers` NO entra acá: vive fuera
- * de la transacción, en un `writeBatch` propio de la página.
+ * (solo si el comprobante genera percha) · `sales/COT-{documentNumber}/history/{auto}` y un
+ * `audit_logs` `QUOTATION_REPLACED` (solo si la percha existente estaba `QUOTATION` sin
+ * producción activa) · un `audit_logs` `SALE_IMPORTED_WITH_MANUAL_NC_ACTION` (solo si la NC
+ * se resolvió a mano) · y el stock de cada ítem vía la strategy de su línea. El upsert de
+ * `customers` NO entra acá: vive fuera de la transacción, en un `writeBatch` propio de la
+ * página.
  */
 export type SaleImportTxResult = "OMITTED" | "REPLACED" | "IMPORTED";
 
@@ -174,10 +178,13 @@ export async function runSaleImportTransaction(
   // commitearía dejando la venta sin escribir. El throw aborta la transacción
   // ENTERA, que es la semántica pedida.
   //
-  // Alcance declarado: solo se bloquean CANCELLED y producción activa. Una percha
-  // `QUOTATION` sin producción se sigue pisando como hasta hoy — la otra mitad de
-  // la decisión de v6.76.0 ("archivar a history y pisar") NO se implementa acá,
-  // necesita su propio RED.
+  // [IMPORT-PERCHA-ARCHIVE] (COLA #47) — la otra mitad de la decisión de v6.76.0.
+  // Percha `QUOTATION` SIN producción activa: se archiva a `history` (mismo
+  // mecanismo que `saleRef` usa arriba) y RECIÉN AHÍ se pisa — nunca en silencio.
+  // Alcance declarado: solo este caso. Un `blockReason` truthy sigue abortando
+  // (sin tocar); cualquier otro status que no sea "QUOTATION" (no debería
+  // ocurrir hoy, ver docstring de `PerchaBlockReason`) conserva el pisado ciego
+  // de antes — no se inventa un tercer comportamiento sobre un caso sin RED.
   if (quotationDoc && existingQuoteSnap.exists()) {
     const existingQuote = existingQuoteSnap.data();
     const blockReason: PerchaBlockReason | null =
@@ -189,6 +196,29 @@ export async function runSaleImportTransaction(
 
     if (blockReason) {
       throw new PerchaOverwriteBlockedError(quoteId, blockReason);
+    }
+
+    if (existingQuote?.status === "QUOTATION") {
+      const quoteHistoryRef = doc(collection(quoteRef, "history"));
+      tx.set(quoteHistoryRef, {
+        ...existingQuote,
+        archivedAt: serverTimestamp(),
+        archivedReason: 're-import correction',
+        archivedByUserId: userUid || 'sistema',
+        archivedByUserEmail: userEmail || 'sistema',
+      });
+
+      const quoteAuditRef = doc(collection(db, "audit_logs"));
+      tx.set(quoteAuditRef, {
+        action: 'QUOTATION_REPLACED',
+        documentNumber: quoteId,
+        previousStatus: existingQuote.status,
+        historyPath: quoteHistoryRef.path,
+        reason: 're-import correction',
+        userId: userUid || 'sistema',
+        userEmail: userEmail || 'sistema',
+        timestamp: serverTimestamp(),
+      });
     }
   }
 
