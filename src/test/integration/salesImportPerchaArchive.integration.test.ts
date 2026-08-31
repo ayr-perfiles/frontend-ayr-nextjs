@@ -27,9 +27,13 @@ vi.unmock('@/lib/firebase/clientApp');
  * ya hace en el mismo bloque.
  *
  * Llama al MÓDULO EXTRAÍDO (`runSaleImportTransaction`), no a `page.tsx` y no
- * a una re-implementación. `simulateImport` de los otros 3 archivos NO se
- * toca: la divergencia con la función real crece (7º punto, registrado en
- * HANDOFF.md COLA #18) y este frente no la unifica.
+ * a una re-implementación.
+ *
+ * ACTUALIZADO v6.89.0 (TANDA 10): cuando este archivo se escribió (v6.84.0) había
+ * otros 3 que reimplementaban la transacción, y este frente hacía crecer esa
+ * divergencia a un 8º punto. Esos 3 ya fueron migrados y sus copias locales
+ * borradas — la divergencia dejó de existir y `runSaleImportTransaction` es hoy
+ * la única implementación.
  */
 
 async function resolveActivePerchaProduction(quoteId: string): Promise<boolean> {

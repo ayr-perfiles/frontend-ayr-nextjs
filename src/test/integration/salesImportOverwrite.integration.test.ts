@@ -26,8 +26,12 @@ vi.unmock('@/lib/firebase/clientApp');
  *
  * Estos tests llaman al MÓDULO EXTRAÍDO (`runSaleImportTransaction`), no a
  * `page.tsx` y no a una re-implementación — que es exactamente lo que
- * `[IMPORT-EXTRACT]` (C3, v6.82.0) destrabó. `simulateImport` de los otros 3
- * archivos NO se toca: sigue siendo la segunda implementación declarada.
+ * `[IMPORT-EXTRACT]` (C3, v6.82.0) destrabó.
+ *
+ * ACTUALIZADO v6.89.0 (TANDA 10): ya no queda ninguna otra implementación. Los 3
+ * archivos que reimplementaban la transacción (`salesImport.test.ts`,
+ * `salesReimport.test.ts`, `salesImportQuotation.test.ts`) fueron migrados y sus
+ * copias locales borradas — `runSaleImportTransaction` es hoy la única.
  */
 
 // El flag de producción activa se resuelve PRE-transacción, igual que en el
