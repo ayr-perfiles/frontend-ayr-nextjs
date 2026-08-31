@@ -1,6 +1,6 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.86.0).
+> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.86.1).
 >
 > ⚠️ **ESTADO — RE-MEDIDO 2026-08-31 (TANDA 3, C2, read-only contra `ayrsteel-2026`).**
 > **La línea metallic sigue SIN MATERIA PRIMA, pero ya NO está vacía en ventas ni en stock.**
@@ -21,6 +21,16 @@
 > con `quantity` negativa y `baseCost:0` SE QUEDAN ASÍ.** Comportamiento ACEPTADO,
 > consistente con `[STOCK-NEG-GUARD]` (v6.77.0) — no hay backfill, no hay anulación, no
 > se toca prod, no se re-mide. **No re-abrir sin pedido explícito del dueño.**
+>
+> **BASELINE (2026-08-31, v6.86.1) — TANDA 7.1 (remediación de la Tanda 7):**
+>   - **La premisa que motivaba la tanda quedó REFUTADA por medición, y por eso NO se tocó una línea de código.** Se sostenía que el assert (c) de U1.2 ("aceptar NO mueve stock") era **solo por conteo** y por lo tanto ciego a un `update` in-place sobre `metallic_roofing_stock`. **Las 2 mitades cayeron:** el test también compara CONTENIDO del doc de stock (`quotationClientAccepted.integration.test.ts:109` / `:126-127`, `toEqual`), y `metallicRoofingStockStrategy.writeSaleDecrement` **también** crea un doc nuevo en `metallic_roofing_stock_movements`, así que el conteo sí se mueve.
+>   - **M3, la mutación que faltaba: espejo mínimo de `approveQuotation:321-343` dentro de `markQuotationAccepted`.** Predicciones opuestas escritas ANTES de correr — director: **(c) VERDE**; ejecutor: **(c) ROJO, `1 failed / 3 passed`**. **Medido: ROJO**, `AssertionError: expected { metallic_roofing_stock: 1, …(3) } to deeply equal { metallic_roofing_stock: 1, …(3) }` — y el rojo cae **en el assert de conteo**, el que la premisa daba por ciego. Blast radius correcto: los 2 guards tiran antes de escribir y el control positivo (`cancelQuotation`) no pasa por el camino mutado. Revertida, `git diff --stat` vacío, 0 residuos.
+>   - **La reescritura del assert (R2) NO SE EJECUTÓ, por instrucción explícita del propio enunciado ante el caso ROJO.** El assert (c) queda **sin tocar**: ya discriminaba.
+>   - **3 imprecisiones del DIRECTOR, las 3 refutadas con conteo por término y por archivo (B20)** — ver `CLAUDE.md` §11: la premisa de (c)-por-conteo; la cita `"RED contra el mecanismo"` (**0 hits en los 3 docs**); y "el control positivo no se declaró" (**sí se declaró**, `CLAUDE.md:35`, nombrando GRUPO K y con justificación). **1 omisión REAL del ejecutor de la Tanda 7:** no caracterizó su RED de U1 (`is not a function`) como RED DÉBIL.
+>   - **NO se crea `B21` — decisión explícita** (mismo criterio que el `B21` descartado en v6.85.0). Las reglas `B` siguen en **20**.
+>   - **Fila #49 NUEVA `[RULES-GUARD-CAMPO-FANTASMA]`**, registrada sin atacar (ver COLA). `firestore.rules` NO se tocó.
+>   - **Custodios: delta CERO predicho y medido, antes y después** (el árbol de código volvió byte-idéntico a HEAD): `npm run test` **126/1326** exit 0 · `test:emu:rules` **8/131** exit 0 · `test:emu` **38/248/3skip (251)** exit 0 · `check:tsc` **VERDE** · `check:docs` **19 ROTO / 5 saltados**.
+>   - **Cero write a los 2 entornos** (todo contra el emulador), cero push, cero `master`, cero deploy, cero `firestore.rules`, cero `firestore.indexes.json`. `firebase use` verificado CRUDO al abrir: **`ayrsteel-test`**.
 >
 > **BASELINE (2026-08-31, v6.86.0) — TANDA 7:**
 >   - **`[QUOTATION-APPROVE-UNREACHABLE]` (#1) CERRADO EN SU TRAMO DE CÓDIGO.** El estado de aceptación del cliente pasa a ser alcanzable: campo ADITIVO (`clientAccepted` + `clientAcceptedAt`), `status` INTACTO, escritor único `markQuotationAccepted`, botón en `/admin/quotations`. **Aceptar NO es vender** — decisión (1) del dueño, asserteada contando colecciones antes/después, no confiada a la lectura del código. 4 commits, uno por ítem.
@@ -458,6 +468,37 @@
     - **Medido POST-U2, con las 2 acciones que hoy existen en `/admin/quotations`:** sobre una percha `CANCELLED` + `IMPORTADA`, `canEditQuotation` da **false** (falla por origen Y por estado) y `canAcceptQuotation` da **false** (ídem). **Cero acciones ofrecidas.** El operador lee "resolvé la percha" y no tiene ningún botón que resuelva nada.
     - **Confirmado en runtime, no teórico:** el dueño corrió el importador en `ayrsteel-test` y el guard disparó sobre `COT-FFA1-1291` y `COT-FFA1-1292`, las 2 `CANCELLED` (2 filas en ERROR, TOTAL 25 / IMPORTADAS 2 / OMITIDAS 21 / ERRORES 2). La verificación V1 midió que **el aborto no escribió nada** — el guard hace lo suyo bien; lo que falta es la salida para el operador.
     - **Alcance a decidir por el dueño, NO elegido acá:** (a) una acción de "reactivar percha" (`CANCELLED` → `QUOTATION`) en `/admin/quotations`, que es un cambio de `status` y por lo tanto toca el eje que `[QUOTATION-APPROVE-UNREACHABLE]` deliberadamente no tocó; (b) o cambiar el mensaje para que pida algo que sí se puede hacer hoy (ej. anular la venta gemela, que es lo que en la práctica dejó esas 2 perchas en `CANCELLED`). Son 2 frentes distintos con costos distintos. **No implementar sin decisión.**
+
+49. **`[RULES-GUARD-CAMPO-FANTASMA]` — NUEVO (v6.86.1, TANDA 7.1 / R3.3). La denylist financiera de `firestore.rules` protege 3 campos que NINGÚN escritor de `sales` escribe, y uno de ellos no existe en el repo entero. CERO código, cero edición de `firestore.rules` en esta tanda.**
+    - **El guard, verbatim** (`firestore.rules:102`, coordenada re-verificada en esta tanda, sin corrimiento desde U0): `fieldsUnchanged(['totalAmount', 'subtotal', 'igv', 'exchangeRate', 'currency', 'items', 'paymentType'])`.
+    - **Origen del hallazgo:** medido de rebote en U0.2 (v6.86.0), donde AGREGAR `subtotal` —un campo que el builder canónico no escribe— fue justamente el control que hizo **RECHAZAR** y le dio sentido a U0.1. Esta tanda lo formaliza con el conteo por campo.
+    - **Tabla campo × escrito, medida sobre los escritores REALES de `sales`** (`saleDocBuilder.ts`, `salesService.ts`, `salesImportLogic.ts`, `runSaleImportTransaction.ts`, `functions/src/callables/editQuotation.ts`, `functions/src/callables/sales.ts`):
+
+      | campo de la denylist | ¿lo escribe un escritor de `sales`? | evidencia |
+      |---|---|---|
+      | `totalAmount` | **SÍ** | `saleDocBuilder.ts:221` (`buildSaleDoc`) y `:246` (`buildQuotationDoc`) |
+      | `items` | **SÍ** | `saleDocBuilder.ts:220` y `:245` |
+      | `currency` | **SÍ**, solo el importador | `salesImportLogic.ts:40`, `:63`, `:87` |
+      | `exchangeRate` | **SÍ**, solo el importador | `salesImportLogic.ts:41` (`sale.exchangeRateApplied \|\| 1` — ojo: `:64`/`:88` escriben `exchangeRateApplied`, que es un campo DISTINTO y NO está en la denylist) |
+      | `subtotal` | **NO** | 0 hits en los 6 escritores |
+      | `igv` | **NO** | 0 hits en los 6 escritores |
+      | `paymentType` | **NO, y además no existe en el repo** | ver conteo por árbol abajo |
+
+    - **Conteo CRUDO por término y por árbol (B20), excluyendo `.test.`/`.spec.`:**
+
+      | término | `src` | `functions/src` | `scripts` |
+      |---|---|---|---|
+      | `totalAmount` | 95 | 16 | 5 |
+      | `items` | 1179 | 30 | 24 |
+      | `currency` | 208 | 21 | 0 |
+      | `exchangeRate` | 144 | 23 | 0 |
+      | `igv` | 45 | 0 | 0 |
+      | `subtotal` | 15 | 0 | 0 |
+      | `paymentType` | **0** | **0** | **0** |
+
+    - **`paymentType` es el caso fuerte: 0 hits en los TRES árboles de código.** Con tests incluidos aparece 7 veces y las 7 son o fixtures a mano (`operatorWrites.rules.test.ts:55`, `sales.rules.test.ts:40`, `salesStatusAccessor.rules.test.ts:53`, los 3 con `paymentType: "CONTADO"`) o citas de la propia rule en comentarios/recon. **Ningún doc de `sales` de producción tiene ese campo** — la rule protege un campo fantasma, y 3 fixtures de test lo siembran a mano, que es exactamente la trampa que B19 describe.
+    - **Severidad: BAJA, y por qué.** El guard falla CERRADO: proteger un campo inexistente no abre nada, solo hace que la denylist describa un shape de doc que no es el que producción escribe. El riesgo real es de LECTURA — alguien que use la denylist como referencia del shape financiero canónico va a asumir que `subtotal`/`igv`/`paymentType` existen. Ya pasó: los 3 fixtures a mano de arriba.
+    - **NO se toca `firestore.rules` acá.** Quitar campos de una denylist es relajar un guard de seguridad: es decisión del dueño, con su propio RED (un test que pruebe que quitarlos no habilita ninguna escritura hoy bloqueada), no una limpieza cosmética.
 
 > **VERIFICACIÓN DE COLA — C2, 2026-08-31 (v6.82.0). 29 ítems vivos, un grep/medición por fila.**
 > Motivo: 3 premisas habían muerto al contacto en 2 tandas seguidas
