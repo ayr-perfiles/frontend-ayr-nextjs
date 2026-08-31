@@ -35,7 +35,6 @@ import {
   serverTimestamp,
   query,
   where,
-  DocumentSnapshot,
   QuerySnapshot,
   DocumentData,
   setDoc,
@@ -46,7 +45,6 @@ import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import { BusinessLine } from "@/types";
 import { classifyLine } from "@/core/import/catalogImport";
-import { getStockStrategy } from "@/core/sales/strategies";
 import {
   calcPesoKg,
   normalizeDocType,
@@ -54,7 +52,7 @@ import {
   NormalizedDocType,
   NcStockAction
 } from "@/utils/importHelpers";
-import { buildImportWrites } from "@/core/import/salesImportLogic";
+import { runSaleImportTransaction } from "@/core/import/runSaleImportTransaction";
 import { parseImportRows, SkippedRow, MissingSku, CatalogRef, StockRef, skipReasonLabel, ParsedSale, ParsedSaleItem } from "@/core/import/parseImportRows";
 import type { CoilFinish } from "@/core/coils/services/finishService";
 import {
@@ -536,118 +534,14 @@ export default function SalesImportPage() {
 
       for (const sale of parsedSales) {
         try {
-          const result = await runTransaction(db, async (tx) => {
-            const saleRef = doc(db, "sales", sale.documentNumber);
-            const existingSaleSnap = await tx.get(saleRef);
-            let isReplacement = false;
-
-            if (existingSaleSnap.exists()) {
-              const existingData = existingSaleSnap.data();
-              if (existingData.status === "COMPLETED") {
-                return "OMITTED";
-              } else if (existingData.status === "VOIDED") {
-                isReplacement = true;
-              } else {
-                return "OMITTED";
-              }
-            }
-
-            const stockRefsToRead = new Map<string, any>();
-            for (const item of sale.items) {
-              if (item.sku && item.sku !== "GENERIC" && !item.isCoil) {
-                const strategy = getStockStrategy(item.businessLine);
-                const stockRef = strategy.getStockRef(item.sku);
-                stockRefsToRead.set(stockRef.path, { ref: stockRef, strategy, sku: item.sku });
-              }
-            }
-
-            const stockSnaps = new Map<string, DocumentSnapshot>();
-            for (const [path, info] of Array.from(stockRefsToRead.entries())) {
-               const snap = await tx.get(info.ref);
-               stockSnaps.set(path, snap as DocumentSnapshot);
-            }
-
-            if (isReplacement) {
-              const existingData = existingSaleSnap.data()!;
-              const historyRef = doc(collection(saleRef, "history"));
-              tx.set(historyRef, {
-                ...existingData,
-                archivedAt: serverTimestamp(),
-                archivedReason: 're-import correction',
-                archivedByUserId: user?.uid || 'sistema',
-                archivedByUserEmail: user?.email || 'sistema'
-              });
-
-              const auditRef = doc(collection(db, "audit_logs"));
-              tx.set(auditRef, {
-                action: 'SALE_REPLACED',
-                documentNumber: sale.documentNumber,
-                previousStatus: existingData.status,
-                historyPath: historyRef.path,
-                reason: 're-import correction',
-                userId: user?.uid || 'sistema',
-                userEmail: user?.email || 'sistema',
-                timestamp: serverTimestamp(),
-              });
-            }
-
-            const saleInputWithMeta = {
-              ...sale,
-              metadata: {
-                isReplacement,
-                uploadedBy: user?.email,
-              },
-            };
-            const { saleDoc, quotationDoc } = buildImportWrites(saleInputWithMeta, serverTimestamp());
-            tx.set(saleRef, saleDoc);
-            if (quotationDoc) {
-              const quoteRef = doc(db, "sales", `COT-${sale.documentNumber}`);
-              tx.set(quoteRef, quotationDoc);
-            }
-
-
-
-            if (sale.manuallyResolvedNC) {
-              const auditRef = doc(collection(db, "audit_logs"));
-              tx.set(auditRef, {
-                action: 'SALE_IMPORTED_WITH_MANUAL_NC_ACTION',
-                entityId: sale.documentNumber,
-                userEmail: user?.email || 'sistema',
-                details: `El usuario decidió manualmente la acción de stock para la NC importada: ${sale.ncStockAction}`,
-                timestamp: serverTimestamp(),
-              });
-            }
-
-            for (const item of sale.items) {
-              if (item.sku && item.sku !== "GENERIC" && !item.isCoil) {
-                const strategy = getStockStrategy(item.businessLine);
-                const stockRef = strategy.getStockRef(item.sku);
-                const stockSnap = stockSnaps.get(stockRef.path)!;
-                const currentQty = strategy.extractQuantity(stockSnap);
-                const isNCWithStock = sale.documentType === 'NOTA CRÉDITO' && sale.ncStockAction === 'RETURNS_STOCK';
-                const shouldMoveStock = (sale.documentType === 'FACTURA' || sale.documentType === 'BOLETA') || isNCWithStock;
-
-                if (shouldMoveStock) {
-                  const newBalance = isNCWithStock ? currentQty + item.quantity : currentQty - item.quantity;
-                  const writeParams = { 
-                    sku: item.sku, 
-                    quantity: item.quantity, 
-                    newBalance, 
-                    saleId: sale.documentNumber, 
-                    customerName: sale.customerName, 
-                    sellerId: sale.sellerId || 'SISTEMA', 
-                    avgCost: item.baseCost,
-                    motivo: isNCWithStock ? `NC ${sale.documentNumber}` : undefined,
-                    ref: sale.adjustedDocument || undefined,
-                    frozenCost: item.baseCost ?? 0,
-                  };
-                  if (isNCWithStock) strategy.writeSaleReversal(writeParams, stockSnap, tx);
-                  else strategy.writeSaleDecrement(writeParams, stockSnap, tx);
-                }
-              }
-            }
-            return isReplacement ? "REPLACED" : "IMPORTED";
-          });
+          const result = await runTransaction(db, (tx) =>
+            runSaleImportTransaction(tx, {
+              db,
+              sale,
+              userUid: user?.uid,
+              userEmail: user?.email,
+            }),
+          );
 
           if (result === "OMITTED") {
             results.push({ documentNumber: sale.documentNumber, documentType: sale.documentType, status: 'SKIPPED_ACTIVE', message: 'Omitida: ya existe activa', amount: sale.totalAmount, weightKg: sale.totalWeight });
