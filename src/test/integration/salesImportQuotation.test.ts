@@ -8,56 +8,29 @@ import {
   clearFirestore,
   cleanupIntegrationTest
 } from './firestore-helpers';
-import { doc, getDoc, collection, getDocs, runTransaction, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, runTransaction, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/clientApp';
-import { buildImportWrites } from '@/core/import/salesImportLogic';
+import { runSaleImportTransaction } from '@/core/import/runSaleImportTransaction';
 
 vi.unmock('@/lib/firebase/clientApp');
 
-// Simulación exacta de la función de importación masiva (SalesImportPage handleUploadToFirebase)
-// [IMPORT-SIM-DRIFT] A diferencia de salesImport.test.ts/salesReimport.test.ts, esta
-// función SÍ delega en buildImportWrites (el builder real) para venta+percha -- pero
-// sigue sin llamar a la transacción del importador entera. Extraerla está registrado
-// como frente [IMPORT-EXTRACT]. La AUSENCIA de movimiento de stock acá es alcance
-// intencional (este archivo prueba solo la atomicidad venta+percha), no un olvido.
-async function simulateImportWithLogic(parsedSales: any[]) {
+// [IMPORT-EXTRACT] MIGRADO en v6.89.0 (TANDA 10): este archivo ya NO reimplementa la
+// transacción del importador -- la LLAMA. La copia local que vivía acá fue borrada;
+// lo que queda es solo el bucle por comprobante y el manejo de error, que es lo que
+// hace el call-site real (`handleUploadToFirebase`).
+//
+// `userEmail` conserva VERBATIM el literal que la copia borrada hardcodeaba en
+// `metadata.uploadedBy`, así que el doc persistido no cambia de forma. La diferencia
+// medida del swap: la función real TAMBIÉN mueve stock por cada ítem (la copia no lo
+// hacía). Ese stock vive en `metallic_roofing_stock`, colección distinta de `sales`,
+// así que ninguna de las 15 aserciones de este archivo lo observa.
+async function importSales(parsedSales: any[]) {
   const results: any[] = [];
   for (const sale of parsedSales) {
     try {
-      const result = await runTransaction(db, async (tx) => {
-        const saleRef = doc(db, "sales", sale.documentNumber);
-        const existingSaleSnap = await tx.get(saleRef);
-        let isReplacement = false;
-
-        if (existingSaleSnap.exists()) {
-          const existingData = existingSaleSnap.data();
-          if (existingData.status === "COMPLETED") {
-            return "OMITTED";
-          } else if (existingData.status === "VOIDED") {
-            isReplacement = true;
-          } else {
-            return "OMITTED";
-          }
-        }
-
-        const saleInputWithMeta = {
-          ...sale,
-          metadata: {
-            isReplacement,
-            uploadedBy: "test@example.com",
-          },
-        };
-
-        const { saleDoc, quotationDoc } = buildImportWrites(saleInputWithMeta, serverTimestamp());
-        tx.set(saleRef, saleDoc);
-        if (quotationDoc) {
-          const quoteRef = doc(db, "sales", `COT-${sale.documentNumber}`);
-          tx.set(quoteRef, quotationDoc);
-        }
-
-
-        return isReplacement ? "REPLACED" : "IMPORTED";
-      });
+      const result = await runTransaction(db, (tx) =>
+        runSaleImportTransaction(tx, { db, sale, userEmail: "test@example.com" }),
+      );
       results.push({ documentNumber: sale.documentNumber, status: result });
     } catch (err: any) {
       results.push({ documentNumber: sale.documentNumber, status: 'ERROR', message: err.message });
@@ -120,7 +93,7 @@ describe('Importador Sales + Quotation Integration (RED PHASE)', () => {
   // 13. Atomicidad de Transacción: Escribe AMBOS docs o ninguno si la transacción falla
   it("13. Transacción atómica escribe AMBOS docs (venta y cotización) o ninguno si falla", async () => {
     // A. Éxito normal: escribe AMBOS docs
-    await simulateImportWithLogic([metallicSale]);
+    await importSales([metallicSale]);
 
     const saleSnap = await getDoc(doc(db, "sales", "FFA1-1262"));
     const quoteSnap = await getDoc(doc(db, "sales", "COT-FFA1-1262"));
@@ -153,8 +126,8 @@ describe('Importador Sales + Quotation Integration (RED PHASE)', () => {
 
   // 14. Idempotencia re-import: correr el mismo import 2 veces -> ambos ids pisados, no duplicados
   it("14. Idempotencia re-import: reimportar la misma venta sobreescribe ambos docs y no duplica", async () => {
-    await simulateImportWithLogic([metallicSale]);
-    await simulateImportWithLogic([metallicSale]);
+    await importSales([metallicSale]);
+    await importSales([metallicSale]);
 
     const salesSnap = await getDocs(collection(db, "sales"));
     const quoteSnap = await getDoc(doc(db, "sales", "COT-FFA1-1262"));
@@ -170,7 +143,7 @@ describe('Importador Sales + Quotation Integration (RED PHASE)', () => {
     const settingsRef = doc(db, "settings", "general_settings");
     await setDoc(settingsRef, { nextQuotationNumber: 42 });
 
-    await simulateImportWithLogic([metallicSale]);
+    await importSales([metallicSale]);
 
     const settingsPostSnap = await getDoc(settingsRef);
     const quoteSnap = await getDoc(doc(db, "sales", "COT-FFA1-1262"));
@@ -184,7 +157,7 @@ describe('Importador Sales + Quotation Integration (RED PHASE)', () => {
     const historicalDate = new Date("2026-06-04T17:00:00.000Z");
     const testSale = { ...metallicSale, timestamp: historicalDate };
 
-    await simulateImportWithLogic([testSale]);
+    await importSales([testSale]);
 
     const saleSnap = await getDoc(doc(db, "sales", "FFA1-1262"));
     const quoteSnap = await getDoc(doc(db, "sales", "COT-FFA1-1262"));
@@ -210,7 +183,7 @@ describe('Importador Sales + Quotation Integration (RED PHASE)', () => {
 
   // 17. Integración emulador: importar y leer los docs ESCRITOS -> assert que NINGUNO tiene campo 'id' en Firestore
   it("17. Docs ESCRITOS en Firestore (venta y cotización) NO contienen la propiedad 'id' en la data", async () => {
-    await simulateImportWithLogic([metallicSale]);
+    await importSales([metallicSale]);
 
     const saleSnap = await getDoc(doc(db, "sales", "FFA1-1262"));
     const quoteSnap = await getDoc(doc(db, "sales", "COT-FFA1-1262"));
