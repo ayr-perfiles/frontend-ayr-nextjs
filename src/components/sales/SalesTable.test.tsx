@@ -8,7 +8,6 @@ describe("SalesTable Component Guard (RED PHASE)", () => {
     onDuplicate: vi.fn(),
     onApprove: vi.fn(),
     onViewDetails: vi.fn(),
-    onEdit: vi.fn(),
     onCancel: vi.fn(),
   };
 

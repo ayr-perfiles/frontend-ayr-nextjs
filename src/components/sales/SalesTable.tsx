@@ -12,7 +12,6 @@ import {
   Scale,
   AlertCircle,
   Eye,
-  Edit,
   XCircle,
   Copy,
   Link as LinkIcon,
@@ -84,7 +83,6 @@ interface SalesTableProps {
   onDuplicate: (saleId: string, status: Sale["status"]) => void;
   onApprove: (sale: Sale) => void;
   onViewDetails: (sale: Sale) => void;
-  onEdit: (saleId: string) => void;
   onCancel: (saleId: string) => void;
 }
 
@@ -98,7 +96,6 @@ export function SalesTable({
   onDuplicate,
   onApprove,
   onViewDetails,
-  onEdit,
   onCancel,
 }: SalesTableProps) {
   const columns: ColumnDef<Sale>[] = [
@@ -288,16 +285,6 @@ export function SalesTable({
 
         if (sale.status === "QUOTATION") {
           actions.push(
-            {
-              id: "edit",
-              label: "Editar Cotización",
-              icon: <Edit size={16} />,
-              onClick: () => onEdit(sale.id!),
-              variant: "warning",
-              section: "quotation",
-              // Ruta /admin/sales/[id]/edit inexistente (404) — reactivar en #9-B.2, no antes.
-              hidden: true,
-            },
             {
               id: "approve",
               label: "Aprobar Venta",

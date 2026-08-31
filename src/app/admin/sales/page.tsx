@@ -205,7 +205,6 @@ export default function SalesPage() {
           onDuplicate={(saleId, status) => {
             router.push(buildDuplicateSaleUrl(saleId, status));
           }}
-          onEdit={(saleId) => router.push(`/admin/sales/${saleId}/edit`)}
         />
         {loading && (
           <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-2xl">
