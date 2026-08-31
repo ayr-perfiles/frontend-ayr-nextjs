@@ -727,3 +727,71 @@ export const cancelQuotation = async (
   return { success: true };
 };
 
+/**
+ * Marca que el CLIENTE ACEPTÓ la cotización. [QUOTATION-APPROVE-UNREACHABLE], COLA #1.
+ *
+ * ⚠️ ACEPTAR NO ES VENDER — decisión de negocio del dueño, y es el invariante entero
+ * de esta función: **no mueve stock, no descuenta, no escribe kardex, no toca bobinas
+ * y no cambia `status`.** El stock se mueve cuando la venta se concreta, que es otro
+ * evento. Está asserteado contando las colecciones antes/después en
+ * `quotationClientAccepted.integration.test.ts` — la decisión no se confía a que
+ * alguien lea el cuerpo y vea que no hay escrituras de stock.
+ *
+ * NO reusa ni llama a `approveQuotation` (arriba en este mismo archivo), que hace
+ * exactamente lo contrario: crea una venta `COMPLETED` nueva, descuenta stock vía
+ * `writeSaleDecrement`, emite `kardex_movements` y marca la bobina `SOLD`. Son dos
+ * eventos distintos del negocio y tienen dos caminos distintos.
+ *
+ * Campos ADITIVOS a propósito (`status` queda INTACTO): agregar un valor al enum
+ * `SaleStatus` tocaría el guard de `status` de `firestore.rules`, los filtros de
+ * lista (`buildListStatusFilter`/`buildAggregateStatusFilter`) y todo agrupamiento
+ * por estado. Que el par aditivo pase el guard de campos financieros de
+ * `firestore.rules:101-104` está MEDIDO, no derivado, en
+ * `src/test/rules/salesClientAccepted.rules.test.ts` (U0).
+ *
+ * Los 2 campos se escriben SIEMPRE JUNTOS, en el mismo `update`: el booleano da
+ * filtro por igualdad, el timestamp da auditoría. Que no puedan discrepar tampoco se
+ * confía — se assertea, y la mutación M1 del frente lo verifica.
+ */
+export const markQuotationAccepted = async (
+  quotationId: string,
+  userEmail: string,
+): Promise<{ success: true }> => {
+  const quoteRef = doc(db, 'sales', quotationId);
+  const auditRef = doc(collection(db, 'audit_logs'));
+
+  await runTransaction(db, async (transaction) => {
+    const quoteDoc = await transaction.get(quoteRef);
+    if (!quoteDoc.exists()) throw new Error('La cotización no existe.');
+    const data = quoteDoc.data();
+
+    if (data.status !== 'QUOTATION') {
+      throw new Error('Solo puedes marcar la aceptación de una Cotización vigente.');
+    }
+    // Mismo criterio de origen que `cancelQuotation`: una percha importada es el
+    // espejo de una factura YA emitida — el cliente no "acepta" lo que ya compró.
+    if (data.relatedSaleId || data.metadata?.isQuotation) {
+      throw new Error('No se puede aceptar una cotización importada: proviene de una venta ya facturada.');
+    }
+    // Idempotencia: la primera aceptación es la que vale. Re-aceptar pisaría el
+    // timestamp original, que es justamente el dato de auditoría que se guarda.
+    if (data.clientAccepted === true) {
+      throw new Error('Esta cotización ya fue aceptada por el cliente.');
+    }
+
+    transaction.update(quoteRef, {
+      clientAccepted: true,
+      clientAcceptedAt: serverTimestamp(),
+    });
+    transaction.set(auditRef, {
+      action: 'QUOTATION_CLIENT_ACCEPTED',
+      entityId: quotationId,
+      userEmail,
+      details: `El cliente aceptó la cotización ${quotationId}. No mueve stock: la aceptación no es la venta.`,
+      timestamp: serverTimestamp(),
+    });
+  });
+
+  return { success: true };
+};
+

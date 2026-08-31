@@ -200,6 +200,22 @@ export interface Sale {
   status: SaleStatus;
 
   validUntil?: any;
+
+  /**
+   * El CLIENTE aceptó la cotización. [QUOTATION-APPROVE-UNREACHABLE], COLA #1.
+   *
+   * ⚠️ ACEPTAR NO ES VENDER: no mueve stock ni cambia `status`. Es un eje ADITIVO,
+   * independiente del enum `SaleStatus` — agregar un valor al enum tocaría el guard
+   * de `status` de `firestore.rules`, los filtros de lista y todo agrupamiento por
+   * estado. Escritor único: `markQuotationAccepted` (`salesService.ts`).
+   *
+   * Los 2 campos se escriben SIEMPRE JUNTOS, en el mismo update: uno sin el otro es
+   * un dato roto (el booleano da filtro por igualdad, el timestamp da auditoría).
+   */
+  clientAccepted?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  clientAcceptedAt?: any;
+
   sellerId: string;
   sunat?: {
     tipoDoc: string;
