@@ -141,11 +141,6 @@ function MetallicProductionForm() {
   const [selectedSku, setSelectedSku] = useState("");
   const [rows, setRows] = useState<CoilRow[]>([newRow()]);
   const [submitting, setSubmitting] = useState(false);
-  const [lastResult, setLastResult] = useState<{
-    cantidadProducida: number;
-    costoUnitarioPEN: number;
-    hasNegativeCoilWarning: boolean;
-  } | null>(null);
   const requestIdRef = React.useRef<string | null>(null);
 
   // Cargar catálogo
@@ -368,7 +363,6 @@ function MetallicProductionForm() {
     if (!canSubmit || !selectedProduct) return;
 
     setSubmitting(true);
-    setLastResult(null);
 
     if (!requestIdRef.current) {
       requestIdRef.current = crypto.randomUUID();
