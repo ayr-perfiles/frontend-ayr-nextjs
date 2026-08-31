@@ -5,6 +5,7 @@ import {
   getProductionStateLabel,
   buildQuotationRow,
   canEditQuotation,
+  canAcceptQuotation,
   type QuotationRow,
 } from "./quotationsViewLogic";
 import type { Sale } from "@/types";
@@ -175,5 +176,78 @@ describe("canEditQuotation (E3-2)", () => {
   it("row null/undefined -> NO editable, no lanza", () => {
     expect(canEditQuotation(null as unknown as QuotationRow)).toBe(false);
     expect(canEditQuotation(undefined as unknown as QuotationRow)).toBe(false);
+  });
+});
+
+// ── U2: canAcceptQuotation ([QUOTATION-APPROVE-UNREACHABLE], COLA #1) ────────
+// La accion de aceptacion se gatea en la capa de LOGICA, no en la pagina React:
+// mismo patron que ya ancla canEditQuotation, y el unico harness disponible
+// (medido en la Tanda 6, T0.4). El RED de este bloque es lo que autoriza a
+// escribir el boton — sin el, la condicion de U2.2 no se escribe (v6.80.0).
+describe("canAcceptQuotation (U2)", () => {
+  const row = (
+    origin: string,
+    quotationStatus: string,
+    clientAccepted?: boolean,
+  ): QuotationRow =>
+    ({
+      id: "C-000022",
+      documentNumber: "",
+      customerName: "CLIENTE",
+      timestamp: null,
+      origin: origin as QuotationRow["origin"],
+      quotationStatus,
+      linkedDocument: null,
+      productionStatus: "PENDIENTE",
+      clientAccepted,
+    }) as QuotationRow;
+
+  it("NATIVA + QUOTATION + sin aceptar -> aceptable (unico caso true)", () => {
+    expect(canAcceptQuotation(row("NATIVA", "QUOTATION", undefined))).toBe(true);
+    expect(canAcceptQuotation(row("NATIVA", "QUOTATION", false))).toBe(true);
+  });
+
+  // U2.2: la accion NO aparece si ya esta aceptada. Espeja el guard de
+  // idempotencia de markQuotationAccepted -- el boton nunca ofrece algo que el
+  // escritor va a rechazar (mismo criterio que canEditQuotation vs editQuotation).
+  it("NATIVA + QUOTATION + YA aceptada -> NO aceptable", () => {
+    expect(canAcceptQuotation(row("NATIVA", "QUOTATION", true))).toBe(false);
+  });
+
+  it("IMPORTADA + QUOTATION -> NO aceptable (nace de una factura ya emitida)", () => {
+    expect(canAcceptQuotation(row("IMPORTADA", "QUOTATION", false))).toBe(false);
+  });
+
+  // Allowlist estricta, mismo criterio que canEditQuotation: cualquier estado que
+  // no sea exactamente QUOTATION queda fuera, incluido uno nuevo que se agregue.
+  it.each(["CANCELLED", "CONVERTED", "COMPLETED", "VOIDED", "", "quotation", "QUOTATION "])(
+    "NATIVA + %s -> NO aceptable",
+    (status) => {
+      expect(canAcceptQuotation(row("NATIVA", status, false))).toBe(false);
+    },
+  );
+
+  it("origen desconocido -> NO aceptable (default deniega)", () => {
+    expect(canAcceptQuotation(row("OTRO", "QUOTATION", false))).toBe(false);
+  });
+
+  it("row null/undefined -> NO aceptable, no lanza", () => {
+    expect(canAcceptQuotation(null as unknown as QuotationRow)).toBe(false);
+    expect(canAcceptQuotation(undefined as unknown as QuotationRow)).toBe(false);
+  });
+});
+
+// buildQuotationRow tiene que PROPAGAR el flag: si no lo lleva a la fila, el gate
+// de arriba nunca puede ver una cotizacion ya aceptada y el boton reaparece.
+describe("buildQuotationRow propaga clientAccepted (U2)", () => {
+  it("lleva clientAccepted del doc a la fila", () => {
+    const aceptada = buildQuotationRow(
+      { ...mkQuote({ id: "C-000023" }), clientAccepted: true } as never,
+      [],
+    );
+    expect(aceptada.clientAccepted).toBe(true);
+
+    const sinAceptar = buildQuotationRow(mkQuote({ id: "C-000024" }), []);
+    expect(sinAceptar.clientAccepted).toBeFalsy();
   });
 });

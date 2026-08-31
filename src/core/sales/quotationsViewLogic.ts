@@ -59,6 +59,11 @@ export interface QuotationRow {
   quotationStatus: string;
   linkedDocument: string | null;
   productionStatus: QuotationProductionStatus;
+  /**
+   * El cliente ya aceptó esta cotización ([QUOTATION-APPROVE-UNREACHABLE], COLA #1).
+   * Eje ADITIVO, independiente de `quotationStatus` — aceptar no es vender.
+   */
+  clientAccepted?: boolean;
 }
 
 /** Fila de `/admin/quotations`. Reusa `buildQueueRow` (queueLogic.ts) tal cual para el eje de producción. */
@@ -86,6 +91,7 @@ export function buildQuotationRow(quote: Sale, fulfillmentLogs: any[]): Quotatio
     quotationStatus: quote.status,
     linkedDocument,
     productionStatus,
+    clientAccepted: (quote as any).clientAccepted === true,
   };
 }
 
@@ -108,4 +114,32 @@ export function buildQuotationRow(quote: Sale, fulfillmentLogs: any[]): Quotatio
 export function canEditQuotation(row: QuotationRow | null | undefined): boolean {
   if (!row) return false;
   return row.origin === "NATIVA" && row.quotationStatus === "QUOTATION";
+}
+
+/**
+ * ¿Se puede marcar que el CLIENTE ACEPTÓ esta cotización? ([QUOTATION-APPROVE-UNREACHABLE],
+ * COLA #1, U2.2).
+ *
+ * ⚠️ ACEPTAR NO ES VENDER: la acción que este gate habilita solo escribe
+ * `clientAccepted` + `clientAcceptedAt`. No mueve stock ni cambia `status`.
+ *
+ * Espeja EXACTAMENTE lo que `markQuotationAccepted` (`salesService.ts`) acepta, para
+ * que el botón nunca ofrezca algo que el escritor va a rechazar — mismo criterio que
+ * `canEditQuotation` vs `editQuotation`:
+ *   - solo origen NATIVA (una percha importada nace de una factura ya emitida: el
+ *     cliente no "acepta" lo que ya compró);
+ *   - solo estado `QUOTATION`;
+ *   - solo si NO fue aceptada todavía (el escritor es idempotente y rechaza la
+ *     segunda vez, para no pisar el timestamp original, que es el dato de auditoría).
+ *
+ * Allowlist estricta y sensible a mayúsculas: cualquier otro origen o estado —incluido
+ * uno nuevo que se agregue en el futuro— queda FUERA por defecto.
+ */
+export function canAcceptQuotation(row: QuotationRow | null | undefined): boolean {
+  if (!row) return false;
+  return (
+    row.origin === "NATIVA" &&
+    row.quotationStatus === "QUOTATION" &&
+    row.clientAccepted !== true
+  );
 }
