@@ -1,5 +1,5 @@
 # MÓDULO: ventas (sales) — verdad de arquitectura
-> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: 2026-08-22 (§6 actualizada — gate `createsProductionPercha`, v6.55.0/`608e8d08`). El resto del doc sigue a la fecha del frente EDITAR (2026-08-20, §16) sin cambios, **salvo §7 (dedup del importador, nota agregada 2026-08-24 v6.58.0), el párrafo "FORWARD only" de §6 (retro de cola CERRADO, actualizado 2026-08-24 v6.59.0), y la deuda Algolia de §14 (encuadre re-medido 2026-08-25 v6.61.0: campos en el record 329/330, falta solo el facet) — solo esas líneas verificadas en esas fechas, resto del doc sin re-chequear.**
+> ÚLTIMA VERIFICACIÓN CÓDIGO+PROD: **§6.2 → 2026-08-31, ALCANCE ACOTADO** (solo la sección nueva del guard de percha, `[IMPORT-OVERWRITE]` v6.83.0 — nada más del doc se re-verificó en esa pasada). Antes: 2026-08-22 (§6 — gate `createsProductionPercha`, v6.55.0/`608e8d08`). El resto del doc sigue a la fecha del frente EDITAR (2026-08-20, §16) sin cambios, **salvo §7 (dedup del importador, nota agregada 2026-08-24 v6.58.0), el párrafo "FORWARD only" de §6 (retro de cola CERRADO, actualizado 2026-08-24 v6.59.0), y la deuda Algolia de §14 (encuadre re-medido 2026-08-25 v6.61.0: campos en el record 329/330, falta solo el facet) — solo esas líneas verificadas en esas fechas, resto del doc sin re-chequear.**
 > ⚠️ SE PUDRE. Antes de tocar lógica/costeo/writes de ventas: verificá (checklist §11). No confíes si la fecha está vieja.
 > ⚠️ **§4 de este doc describe el modelo PRE-2026-08-18, hoy OBSOLETO en la parte de agregados de `/admin/sales`. Ver §14 antes de confiar en §4.**
 > ⚠️ **§15 describe `annulSale` como client-side. Eso quedó OBSOLETO en v6.50.0 (swap a callable) y v6.52.1 (bloqueo `self` + gate de stock). La verdad viva de anulación es [`docs/modules/annulment.md`](annulment.md), no §15 — que se conserva por el contexto de #9-B.2b.**
@@ -84,6 +84,41 @@ tocaron por este fix — en su momento seguían calificando para la cola de prod
 (v6.56.0 + v6.59.0):** las 6 están hoy `CANCELLED` y fuera de `PRODUCTION_QUEUE_FILTER` (2 por backfill
 manual en v6.56.0, 4 al anular sus NC gemelas en v6.59.0). Ver deuda retro en
 [`annulment.md`](annulment.md) §0-ter y CLAUDE.md v6.55.0/v6.56.0/v6.59.0.
+
+### 6.2 ⚠️ La percha `COT-*` ya NO se pisa en silencio (v6.83.0, `[IMPORT-OVERWRITE]`)
+
+Hasta v6.82.0 la transacción de importación tenía una **asimetría** dentro del mismo bloque: la venta
+(`saleRef`) se leía con `tx.get` antes de escribir (`COMPLETED` → `OMITTED`, `VOIDED` → archivar a
+`history` + audit `SALE_REPLACED`), pero la percha (`quoteRef`) hacía `tx.set` **a ciegas**, sin ningún
+`tx.get` previo. Una re-importación pisaba cualquier percha existente, sin archivar y sin audit propio.
+Víctimas confirmadas en prod: `COT-FFA1-1255` y `COT-FFA1-1250` (canceladas 2026-07-30, `uploadedAt`
+2026-08-17, las 3 claves de cancelación AUSENTES en el backup del 2026-08-27).
+
+Desde v6.83.0, en `src/core/import/runSaleImportTransaction.ts`:
+
+- La percha se lee con `tx.get(quoteRef)` **en la fase de lecturas** (Firestore exige todos los `tx.get`
+  antes de cualquier `tx.set`, y el primer `tx.set` es el archivado a `history`). El id es determinista
+  (`COT-{documentNumber}`), así que la ref no depende de que `buildImportWrites` emita percha.
+- Si la percha existe **y** está `CANCELLED`, **o** tiene producción ACTIVA → se lanza
+  `PerchaOverwriteBlockedError` y **se aborta la transacción entera**. No se escribe la venta, ni el
+  `history`, ni el audit, ni el stock. La fila queda marcada como `ERROR` en el resumen de import con el
+  mensaje del error (el `catch` del call-site ya existía, no hizo falta UI nueva).
+- "Producción activa" llega **por parámetro** (`hasActivePerchaProduction`), resuelto PRE-transacción: una
+  transacción de Firestore no corre queries, solo doc-get — mismo motivo por el que `annulSale` resuelve la
+  suya afuera. El call-site hace **una sola** query para todo el lote (`getAllActiveFulfillmentLogs` +
+  `bucketLogsBySourceId`) y hace lookup O(1) por fila, el patrón anti-N+1 de v6.35.
+
+**Alcance, dicho explícito:** solo se bloquean esos 2 casos. Una percha `QUOTATION` **sin** producción se
+sigue pisando como antes — la otra mitad de la decisión de v6.76.0 ("archivar a `history` y pisar, igual
+que `saleRef`") NO está implementada y vive en la COLA de `HANDOFF.md` como `[IMPORT-PERCHA-ARCHIVE]`.
+
+**Trampa de fixture medida al escribir el RED:** `firestore.rules` exige
+`fieldsUnchanged(['totalAmount','subtotal','igv','exchangeRate','currency','items','paymentType'])` en todo
+`update` de `sales`. Una percha sembrada a mano sin snapshot financiero hace que el `tx.set` sea rechazado
+por RULES (`PERMISSION_DENIED`) **antes** de llegar al guard — y ése no es el escenario de producción: las 2
+víctimas reales eran re-importaciones del MISMO comprobante, con snapshot idéntico, así que
+`fieldsUnchanged` pasaba y el pisado ocurría. Un test de este guard tiene que sembrar la percha con el
+builder real o no prueba nada.
 
 ## 7. Correlativos y dedup del importador
 - El importador usa `documentNumber` (número de la factura real) como **doc ID** de la venta → dedup natural: re-importar la misma factura PISA el doc existente, no duplica. ⚠️ Cierto para el DOC de `sales`, FALSO para el MOVIMIENTO de stock: el re-import genera un 2º juego de movimientos con auto-id nuevo en `metallic_roofing_stock_movements` y el 1º nunca se borra ni compensa. Ver `docs/modules/metallic.md` §5/§6 y CLAUDE.md/HANDOFF.md v6.58.0.

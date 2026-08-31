@@ -53,6 +53,8 @@ import {
   NcStockAction
 } from "@/utils/importHelpers";
 import { runSaleImportTransaction } from "@/core/import/runSaleImportTransaction";
+import { getAllActiveFulfillmentLogs } from "@/modules/metallic-roofing/services/productionService";
+import { hasActiveProduction, bucketLogsBySourceId } from "@/core/production/fulfillmentLogic";
 import { parseImportRows, SkippedRow, MissingSku, CatalogRef, StockRef, skipReasonLabel, ParsedSale, ParsedSaleItem } from "@/core/import/parseImportRows";
 import type { CoilFinish } from "@/core/coils/services/finishService";
 import {
@@ -532,6 +534,13 @@ export default function SalesImportPage() {
 
       const results: ImportRowResult[] = [];
 
+      // [IMPORT-OVERWRITE] Producción viva por percha, resuelta ANTES de las
+      // transacciones: una transacción de Firestore no corre queries, solo
+      // doc-get (mismo motivo que en `annulSale`, v6.48.6). Una sola query para
+      // TODO el lote + bucket por `source.id` -> lookup O(1) por fila, el mismo
+      // patrón que /production/new y /admin/quotations desde v6.35 (evita el N+1).
+      const activeProductionByQuote = bucketLogsBySourceId(await getAllActiveFulfillmentLogs());
+
       for (const sale of parsedSales) {
         try {
           const result = await runTransaction(db, (tx) =>
@@ -540,6 +549,9 @@ export default function SalesImportPage() {
               sale,
               userUid: user?.uid,
               userEmail: user?.email,
+              hasActivePerchaProduction: hasActiveProduction(
+                activeProductionByQuote.get(`COT-${sale.documentNumber}`) ?? [],
+              ),
             }),
           );
 

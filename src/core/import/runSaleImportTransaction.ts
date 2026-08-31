@@ -15,10 +15,13 @@ import type { ParsedSale } from "@/core/import/parseImportRows";
  * (`src/app/admin/sales/import/page.tsx`), donde vivía inline, para que la UI y los
  * tests puedan compartir una sola implementación — frente `[IMPORT-EXTRACT]`.
  *
- * ⚠️ MOVIMIENTO PURO: el cuerpo es verbatim del inline previo. Lo único que cambió es
- * que `db`, `sale` y los 2 campos del usuario llegan por parámetro en vez de por closure.
- * NO se agregó el guard de `[IMPORT-OVERWRITE]` (`quoteRef` sigue sin `tx.get` previo),
- * ni se tocó ningún fallback. Cualquiera de esas cosas es un frente aparte, con su RED.
+ * En v6.82.0 (`[IMPORT-EXTRACT]`) la extracción fue un MOVIMIENTO PURO: cuerpo verbatim
+ * del inline previo, sin guard nuevo y sin tocar ningún fallback.
+ *
+ * En v6.83.0 (`[IMPORT-OVERWRITE]`) se agregó el ÚNICO cambio de comportamiento que este
+ * módulo tiene desde entonces: el guard de la percha `COT-*`, que antes se escribía con un
+ * `tx.set` sin `tx.get` previo. Ver el bloque marcado más abajo. Los fallbacks (`?? 0`,
+ * `?? 1200`) siguen SIN tocar — son frentes propios.
  *
  * Escribe: `sales/{documentNumber}` · `sales/{documentNumber}/history/{auto}` y un
  * `audit_logs` `SALE_REPLACED` (solo si reemplaza una VOIDED) · `sales/COT-{documentNumber}`
@@ -28,6 +31,34 @@ import type { ParsedSale } from "@/core/import/parseImportRows";
  * de la transacción, en un `writeBatch` propio de la página.
  */
 export type SaleImportTxResult = "OMITTED" | "REPLACED" | "IMPORTED";
+
+/** Por qué se bloqueó el pisado de una percha existente. */
+export type PerchaBlockReason = "CANCELLED" | "ACTIVE_PRODUCTION";
+
+/**
+ * La importación encontró una percha `COT-*` que NO se puede pisar. Aborta la
+ * transacción ENTERA (nada se commitea: ni la venta, ni el archivado a `history`,
+ * ni el audit de reemplazo, ni el stock).
+ *
+ * El call-site del importador ya tiene un `catch` que marca la fila como `ERROR`
+ * con `error.message` en el resumen de import — de ahí sale el "degrada ruidoso"
+ * sin cablear nada nuevo en la UI.
+ */
+export class PerchaOverwriteBlockedError extends Error {
+  readonly quoteId: string;
+  readonly reason: PerchaBlockReason;
+
+  constructor(quoteId: string, reason: PerchaBlockReason) {
+    super(
+      reason === "CANCELLED"
+        ? `La percha de producción ${quoteId} ya existe y está CANCELADA. Re-importar la pisaría en silencio: se aborta la importación de este comprobante. Resolvé la percha antes de re-importar.`
+        : `La percha de producción ${quoteId} ya existe y tiene producción ACTIVA. Re-importar la pisaría en silencio: se aborta la importación de este comprobante. Anulá la producción antes de re-importar.`,
+    );
+    this.name = "PerchaOverwriteBlockedError";
+    this.quoteId = quoteId;
+    this.reason = reason;
+  }
+}
 
 export interface SaleImportTxDeps {
   db: Firestore;
@@ -40,11 +71,25 @@ export interface SaleImportTxDeps {
    * como `undefined` cambiaría lo que queda persistido respecto del inline previo.
    */
   userEmail?: string | null;
+  /**
+   * ¿La percha `COT-{documentNumber}` tiene producción ACTIVA hoy?
+   *
+   * Llega por parámetro y NO se consulta acá a propósito: una transacción de
+   * Firestore no corre queries, solo doc-get — el mismo motivo por el que
+   * `annulSale` resuelve su query de `production_logs` PRE-txn (v6.48.6). El
+   * call-site la resuelve una sola vez para todo el lote
+   * (`getAllActiveFulfillmentLogs` + `bucketLogsBySourceId`), no una por fila.
+   *
+   * Default `false`: un caller que no la pase conserva el comportamiento previo
+   * para esta rama, pero el guard de `CANCELLED` (que sí se lee del doc) sigue
+   * activo igual.
+   */
+  hasActivePerchaProduction?: boolean;
 }
 
 export async function runSaleImportTransaction(
   tx: Transaction,
-  { db, sale, userUid, userEmail }: SaleImportTxDeps,
+  { db, sale, userUid, userEmail, hasActivePerchaProduction = false }: SaleImportTxDeps,
 ): Promise<SaleImportTxResult> {
   const saleRef = doc(db, "sales", sale.documentNumber);
   const existingSaleSnap = await tx.get(saleRef);
@@ -75,6 +120,15 @@ export async function runSaleImportTransaction(
     const snap = await tx.get(info.ref);
     stockSnaps.set(path, snap as DocumentSnapshot);
   }
+
+  // [IMPORT-OVERWRITE] La percha se lee ACÁ, en la fase de lecturas, aunque
+  // recién más abajo se sepa si `buildImportWrites` va a emitir una: Firestore
+  // exige TODOS los `tx.get` antes de cualquier `tx.set`, y el primer `tx.set`
+  // (el archivado a `history` de la rama `isReplacement`) está a 3 líneas. El id
+  // es determinista, así que la ref no depende de `quotationDoc`.
+  const quoteId = `COT-${sale.documentNumber}`;
+  const quoteRef = doc(db, "sales", quoteId);
+  const existingQuoteSnap = await tx.get(quoteRef);
 
   if (isReplacement) {
     const existingData = existingSaleSnap.data()!;
@@ -108,9 +162,38 @@ export async function runSaleImportTransaction(
     },
   };
   const { saleDoc, quotationDoc } = buildImportWrites(saleInputWithMeta, serverTimestamp());
+
+  // [IMPORT-OVERWRITE] — el guard que le faltaba a la percha. La venta (`saleRef`)
+  // lo tiene desde siempre en este mismo bloque (COMPLETED -> abortar,
+  // VOIDED -> archivar); `quoteRef` hacía un `tx.set` a ciegas y pisaba en
+  // silencio perchas canceladas o con producción viva. Víctimas medidas en prod:
+  // COT-FFA1-1255 y COT-FFA1-1250 (v6.76.0).
+  //
+  // Se LANZA en vez de retornar: para este punto la rama `isReplacement` ya dejó
+  // stageados el `history` y el audit `SALE_REPLACED`, así que un `return` los
+  // commitearía dejando la venta sin escribir. El throw aborta la transacción
+  // ENTERA, que es la semántica pedida.
+  //
+  // Alcance declarado: solo se bloquean CANCELLED y producción activa. Una percha
+  // `QUOTATION` sin producción se sigue pisando como hasta hoy — la otra mitad de
+  // la decisión de v6.76.0 ("archivar a history y pisar") NO se implementa acá,
+  // necesita su propio RED.
+  if (quotationDoc && existingQuoteSnap.exists()) {
+    const existingQuote = existingQuoteSnap.data();
+    const blockReason: PerchaBlockReason | null =
+      existingQuote?.status === "CANCELLED"
+        ? "CANCELLED"
+        : hasActivePerchaProduction
+          ? "ACTIVE_PRODUCTION"
+          : null;
+
+    if (blockReason) {
+      throw new PerchaOverwriteBlockedError(quoteId, blockReason);
+    }
+  }
+
   tx.set(saleRef, saleDoc);
   if (quotationDoc) {
-    const quoteRef = doc(db, "sales", `COT-${sale.documentNumber}`);
     tx.set(quoteRef, quotationDoc);
   }
 
