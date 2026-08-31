@@ -63,7 +63,7 @@ beforeEach(() => {
 
 describe("useCoils — indexado 0-based (page pasado a fetchInventory)", () => {
   it("mount → page:0, next → page:1, next → page:2, prev → page:1", async () => {
-    mockedUseFinishes.mockReturnValue({ finishes: [ALUZINC_FINISH], loading: false, error: null });
+    mockedUseFinishes.mockReturnValue({ finishes: [ALUZINC_FINISH], loading: false, error: null, refetch: vi.fn() });
     mockedFetchInventory.mockImplementation(async () => memoryResult(100));
 
     const { result } = renderHook(() =>
@@ -96,7 +96,7 @@ describe("useCoils — indexado 0-based (page pasado a fetchInventory)", () => {
 
 describe("useCoils — guard (a): finishes todavía cargando", () => {
   it("con lineFilter y finishes cargando, NO fetchea y queda loading:true", async () => {
-    mockedUseFinishes.mockReturnValue({ finishes: [], loading: true, error: null });
+    mockedUseFinishes.mockReturnValue({ finishes: [], loading: true, error: null, refetch: vi.fn() });
     mockedFetchInventory.mockImplementation(async () => memoryResult(0));
 
     const { result } = renderHook(() =>
@@ -115,7 +115,7 @@ describe("useCoils — guard (a): finishes todavía cargando", () => {
 
 describe("useCoils — guard (b): línea sin finishes activos (spinner eterno)", () => {
   it("con lineFilter y finishes ya cargados pero [], NO fetchea y queda vacío honesto", async () => {
-    mockedUseFinishes.mockReturnValue({ finishes: [], loading: false, error: null });
+    mockedUseFinishes.mockReturnValue({ finishes: [], loading: false, error: null, refetch: vi.fn() });
     mockedFetchInventory.mockImplementation(async () => memoryResult(0));
 
     const { result } = renderHook(() =>
@@ -133,7 +133,7 @@ describe("useCoils — guard (b): línea sin finishes activos (spinner eterno)",
 
 describe("useCoils — no-regresión: bobinas-supervisor (sin lineFilter)", () => {
   it("sin lineFilter, fetchea de inmediato sin esperar los finishes, con lineFinishIds undefined", async () => {
-    mockedUseFinishes.mockReturnValue({ finishes: [], loading: true, error: null });
+    mockedUseFinishes.mockReturnValue({ finishes: [], loading: true, error: null, refetch: vi.fn() });
     mockedFetchInventory.mockImplementation(async () => cursorResult());
 
     const { result } = renderHook(() => useCoils({ ...baseFilters, pageSize: 9999 }));
@@ -147,7 +147,7 @@ describe("useCoils — no-regresión: bobinas-supervisor (sin lineFilter)", () =
 
 describe("useCoils — estabilidad (riesgo de bucle infinito)", () => {
   it("re-renderizar 3 veces sin cambiar filtros no dispara fetchs nuevos", async () => {
-    mockedUseFinishes.mockReturnValue({ finishes: [ALUZINC_FINISH], loading: false, error: null });
+    mockedUseFinishes.mockReturnValue({ finishes: [ALUZINC_FINISH], loading: false, error: null, refetch: vi.fn() });
     mockedFetchInventory.mockImplementation(async () => memoryResult(100));
 
     const filters: CoilFilters = { ...baseFilters, lineFilter: "metallic-roofing" };
