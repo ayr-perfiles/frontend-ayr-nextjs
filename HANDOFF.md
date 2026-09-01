@@ -1,6 +1,22 @@
 # Handoff — AYR Steel ERP (Siguiente Sesión)
 
-> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.96.0).
+> Subir SIEMPRE al inicio: este HANDOFF + CLAUDE.md (v6.97.0).
+>
+> ✅ **TANDA 20 CERRADA PARCIAL (v6.97.0), rama `feat/design-kit`. 1 de las 4 piezas compartidas re-skineada; las otras 3 NO se tocaron.**
+> Se paró por **presupuesto, no por tripwire** — ninguno de los 4 disparó, y el que pareció disparar (**−5.7% de alto en `d-busqueda-vacia`**)
+> **se disolvió midiendo**: el código REVERTIDO daba el mismo número, o sea que el "antes" era una muestra única no replicada. **Una sola captura no es baseline.**
+> **`RowActionsMenu`** (pieza 1/4, commit `4238b892`): API pública **byte-idéntica**, **cero consumidores tocados**, ~45 líneas de posicionamiento a mano
+> reemplazadas por el `DropdownMenu` del kit (que además trae teclado, `Escape`, foco y ARIA que el hecho a mano no tenía).
+> **Custodio de comportamiento NUEVO** (`RowActionsMenu.test.tsx`, 8 casos, commit `4542fecc`) escrito contra la implementación VIEJA y verde ANTES del re-skin.
+> ⚠️ **6/8 se pusieron rojos tras el re-skin y el diagnóstico correcto era el contrario al obvio:** el navegador real abría el menú perfecto ⇒ artefacto del
+> harness (Radix abre en `onPointerDown`, y `fireEvent.click` de jsdom no lo emite). **Se arregló la SIMULACIÓN, no las aserciones**, y que siguen
+> discriminando está probado por mutación (M2 → exactamente 2 failed, blast radius correcto), no por confianza.
+> **Custodio visual nuevo** (`e2e/capture-table-pieces.spec.ts`, commit `80156c93`): 4 estados sobre `/admin/sales`, incluidos los 2 ABIERTOS —
+> sin abrirlos el custodio no ve 2 de las 4 piezas. `isLoading` declarado como NO cubierto.
+> **Para la TANDA 21 (las 3 piezas que faltan):** el método está validado extremo a extremo sobre la pieza 1 — repetir el ciclo tal cual
+> (tests de comportamiento en verde ANTES → re-skin → mutación → medición visual aislada revert-vs-reskin en el MISMO momento y datos).
+> ⚠️ **Antes de dimensionar, RE-MEDIR los consumidores: las cifras 17/22/22/22 son FALSAS** (medido: 19/23/24/25), y las nuevas son **cota superior** —
+> `grep -rl` cuenta archivos que MENCIONAN, no consumidores reales (al menos 2 de los 19 de `RowActionsMenu` son menciones en comentarios).
 >
 > ✅ **TANDA 19 CERRADA (v6.96.0), rama `feat/design-kit`.** Control positivo del cableado: **el kit SÍ cargó** (`bg-primary` emite donde antes no emitía). `#63` **ARREGLADA** (checker excluye vendorizados; 22 citas vuelven a rojo honesto). `#64` **RESUELTA para los 16 tokens que importan** — la marca de AYR entra en los nombres bare y `bg-primary` ya da el azul de AYR; quedan 2 salvedades declaradas (`--chart-*`/`--sidebar*` sin equivalente, y `--background`/`--foreground` sin tocar). **Piloto de re-skin (`HeaderOptionsMenu`, 1 consumidor) hecho con la API pública intacta**, cambio confinado (0.0913% en su pantalla, **0.0000% en las otras 6**).
 > ⚠️ **CORRECCIÓN IMPORTANTE A LA TANDA 18:** su "0.006–0.059% = ruido de antialiasing" era **falso** — eran los radios creciendo ~2px en 179 instancias por el mismo bare-trap. Restaurados a la escala de AYR (4/6/8/12). Detalle en `CLAUDE.md` v6.96.0 §11.
@@ -786,6 +802,12 @@
     - **Confirmado leyendo el fuente, no solo el rojo:** `walk()` (línea 66-75) hace `readdirSync(dir)` directo, sin `existsSync` antes. `PREVIEW_DIR` se recorre SIEMPRE (línea 100), nunca condicionalmente.
     - **La portabilidad del código FUENTE (lo único que de verdad importa: que no importe nada de AYR) ya está confirmada** — corrida exitosa en la Tanda 16/17 CON `preview/` presente (exit 0, 66 archivos, 0 problemas). Este hallazgo es sobre el SCRIPT, no sobre si el kit es portable.
     - **PREGUNTA ABIERTA, no decidida acá: ¿se restaura un `preview/` mínimo (aunque sea vacío, solo para que el script no crashee) o se acepta el custodio muerto mientras el kit viva vendorizado?** Ninguna opción se implementó. `preview/` completo (con su propio `.next`) no vuelve a copiarse sin una razón nueva — eso fue una decisión explícita de la Tanda 17.
+    - **NO atacada.**
+
+66. **`[RESKIN-3-PIEZAS-PENDIENTES]` — NUEVA (v6.97.0, TANDA 20).** Verificado que `#65` era el máximo ANTES de numerar, no asumido. `TableFilters`, `TablePagination` y `DataTable` **NO se re-skinearon**. No hay diagnóstico pendiente: **no disparó ningún tripwire, ninguna API dejó de entrar y ningún test se puso rojo — se acabó el presupuesto de la tanda.** Las 3 quedan exactamente como estaban, sin trabajo a medias ni tests colgando.
+    - **El método está VALIDADO extremo a extremo sobre `RowActionsMenu`** (pieza 1/4, v6.97.0) y se repite tal cual, por pieza y por commit: tests de comportamiento escritos contra la implementación VIEJA y **verdes ANTES** de tocar nada → re-skin con API byte-idéntica y cero consumidores tocados → **mutación** que pruebe que los tests siguen discriminando → medición visual **aislada** (revert vs re-skin, mismo momento y mismos datos) contra el piso de ruido.
+    - ⚠️ **ANTES de dimensionar, RE-MEDIR: las cifras de consumidores que se venían citando (17/22/22/22) son FALSAS.** Medido en el PASO 0 de la Tanda 20 con conteo crudo por término y por árbol (`B20`), sobre `src/`, excluyendo la propia pieza y sus tests: **19 / 23 / 24 / 25**. **Y las nuevas son COTA SUPERIOR**, no conteo de consumidores reales: `grep -rl` cuenta archivos que MENCIONAN el símbolo, y al menos 2 de los 19 de `RowActionsMenu` lo mencionan en comentarios sin montarlo. Saber cuántos son de verdad exige leer cada archivo — esa tanda no lo hizo y no se finge que sí.
+    - **Los 2 custodios que la Tanda 20 dejó puestos y que estas 3 piezas heredan gratis:** el visual de 4 estados (`e2e/capture-table-pieces.spec.ts`, que ya monta las 4 piezas a la vez en `/admin/sales`, con los 2 estados ABIERTOS que hacen visibles a `TableFilters` y al menú de fila) y el molde de test de comportamiento de `src/components/ui/RowActionsMenu.test.tsx`. ⚠️ **De ese molde, lo que hay que copiar es el helper de apertura por `pointerDown`**: Radix abre en `onPointerDown` y el `fireEvent.click` de jsdom **no emite ese evento** — con `click` los tests dan rojo aunque el componente funcione perfecto en el navegador. Es la trampa que costó un diagnóstico entero en la Tanda 20.
     - **NO atacada.**
 
 > **VERIFICACIÓN DE COLA — C2, 2026-08-31 (v6.82.0). 29 ítems vivos, un grep/medición por fila.**
