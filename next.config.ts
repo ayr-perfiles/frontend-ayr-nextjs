@@ -1,6 +1,22 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // [E2E-HARNESS] (COLA #6, v6.90.0) — ADITIVO, y NO-OP sin la variable.
+  //
+  // `next dev` toma un lock exclusivo en `<distDir>/dev/lock`, así que el
+  // harness de Playwright NO puede levantar su propio dev server mientras el
+  // `next dev` del dueño esté vivo sobre este mismo repo (medido: PID 24748,
+  // creado 30/08 16:17, respondiendo 200 en :3000 y :3001 — se verificó que
+  // está VIVO, no zombie, y NO se lo mata: terminar el servidor de otra sesión
+  // no corresponde, misma decisión que v6.52.0 ya tomó ante este mismo proceso).
+  //
+  // `next dev` no tiene flag `--dist-dir` (verificado en `next dev --help`,
+  // v16.1.7) y no existe ninguna env var estándar equivalente, así que el
+  // único punto donde esto se puede parametrizar es acá.
+  //
+  // El default es `.next`, byte-idéntico al comportamiento previo: ningún build
+  // que no setee `AYR_E2E_DIST_DIR` cambia en nada. Solo el harness la setea.
+  distDir: process.env.AYR_E2E_DIST_DIR || ".next",
   async redirects() {
     return [
       {
