@@ -1,0 +1,63 @@
+/**
+ * TANDA 20 — custodio visual de las 4 piezas compartidas
+ * (`DataTable`, `TableFilters`, `TablePagination`, `RowActionsMenu`).
+ *
+ * Se concentran en `/admin/sales` porque esa pantalla monta las 4 a la vez
+ * con datos reales, y en estados que las hacen VISIBLES: sin abrir el menú
+ * de fila ni el panel de filtros, el custodio no ve dos de las cuatro piezas
+ * que esta tanda cambia.
+ *
+ * Estados capturados:
+ *   a-tabla-lista      — DataTable con filas + TablePagination al pie
+ *   b-menu-fila-abierto— RowActionsMenu desplegado (portal)
+ *   c-filtros-abierto  — TableFilters con su panel abierto
+ *   d-busqueda-vacia   — DataTable en emptyState (búsqueda sin resultados),
+ *                        que además ejercita el input de TableFilters
+ *
+ * `isLoading` NO se captura: es un estado transitorio que depende del tiempo
+ * de respuesta de Firestore y no hay forma estable de congelarlo desde acá
+ * sin mockear la red. Declarado, no simulado.
+ */
+import { test, type Page } from "@playwright/test";
+import * as fs from "fs";
+import * as path from "path";
+
+const OUT_DIR = process.env.AYR_CAPTURE_OUT_DIR || "";
+
+async function shot(page: Page, name: string) {
+  const h = await page.evaluate(() => document.documentElement.scrollHeight);
+  fs.writeFileSync(path.join(OUT_DIR, `${name}.height.txt`), String(h));
+  await page.screenshot({ path: path.join(OUT_DIR, `${name}.png`), fullPage: true });
+}
+
+test("piezas de tabla en 4 estados", async ({ page }) => {
+  if (!OUT_DIR) throw new Error("AYR_CAPTURE_OUT_DIR no seteado.");
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+
+  await page.goto("/admin/sales", { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("table tbody tr", { timeout: 25_000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  await shot(page, "a-tabla-lista");
+
+  // (b) menú de fila abierto — el trigger es el último botón de la 1ª fila.
+  const firstRow = page.locator("table tbody tr").first();
+  await firstRow.locator("button").last().click();
+  await page.waitForTimeout(700);
+  await shot(page, "b-menu-fila-abierto");
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.mouse.click(5, 5); // cerrar por click-afuera
+  await page.waitForTimeout(500);
+
+  // (c) panel de filtros abierto
+  await page.getByRole("button", { name: /Filtros/i }).first().click();
+  await page.waitForTimeout(800);
+  await shot(page, "c-filtros-abierto");
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.waitForTimeout(500);
+
+  // (d) emptyState vía búsqueda sin resultados (ejercita el input de filtros)
+  const search = page.locator('input[type="text"], input[placeholder*="Buscar" i]').first();
+  await search.fill("ZZZZ-NO-EXISTE-ZZZZ");
+  await page.waitForTimeout(2000);
+  await shot(page, "d-busqueda-vacia");
+});
