@@ -72,7 +72,19 @@ process.env.AYR_E2E_AUTH_STATE = AUTH_STATE;
 
 export default defineConfig({
   testDir: ".",
-  testMatch: /.*\.spec\.ts$/,
+  // TANDA 18 — dos PROYECTOS separados en vez de un `test.skip()` silencioso
+  // dentro del spec de captura (Tanda 17): el motivo de la exclusión queda
+  // escrito en la config que decide qué corre, no adentro de un archivo que
+  // nadie mira al preguntarse "qué ejecuta `npm run test:e2e`".
+  //
+  // `npm run test:e2e` pasa `--project=importador` explícito (ver
+  // package.json) — así el custodio del importador nunca arrastra los specs
+  // de captura visual, y viceversa: `--project=capture` nunca corre el
+  // importador contra un backend real sin que alguien lo pida a propósito.
+  projects: [
+    { name: "importador", testMatch: /importador\.spec\.ts$/ },
+    { name: "capture", testMatch: /capture-.*\.spec\.ts$/ },
+  ],
   fullyParallel: false,
   workers: 1,
   retries: 0,
