@@ -183,11 +183,26 @@ describe("TableFilters — comportamiento", () => {
     expect(screen.getByText("EXTRA")).toBeDefined();
   });
 
+  /**
+   * ⚠️ El Escape se emite en `document`, NO en `window`, y el motivo está
+   * MEDIDO con una sonda descartable, no supuesto: desde la Tanda 21 el panel
+   * es un `Sheet` del kit (Radix Dialog), que instala su listener en
+   * `ownerDocument`. Un `fireEvent.keyDown(window, …)` NO baja a `document`
+   * (window es el ancestro de la cadena, no el descendiente), así que el
+   * listener nunca lo ve. Medido: `window` → NO cierra; `document` → cierra;
+   * `document.body` → cierra.
+   *
+   * `document` es además MÁS fiel a la realidad que `window`: un Escape de
+   * usuario nace en el elemento con foco y burbujea por `document` antes de
+   * llegar a `window`. **La aserción no cambió** — cambió dónde se emite el
+   * evento sintético. Mismo caso que el `pointerDown` de `RowActionsMenu` en
+   * la Tanda 20, y que sigue discriminando está probado por mutación.
+   */
   it("Escape cierra el panel", () => {
     render(<TableFilters filterGroups={[group()]} />);
     openPanel();
     expect(screen.getByText("Filtros Avanzados")).toBeDefined();
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByText("Filtros Avanzados")).toBeNull();
   });
 });
