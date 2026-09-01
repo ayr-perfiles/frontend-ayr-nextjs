@@ -1,6 +1,33 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, ReactNode } from "react";
-import { createPortal } from "react-dom";
+"use client";
+
+import React, { ReactNode } from "react";
 import { MoreHorizontal, Loader2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/design-kit/components/ui/dropdown-menu";
+
+/**
+ * TANDA 20 — pieza 1 de 4 del re-skin (18 consumidores).
+ *
+ * API PÚBLICA BYTE-IDÉNTICA: `RowAction` y `RowActionsMenuProps` no cambian,
+ * y ningún consumidor se toca. Lo que cambia son las tripas.
+ *
+ * QUÉ SE BORRÓ, y por qué el reemplazo es mejor y no solo distinto: la
+ * versión anterior mantenía a mano `useState` + `useRef` + `useLayoutEffect`
+ * + `createPortal` + ~45 líneas de aritmética de posicionamiento (flip
+ * vertical, clamp y flip horizontal, listeners de `scroll`/`resize`/`click`).
+ * Radix hace todo eso — colisión con el viewport incluida — y además agrega
+ * lo que la versión a mano NO tenía: navegación por teclado, `Escape`,
+ * manejo de foco y roles ARIA (`menu`/`menuitem`).
+ *
+ * `align` y `menuWidth` siguen siendo props públicas: se traducen al
+ * vocabulario de Radix acá adentro (`right`→`end`, `left`→`start`), que es
+ * justamente el tipo de mapeo que permite conservar la firma.
+ */
 
 export interface RowAction {
   id: string;
@@ -21,168 +48,72 @@ interface RowActionsMenuProps {
   menuWidth?: number;
 }
 
+const variantClasses: Record<NonNullable<RowAction["variant"]>, string> = {
+  default: "text-slate-700 focus:bg-slate-50 focus:text-slate-900",
+  primary: "text-blue-600 focus:bg-blue-50 focus:text-blue-700",
+  danger: "text-red-600 focus:bg-red-50 focus:text-red-700",
+  warning: "text-orange-600 focus:bg-orange-50 focus:text-orange-700",
+};
+
 export function RowActionsMenu({
   trigger,
   items,
   align = "right",
   menuWidth = 208, // w-52
 }: RowActionsMenuProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, right: 0, useRight: false });
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const updatePosition = () => {
-    if (isOpen && buttonRef.current && menuRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      const menuHeight = menuRef.current.offsetHeight;
-      const spacing = 4;
-      const padding = 8;
-
-      let top = rect.bottom + window.scrollY + spacing;
-      let left = rect.left + window.scrollX;
-      let right = window.innerWidth - rect.right;
-      let useRight = align === "right";
-
-      // Vertical Flip
-      if (rect.bottom + menuHeight + spacing > window.innerHeight) {
-        top = rect.top + window.scrollY - menuHeight - spacing;
-      }
-
-      // Horizontal Clamp & Flip
-      if (useRight) {
-        if (window.innerWidth - right < menuWidth + padding) {
-          // No cabe a la derecha, intentar alinear a la izquierda
-          useRight = false;
-          left = Math.max(padding, left);
-        } else {
-          right = Math.max(padding, right);
-        }
-      } else {
-        if (left + menuWidth + padding > window.innerWidth) {
-          // No cabe a la izquierda, intentar alinear a la derecha
-          useRight = true;
-          right = Math.max(padding, window.innerWidth - rect.right);
-        } else {
-          left = Math.max(padding, left);
-        }
-      }
-
-      setMenuPosition({ top, left, right, useRight });
-    }
-  };
-
-  useLayoutEffect(() => {
-    if (isOpen) {
-      updatePosition();
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleEvents = () => setIsOpen(false);
-    const handleResize = () => updatePosition();
-
-    window.addEventListener("click", handleEvents);
-    window.addEventListener("scroll", handleEvents, true);
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      window.removeEventListener("click", handleEvents);
-      window.removeEventListener("scroll", handleEvents, true);
-      window.removeEventListener("resize", handleResize);
-    };
-  }, [isOpen]);
-
-  const toggleMenu = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsOpen(!isOpen);
-  };
-
-  // Group items by section
-  const visibleItems = items.filter(item => !item.hidden);
-  const sections: { [key: string]: RowAction[] } = {};
+  // Agrupación por sección, preservando el orden de aparición — mismo
+  // criterio que la versión anterior.
+  const visibleItems = items.filter((item) => !item.hidden);
+  const sections: Record<string, RowAction[]> = {};
   const sectionOrder: string[] = [];
-
-  visibleItems.forEach(item => {
-    const sectionName = item.section || "default";
-    if (!sections[sectionName]) {
-      sections[sectionName] = [];
-      sectionOrder.push(sectionName);
+  visibleItems.forEach((item) => {
+    const name = item.section || "default";
+    if (!sections[name]) {
+      sections[name] = [];
+      sectionOrder.push(name);
     }
-    sections[sectionName].push(item);
+    sections[name].push(item);
   });
-
-  const variantClasses = {
-    default: "text-slate-700 hover:bg-slate-50 hover:text-slate-900",
-    primary: "text-blue-600 hover:bg-blue-50 hover:text-blue-700",
-    danger: "text-red-600 hover:bg-red-50 hover:text-red-700",
-    warning: "text-orange-600 hover:bg-orange-50 hover:text-orange-700",
-  };
 
   return (
     <div className="relative flex justify-center">
-      <button
-        ref={buttonRef}
-        onClick={toggleMenu}
-        className={`p-2 rounded-lg transition-all ${
-          isOpen ? "bg-blue-50 text-blue-600" : "text-slate-400 hover:bg-slate-100 hover:text-blue-600"
-        }`}
-      >
-        {trigger || <MoreHorizontal size={20} />}
-      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          className="group p-2 rounded-lg transition-all text-slate-400 hover:bg-slate-100 hover:text-blue-600 data-[state=open]:bg-blue-50 data-[state=open]:text-blue-600 outline-none"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {trigger || <MoreHorizontal size={20} />}
+        </DropdownMenuTrigger>
 
-      {mounted &&
-        isOpen &&
-        createPortal(
-          <div
-            ref={menuRef}
-            className="absolute bg-white border border-slate-100 rounded-xl shadow-2xl z-[9999] py-2 animate-in fade-in zoom-in-95 overflow-hidden"
-            style={{
-              width: menuWidth,
-              top: menuPosition.top,
-              ...(menuPosition.useRight
-                ? { right: menuPosition.right }
-                : { left: menuPosition.left }),
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {sectionOrder.map((sectionName, sIdx) => (
-              <React.Fragment key={sectionName}>
-                {sIdx > 0 && <div className="h-px bg-slate-100 my-1 mx-2" />}
-                {sections[sectionName].map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      if (!item.disabled && !item.loading) {
-                        item.onClick();
-                        setIsOpen(false);
-                      }
-                    }}
-                    disabled={item.disabled || item.loading}
-                    className={`w-full text-left px-4 py-2 text-sm font-semibold flex items-center gap-2 transition-all disabled:opacity-50 ${
-                      variantClasses[item.variant || "default"]
-                    }`}
-                  >
-                    {item.loading ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      item.icon
-                    )}
-                    {item.label}
-                  </button>
-                ))}
-              </React.Fragment>
-            ))}
-          </div>,
-          document.body
-        )}
+        <DropdownMenuContent
+          align={align === "right" ? "end" : "start"}
+          sideOffset={4}
+          style={{ width: menuWidth }}
+          className="rounded-xl shadow-2xl py-2 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {sectionOrder.map((sectionName, sIdx) => (
+            <React.Fragment key={sectionName}>
+              {sIdx > 0 && <DropdownMenuSeparator className="my-1 mx-2" />}
+              {sections[sectionName].map((item) => (
+                <DropdownMenuItem
+                  key={item.id}
+                  disabled={item.disabled || item.loading}
+                  onSelect={() => {
+                    if (!item.disabled && !item.loading) item.onClick();
+                  }}
+                  className={`px-4 py-2 text-sm font-semibold flex items-center gap-2 ${
+                    variantClasses[item.variant || "default"]
+                  }`}
+                >
+                  {item.loading ? <Loader2 size={16} className="animate-spin" /> : item.icon}
+                  {item.label}
+                </DropdownMenuItem>
+              ))}
+            </React.Fragment>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
