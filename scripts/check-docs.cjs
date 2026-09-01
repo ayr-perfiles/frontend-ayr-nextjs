@@ -163,6 +163,28 @@ function buildCorpus() {
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '.next', 'coverage', '.vercel', '.turbo', 'out', 'dist']);
 
+/**
+ * TANDA 19 — directorios VENDORIZADOS: código de terceros que vive dentro del
+ * repo pero que no es de AYR. Se excluyen del índice por BASENAME (no de la
+ * resolución por ruta completa, que sigue andando vía `fs.existsSync`).
+ *
+ * Motivo medido, no estético (COLA `#63`): al vendorizar el design-kit, su
+ * `components/ui/sidebar.tsx` pasó a ser el único archivo del repo con ese
+ * basename — y 22 citas históricas que decían "el `sidebar.tsx` de AYR fue
+ * borrado en 9f080f8a" pasaron de ROTO/HISTORICA a **OK apuntando al archivo
+ * del kit**. Un custodio que pasa de rojo honesto a verde falso deja de
+ * avisar y nadie se entera; eso es peor que uno roto.
+ *
+ * Una cita que SÍ quiera hablar de un archivo del kit se escribe con RUTA
+ * COMPLETA (`src/design-kit/...`), que resuelve por existencia y es además
+ * más precisa que un nombre suelto.
+ */
+const VENDORED_PREFIXES = ['src/design-kit/'];
+
+function isVendored(relPath) {
+  return VENDORED_PREFIXES.some((p) => relPath.startsWith(p));
+}
+
 function buildFileIndex() {
   const byBasename = new Map(); // basename -> [relPath,...]
   (function walk(dir) {
@@ -180,6 +202,7 @@ function buildFileIndex() {
         walk(full);
       } else {
         const rel = path.relative(REPO_ROOT, full).split(path.sep).join('/');
+        if (isVendored(rel)) continue; // ver VENDORED_PREFIXES arriba
         const base = entry.name;
         if (!byBasename.has(base)) byBasename.set(base, []);
         byBasename.get(base).push(rel);
