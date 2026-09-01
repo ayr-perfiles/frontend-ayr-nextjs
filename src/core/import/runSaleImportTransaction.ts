@@ -55,7 +55,7 @@ export class PerchaOverwriteBlockedError extends Error {
   constructor(quoteId: string, reason: PerchaBlockReason) {
     super(
       reason === "CANCELLED"
-        ? `La percha de producción ${quoteId} ya existe y está CANCELADA. Re-importar la pisaría en silencio: se aborta la importación de este comprobante. Resolvé la percha antes de re-importar.`
+        ? `La percha de producción ${quoteId} está CANCELADA porque la venta que la generó fue anulada. Este comprobante no se vuelve a importar: es el cierre correcto, no hay ninguna acción pendiente sobre esta percha.`
         : `La percha de producción ${quoteId} ya existe y tiene producción ACTIVA. Re-importar la pisaría en silencio: se aborta la importación de este comprobante. Anulá la producción antes de re-importar.`,
     );
     this.name = "PerchaOverwriteBlockedError";
