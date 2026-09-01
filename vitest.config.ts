@@ -40,6 +40,18 @@ export default defineConfig({
       '**/src/test/rules/**',
       '**/src/test/integration/**',
       '**/functions/src/callables/**',
+      // [E2E-HARNESS] (COLA #6, v6.90.0) — specs de Playwright.
+      //
+      // El `include` de arriba es `**/*.{test,spec}.*`, o sea que SIN esta
+      // entrada `npm run test` levantaría `e2e/*.spec.ts` con vitest y moriría
+      // importando `@playwright/test`. Medido y predicho ANTES de agregarla.
+      //
+      // Su CUSTODIO es `npm run test:e2e` (config propia en
+      // `e2e/playwright.config.ts`), no `vitest.emu.config.ts` — es la única
+      // entrada de este exclude cuyo custodio vive fuera de vitest. Cumple la
+      // condición que el comentario de arriba exige: ninguna entrada acá sin
+      // custodio propio, o se borra la cobertura en silencio.
+      '**/e2e/**',
     ],
     coverage: {
       provider: 'v8',

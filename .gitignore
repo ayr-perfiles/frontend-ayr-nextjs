@@ -121,3 +121,9 @@ sales_quotation_test_backup_*.json
 /read_a2.cjs
 /read_backup.cjs
 /recon.cjs
+
+# [E2E-HARNESS] (COLA #6, v6.90.0) — estado de sesion del harness de Playwright.
+# Lo escribe el globalSetup tras el login de sonda: son TOKENS de una cuenta
+# real de `ayrsteel-test`. Nunca se versiona. Los .ts de `e2e/` SI se versionan
+# (verificado con `git check-ignore`: ninguna regla los tapaba).
+/e2e/.auth/
