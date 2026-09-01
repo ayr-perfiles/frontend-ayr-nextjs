@@ -127,3 +127,8 @@ sales_quotation_test_backup_*.json
 # real de `ayrsteel-test`. Nunca se versiona. Los .ts de `e2e/` SI se versionan
 # (verificado con `git check-ignore`: ninguna regla los tapaba).
 /e2e/.auth/
+
+# [E2E-HARNESS] (COLA #6, v6.90.0) — dist dir propio del harness. `next dev`
+# toma un lock exclusivo en <distDir>/dev/lock, asi que el harness no puede
+# compartir `.next` con el `next dev` del dueno. Ver next.config.ts.
+/.next-e2e/

@@ -50,6 +50,26 @@ process.env.AYR_E2E_SCRATCH = SCRATCH;
 const PORT = Number(process.env.AYR_E2E_PORT || 3101);
 const BASE_URL = process.env.AYR_E2E_BASE_URL || `http://localhost:${PORT}`;
 
+// La raíz del repo. `webServer.command` corre desde el directorio del CONFIG
+// (o sea `e2e/`), donde `next dev` no encuentra `app/` y muere con
+// "Couldn't find any `pages` or `app` directory" — medido en la 1ª corrida.
+//
+// Se deriva de `process.cwd()` y NO de `__dirname`: Playwright carga este
+// config como ESM, donde `__dirname` no existe (medido: `ReferenceError:
+// __dirname is not defined in ES module scope`). `npm run test:e2e` siempre
+// pone el cwd en el directorio del `package.json`, así que es determinista —
+// y si alguien lo corre desde otro lado, el assert de abajo falla RUIDOSO en
+// vez de arrancar un dev server en el directorio equivocado.
+const REPO_ROOT = process.cwd();
+if (!fs.existsSync(path.join(REPO_ROOT, "package.json"))) {
+  throw new Error(
+    `[E2E-HARNESS] cwd inesperado: ${REPO_ROOT} (no tiene package.json). ` +
+      "Corré el harness con `npm run test:e2e` desde la raíz del repo.",
+  );
+}
+const AUTH_STATE = path.join(REPO_ROOT, "e2e", ".auth", "state.json");
+process.env.AYR_E2E_AUTH_STATE = AUTH_STATE;
+
 export default defineConfig({
   testDir: ".",
   testMatch: /.*\.spec\.ts$/,
@@ -63,13 +83,14 @@ export default defineConfig({
   outputDir: path.join(SCRATCH, "traces"),
   use: {
     baseURL: BASE_URL,
-    storageState: "e2e/.auth/state.json",
+    storageState: AUTH_STATE,
     trace: "on", // traza por escenario, persistida en SCRATCH (fuera del repo)
     screenshot: "only-on-failure",
     video: "off",
   },
   webServer: {
     command: `npx next dev -p ${PORT}`,
+    cwd: REPO_ROOT,
     url: BASE_URL,
     reuseExistingServer: false, // NUNCA engancharse a :3000/:3001 (B12)
     timeout: 180_000,
@@ -78,6 +99,10 @@ export default defineConfig({
     env: {
       NEXT_PUBLIC_USE_EMULATOR: "false",
       NEXT_PUBLIC_FIREBASE_PROJECT_ID: "ayrsteel-test",
+      // Dist dir PROPIO: `next dev` toma un lock exclusivo en
+      // `<distDir>/dev/lock` y el dev server del dueño (vivo en :3000/:3001)
+      // ya tiene el de `.next`. Ver el comentario en `next.config.ts`.
+      AYR_E2E_DIST_DIR: ".next-e2e",
     },
   },
 });

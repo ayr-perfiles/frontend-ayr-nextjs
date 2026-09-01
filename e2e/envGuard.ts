@@ -118,13 +118,36 @@ export function guardBackendFromRequests(urls: string[]): GuardResult {
   const plain = `projects/${EXPECTED_PROJECT}/`;
   const hits = urls.filter((u) => u.includes(encoded) || u.includes(plain));
   if (hits.length === 0) {
+    // El aborto NOMBRA lo medido: sin los hosts, "cero requests" no distingue
+    // "el backend está mal" de "todavía no hubo tráfico" — que fue exactamente
+    // el falso aborto de la 1ª corrida real de esta tanda.
+    const hosts = new Map<string, number>();
+    for (const u of urls) {
+      try {
+        const h = new URL(u).host;
+        hosts.set(h, (hosts.get(h) ?? 0) + 1);
+      } catch {
+        hosts.set("(no parseable)", (hosts.get("(no parseable)") ?? 0) + 1);
+      }
+    }
+    const detalle = [...hosts.entries()].map(([h, n]) => `${h}×${n}`).join(", ");
     return {
       ok: false,
-      reason: `CERO requests al backend de ${EXPECTED_PROJECT} (se buscó "${encoded}" y "${plain}" en ${urls.length} requests). Sin evidencia POSITIVA no se afirma el backend.`,
+      reason: `CERO requests al backend de ${EXPECTED_PROJECT} (se buscó "${encoded}" y "${plain}" en ${urls.length} requests). Hosts vistos: ${detalle}. Sin evidencia POSITIVA no se afirma el backend.`,
     };
   }
 
   return { ok: true };
+}
+
+/** Host de Firestore en la nube. Ver `waitForBackendEvidence` en el globalSetup. */
+export const FIRESTORE_CLOUD_HOST = "firestore.googleapis.com";
+
+/** ¿Ya hay al menos un request al backend esperado? Predicado para esperar tráfico. */
+export function hasBackendEvidence(urls: string[]): boolean {
+  const encoded = `projects%2F${EXPECTED_PROJECT}%2F`;
+  const plain = `projects/${EXPECTED_PROJECT}/`;
+  return urls.some((u) => u.includes(encoded) || u.includes(plain));
 }
 
 /** Corre las 3 en orden y devuelve la primera que falle. */

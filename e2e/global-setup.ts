@@ -15,7 +15,7 @@
  *       escenario. Se declara así en vez de fingir que las 3 son pre-auth.
  */
 import { chromium, type FullConfig } from "@playwright/test";
-import { runAllGuards, EXPECTED_PROJECT } from "./envGuard";
+import { runAllGuards, hasBackendEvidence, EXPECTED_PROJECT } from "./envGuard";
 
 export default async function globalSetup(config: FullConfig) {
   const baseURL = config.projects[0]?.use?.baseURL;
@@ -64,14 +64,38 @@ export default async function globalSetup(config: FullConfig) {
     await page.fill('input[type="password"]', pass);
     await page.click('button[type="submit"]');
     await page.waitForURL(/\/admin/, { timeout: 45_000 });
-    await page.waitForLoadState("networkidle");
+
+    // ── esperar EVIDENCIA de tráfico, no un estado de red ────────────────────
+    // `networkidle` NO sirve en esta app: el canal `Listen` de Firestore es
+    // long-polling y la red nunca queda idle (medido: `page.goto` con
+    // `networkidle` sobre el importador expira a los 30s). Y evaluar (c) apenas
+    // aterriza en /admin da un falso aborto: los primeros ~40 requests son el
+    // bundle y `identitytoolkit`, Firestore recién aparece después (medido con
+    // sonda: 0 hits en los primeros 40, 36 hits al esperar el dashboard).
+    //
+    // Se espera el HECHO que (c) necesita — al menos un request al backend —
+    // en vez de un proxy de "ya cargó".
+    const deadline = Date.now() + 60_000;
+    while (!hasBackendEvidence(requestUrls) && Date.now() < deadline) {
+      await page.waitForTimeout(500);
+    }
 
     // ── (c) BACKEND EFECTIVO ── sobre el tráfico REAL ────────────────────────
     const c = runAllGuards({ baseURL, bundleText, requestUrls });
     if (!c.ok) throw new Error(`B22 ABORTA — ${c.reason}`);
 
     // Sesión reutilizable por los specs (evita 6 logins).
-    await ctx.storageState({ path: "e2e/.auth/state.json" });
+    //
+    // `indexedDB: true` NO es opcional acá: Firebase Auth persiste la sesión en
+    // IndexedDB, no en cookies ni en localStorage. Sin esa opción el
+    // `storageState` sale vacío de sesión y los specs aterrizan en `/login` —
+    // medido: la 1ª corrida de los 6 escenarios murió con
+    // `locator('input[type="file"]') not found` y el snapshot de la página
+    // mostrando el formulario de login, no el importador.
+    await ctx.storageState({
+      path: process.env.AYR_E2E_AUTH_STATE as string,
+      indexedDB: true,
+    });
 
     const firestoreHits = requestUrls.filter((u) => u.includes(EXPECTED_PROJECT)).length;
     console.log(

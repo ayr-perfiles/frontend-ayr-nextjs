@@ -34,7 +34,17 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    "**/*.mts",
+    ".next-e2e/types/**/*.ts",
+    ".next-e2e/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "sunat", "functions", "functions-sunat", "scripts", "src/test", "test-prod.ts"]
+  "exclude": [
+    "node_modules",
+    "sunat",
+    "functions",
+    "functions-sunat",
+    "scripts",
+    "src/test",
+    "test-prod.ts"
+  ]
 }
