@@ -1,0 +1,39 @@
+/*
+ * GSM Design Kit — hoja de estilos de entrada (Tailwind v4).
+ *
+ * Es el único CSS que la app destino necesita importar. Reemplaza al
+ * `globals.css` existente, o se importa DESPUÉS de él para que la identidad de
+ * GSM prevalezca (ver README, "Cómo hacer que prevalezca").
+ *
+ * Ajusta las rutas relativas si copias el kit a otra ubicación.
+ */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./shadcn-base.css";
+@import "../tokens/theme.css";
+
+/*
+ * La detección automática de Tailwind v4 parte de la app, así que puede no
+ * alcanzar al kit si este vive fuera del árbol escaneado (por ejemplo dentro de
+ * `node_modules` o de una carpeta ignorada por git). Registrarlo explícitamente
+ * es barato y evita el fallo clásico de "los componentes salen sin estilos".
+ */
+@source "../components";
+@source "../strings";
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
+}
