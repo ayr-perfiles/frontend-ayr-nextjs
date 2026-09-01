@@ -13,6 +13,10 @@
  *   c-filtros-abierto  — TableFilters con su panel abierto
  *   d-busqueda-vacia   — DataTable en emptyState (búsqueda sin resultados),
  *                        que además ejercita el input de TableFilters
+ *   e-filtro-aplicado  — (TANDA 21) TableFilters con un valor APLICADO: la
+ *                        barra pasa al estilo "activo" y aparece el badge de
+ *                        conteo, que es una rama de render que ninguno de los
+ *                        4 estados anteriores alcanzaba.
  *
  * `isLoading` NO se captura: es un estado transitorio que depende del tiempo
  * de respuesta de Firestore y no hay forma estable de congelarlo desde acá
@@ -30,7 +34,7 @@ async function shot(page: Page, name: string) {
   await page.screenshot({ path: path.join(OUT_DIR, `${name}.png`), fullPage: true });
 }
 
-test("piezas de tabla en 4 estados", async ({ page }) => {
+test("piezas de tabla en 5 estados", async ({ page }) => {
   if (!OUT_DIR) throw new Error("AYR_CAPTURE_OUT_DIR no seteado.");
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
@@ -60,4 +64,18 @@ test("piezas de tabla en 4 estados", async ({ page }) => {
   await search.fill("ZZZZ-NO-EXISTE-ZZZZ");
   await page.waitForTimeout(2000);
   await shot(page, "d-busqueda-vacia");
+
+  // (e) TANDA 21 — filtro APLICADO. Se limpia la búsqueda primero para que el
+  // estado sea el del filtro y no el arrastre de (d). Se elige "Ventas
+  // Cerradas", que NO es la primera opción del grupo: el conteo de activos
+  // ignora la primera por diseño, así que la primera no encendería el badge.
+  await search.fill("");
+  await page.waitForTimeout(1500);
+  await page.getByRole("button", { name: /Filtros/i }).first().click();
+  await page.waitForTimeout(800);
+  await page.getByText(/Ventas Cerradas/i).first().click();
+  await page.waitForTimeout(500);
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.waitForTimeout(2000);
+  await shot(page, "e-filtro-aplicado");
 });
