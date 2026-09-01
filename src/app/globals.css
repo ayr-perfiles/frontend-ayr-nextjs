@@ -1,4 +1,27 @@
-@import "tailwindcss";
+/*
+ * TANDA 18 — capa de tokens del GSM Design Kit v1.0.0 (`src/design-kit/`).
+ *
+ * Trae, en este orden: `tailwindcss`, `tw-animate-css`, la base de shadcn
+ * (`shadcn-base.css`) y los tokens del kit (`tokens/theme.css`, su propio
+ * `@theme inline` + `:root`/`.dark`). Reemplaza el `@import "tailwindcss"`
+ * suelto que había acá — el kit ya lo trae adentro, importarlo dos veces
+ * duplicaría el preflight.
+ *
+ * DECISIÓN, registrada para que no se lea como accidente: los duplicados de
+ * AYR que colisionan por NOMBRE con el kit (12, ver CLAUDE.md §11 — 4 en
+ * --color-*, 4 en --radius-*, 2 en --font-*, 2 bare) NO se borran. Todo lo
+ * que sigue de acá para abajo es EXACTAMENTE lo que ya estaba, byte a byte,
+ * y gana la cascada porque aparece DESPUÉS del `@import` en el mismo
+ * documento (misma especificidad de selector, `:root`/`html.dark` — el que
+ * viene último en el CSS resultante gana). Borrar los duplicados habría
+ * dejado el `--color-primary` de TODO el sistema (11 usos por `var()`) en el
+ * negro/gris por defecto del kit en vez del azul de marca de AYR — un
+ * cambio visual real, no un no-op, y no autorizado por esta tanda. Lo que sí
+ * se gana con el import: las utilidades que antes NO COMPILABAN
+ * (`bg-primary`, `border-border`, etc. — 0 usos hoy, confirmado en G1.3)
+ * ahora SÍ compilarían si alguien las usara, resolviendo al valor de AYR.
+ */
+@import "../design-kit/styles/globals.css";
 
 :root {
   --background: #ffffff;
@@ -101,26 +124,12 @@ body {
   }
 }
 
-html.dark {
-  --color-background:      oklch(0.18 0.012 250);
-  --color-surface:         oklch(0.22 0.012 250);
-  --color-surface-muted:   oklch(0.25 0.012 250);
-  --color-surface-sunken:  oklch(0.20 0.012 250);
-
-  --color-border:          oklch(0.30 0.012 250);
-  --color-border-strong:   oklch(0.38 0.012 250);
-  --color-border-focus:    oklch(0.62 0.14 245);
-
-  --color-fg:              oklch(0.96 0.005 250);
-  --color-fg-muted:        oklch(0.72 0.010 250);
-  --color-fg-subtle:       oklch(0.55 0.010 250);
-
-  --color-primary:         oklch(0.62 0.14 245);
-  --color-primary-hover:   oklch(0.68 0.14 245);
-  --color-primary-soft:    oklch(0.32 0.07 245);
-
-  --color-success-soft:    oklch(0.28 0.06 150);
-  --color-warning-soft:    oklch(0.30 0.07 75);
-  --color-danger-soft:     oklch(0.30 0.07 25);
-  --color-info-soft:       oklch(0.28 0.05 230);
-}
+/*
+ * TANDA 18 — el bloque `html.dark { ... }` de AYR (16 overrides) se borró
+ * acá. Era CSS muerto: 0 archivos togglean la clase `.dark` (COLA #58,
+ * `CLAUDE.md` §11), así que nunca se aplicó en runtime. Los 16 valores
+ * quedan transcritos VERBATIM en `HANDOFF.md`, fila `#58`, antes de este
+ * borrado — no se pierden, solo dejan de vivir acá. El dark mode del kit
+ * (`.dark`, vía `@custom-variant dark` en `tokens/theme.css`) NO se activa
+ * en esta tanda: `ThemeProvider`/`ThemeToggle` siguen sin montarse.
+ */
