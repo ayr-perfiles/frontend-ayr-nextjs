@@ -35,6 +35,30 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/*
+ * TANDA 19 — ESCALA DE RADIOS DE AYR, restaurada.
+ *
+ * Es un `@theme` NORMAL (no `inline`) a propósito. El kit declara los radios
+ * como `--radius-lg: var(--radius)` dentro de su `@theme inline`, y el modo
+ * inline hace que `rounded-lg` compile a `border-radius:var(--radius)` —
+ * salteando por completo el `--radius-lg` que AYR declaraba en `:root`.
+ *
+ * MEDIDO, y es un cambio que la Tanda 18 shipeó sin darse cuenta: antes del
+ * cableado `rounded-lg` valía 8px (el de AYR) y después pasó a valer
+ * `var(--radius)` = 0.625rem = 10px (el del kit). Lo mismo con sm/md/xl.
+ * Afecta 55/20/1/103 archivos respectivamente. La Tanda 18 lo midió como
+ * 0.006–0.059% de píxeles y lo atribuyó a ruido de antialiasing — era esto.
+ *
+ * Con `@theme` normal y valores LITERALES, la utilidad vuelve a leer
+ * `--radius-lg` y la escala de AYR (4/6/8/12) se restaura exacta.
+ */
+@theme {
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}
+
 /* @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -54,23 +78,59 @@ body {
    --font-sans / --font-mono are NOT redefined here — the Geist vars in
    @theme inline already handle them correctly. */
 :root {
+  /*
+   * ── TANDA 19 · MAPEO DE MARCA ────────────────────────────────────────────
+   * Los nombres BARE de abajo son los que el kit consume: su `@theme inline`
+   * declara `--color-X: var(--X)`, y Tailwind v4 INLINEA esa referencia, así
+   * que `bg-primary` compila a `background-color:var(--primary)` — nunca lee
+   * `--color-primary`. Medido en CSS compilado, COLA `#64`.
+   *
+   * Por eso la MARCA de AYR se declara acá, en el nombre bare: es el único
+   * lugar donde la ve tanto el kit (por sus utilidades) como AYR (por el
+   * alias `--color-X: var(--X)` que el propio kit ya emite). UNA sola
+   * declaración del literal, dos caminos de consumo.
+   *
+   * Los 16 tokens de color de acá tienen 0 usos como utilidad hoy (G1.3), así
+   * que fijar su valor no puede mover un píxel — es preparación para el
+   * re-skin, no un cambio visual.
+   *
+   * NO se tocan `--background`/`--foreground` (bare): alimentan `body` y
+   * cambiarlos SÍ movería píxeles. Quedan como estaban, declarado a propósito.
+   */
+  --primary:               oklch(0.48 0.13 245);   /* ← azul de marca AYR */
+  --primary-foreground:    oklch(0.99 0 0);
+  --secondary:             oklch(0.97 0.005 240);
+  --secondary-foreground:  oklch(0.20 0.012 250);
+  --muted:                 oklch(0.97 0.005 240);
+  --muted-foreground:      oklch(0.46 0.010 250);
+  --accent:                oklch(0.94 0.03 245);
+  --accent-foreground:     oklch(0.48 0.13 245);
+  --destructive:           oklch(0.58 0.20 25);
+  --border:                oklch(0.91 0.006 240);
+  --input:                 oklch(0.91 0.006 240);
+  --ring:                  oklch(0.55 0.16 240);
+  --card:                  oklch(1.00 0 0);
+  --card-foreground:       oklch(0.20 0.012 250);
+  --popover:               oklch(1.00 0 0);
+  --popover-foreground:    oklch(0.20 0.012 250);
+
   --color-background:      oklch(0.99 0.003 240);
   --color-surface:         oklch(1.00 0 0);
   --color-surface-muted:   oklch(0.97 0.005 240);
   --color-surface-sunken:  oklch(0.95 0.006 240);
 
-  --color-border:          oklch(0.91 0.006 240);
+  /* `--color-border` y `--color-primary` YA NO se declaran acá: el kit emite
+     `--color-X: var(--X)` y esas bare las declara AYR arriba. Fuente única. */
   --color-border-strong:   oklch(0.83 0.008 240);
-  --color-border-focus:    oklch(0.55 0.16 240);
+  --color-border-focus:    var(--ring);
 
   --color-fg:              oklch(0.20 0.012 250);
-  --color-fg-muted:        oklch(0.46 0.010 250);
+  --color-fg-muted:        var(--muted-foreground);
   --color-fg-subtle:       oklch(0.62 0.008 250);
-  --color-fg-on-primary:   oklch(0.99 0 0);
+  --color-fg-on-primary:   var(--primary-foreground);
 
-  --color-primary:         oklch(0.48 0.13 245);
   --color-primary-hover:   oklch(0.42 0.13 245);
-  --color-primary-soft:    oklch(0.94 0.03 245);
+  --color-primary-soft:    var(--accent);
 
   --color-success:         oklch(0.62 0.15 150);
   --color-success-soft:    oklch(0.95 0.04 150);
@@ -90,10 +150,8 @@ body {
 
   --color-env-dev:         oklch(0.72 0.16 60);
 
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  /* Los `--radius-*` se declaran en el `@theme` de abajo, no acá — ver el
+     comentario de ese bloque: declarados en `:root` quedaban BYPASSEADOS. */
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.04);
   --shadow-md: 0 2px 6px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
